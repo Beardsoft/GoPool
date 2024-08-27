@@ -1,1 +1,4 @@
 .netrc
+config.json
+pool.db
+GoPool

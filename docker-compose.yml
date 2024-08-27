@@ -1,0 +1,12 @@
+services:
+  gopool:
+    build: .
+    container_name: gopool
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/root/data
+      - ./config.json:/root/config.json:ro  # Mount config file as read-only
+    environment:
+      - SQLITE_DB=/root/data/pool.db
+      - CONFIG_FILE=/root/config.json       # Environment variable for config file path
