@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 )
 
@@ -69,13 +70,22 @@ func GetStakersByValidatorAddress(config *Config, validatorAddress string) (map[
 				stakerMap := make(map[string]float64)
 				for _, staker := range stakers {
 					if stakerInfo, ok := staker.(map[string]interface{}); ok {
-						address := stakerInfo["address"].(string)
-						stake := stakerInfo["stake"].(float64)
-						stakerMap[address] = stake
+						address, addressOk := stakerInfo["address"].(string)
+						balance, balanceOk := stakerInfo["balance"].(float64)
+
+						if addressOk && balanceOk {
+							stakerMap[address] = balance
+						} else {
+							log.Printf("Unexpected structure in staker info: %v", stakerInfo)
+						}
 					}
 				}
 				return stakerMap, nil
+			} else {
+				return nil, fmt.Errorf("expected data to be an array but got: %v", resultMap["data"])
 			}
+		} else {
+			return nil, fmt.Errorf("expected result to be a map but got: %v", resultData)
 		}
 	}
 
@@ -229,6 +239,36 @@ func GetPolicyConstants(config *Config) (map[string]interface{}, error) {
 	}
 
 	return nil, fmt.Errorf("unexpected response structure: %v", result)
+}
+
+func GetValidatorBalance(config *Config, address string) (int64, error) {
+	payload := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "getAccountByAddress",
+		"params":  []interface{}{address},
+	}
+
+	response, err := sendRPCRequest(config, payload)
+	if err != nil {
+		return 0, err
+	}
+
+	var result map[string]interface{}
+	err = json.Unmarshal(response, &result)
+	if err != nil {
+		return 0, err
+	}
+
+	if resultData, ok := result["result"].(map[string]interface{}); ok {
+		if data, ok := resultData["data"].(map[string]interface{}); ok {
+			if balance, ok := data["balance"].(float64); ok {
+				return int64(balance), nil
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("unexpected response structure: %v", result)
 }
 
 func GetCurrentBlockNumber(config *Config) (int64, error) {

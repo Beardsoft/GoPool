@@ -14,7 +14,7 @@ func main() {
 	}
 
 	// Initialize the database
-	db, err := pool.InitDB("data/pool.db")
+	db, err := pool.InitDB("pool.db")
 	if err != nil {
 		log.Fatalf("Failed to initialize the database: %v", err)
 	}

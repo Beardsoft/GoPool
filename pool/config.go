@@ -8,11 +8,12 @@ import (
 )
 
 type Config struct {
-	RPCURL      string  `json:"rpc_url"`
-	APIKey      string  `json:"api_key"`
-	PoolAddress string  `json:"pool_address"`
-	PoolFee     float64 `json:"pool_fee"`
-	PrivateKey  string  `json:"private_key"`
+	RPCURL            string  `json:"rpc_url"`
+	APIKey            string  `json:"api_key"`
+	PoolAddress       string  `json:"pool_address"`
+	PoolFeeWallet     string  `json:"pool_fee_wallet"`
+	PoolFeePercentage float64 `json:"pool_fee_percentage"`
+	PrivateKey        string  `json:"private_key"`
 }
 
 func LoadConfig() (*Config, error) {
