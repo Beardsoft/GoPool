@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
+
+	"github.com/Beardsoft/GoPool/internal/logger"
+	"go.uber.org/zap"
 )
 
 type PoolManager struct {
@@ -24,33 +26,34 @@ func NewPoolManager(db *sql.DB, config *Config) *PoolManager {
 
 func (pm *PoolManager) ProcessEpochs() {
 	// Store the current epoch and balance at startup
+	logger.Logger.Info("Storing epoch and balance at startup...")
 	err := pm.StoreEpochAndBalanceAtStartup()
 	if err != nil {
-		log.Fatalf("Failed to store epoch and balance at startup: %v", err)
+		logger.Logger.Fatal("Failed to store epoch and balance at startup", zap.Error(err))
 	}
 
 	for {
 		currentEpoch, err := GetEpochNumber(pm.config)
 		if err != nil {
-			log.Printf("Error getting epoch number: %v", err)
+			logger.Logger.Fatal("Error getting epoch number", zap.Error(err))
 			time.Sleep(1 * time.Minute)
 			continue
 		}
 
 		previousEpoch := currentEpoch - 1
-		log.Printf("Processing Epoch: %d", previousEpoch)
+		logger.Logger.Info("Processing Epoch", zap.Int64("epoch", previousEpoch))
 
 		var epochID int64
 		err = pm.db.QueryRow("SELECT id FROM epochs WHERE epoch_number = ?", previousEpoch).Scan(&epochID)
 		if err == sql.ErrNoRows {
-			log.Printf("Epoch %d has not been processed yet", previousEpoch)
+			logger.Logger.Error("Epoch has not been processed yet", zap.Int64("epoch", previousEpoch))
 			time.Sleep(1 * time.Minute)
 			continue
 		}
 
 		rewards, err := pm.GetEpochRewards(epochID)
 		if err != nil {
-			log.Printf("Error getting rewards for epoch %d: %v", previousEpoch, err)
+			logger.Logger.Error("Error getting rewards for epoch", zap.Int64("epoch", previousEpoch), zap.Error(err))
 			time.Sleep(1 * time.Minute)
 			continue
 		}
@@ -58,34 +61,34 @@ func (pm *PoolManager) ProcessEpochs() {
 		if rewards > 0 {
 			err = pm.CalculateAndPayRewards(epochID, rewards)
 			if err != nil {
-				log.Printf("Error paying rewards for epoch %d: %v", previousEpoch, err)
+				logger.Logger.Error("Error paying rewards for epoch", zap.Int64("epoch", previousEpoch), zap.Error(err))
 				time.Sleep(1 * time.Minute)
 				continue
 			}
 
 			err = pm.MarkEpochAsPaid(epochID)
 			if err != nil {
-				log.Printf("Error marking epoch %d as paid: %v", previousEpoch, err)
+				logger.Logger.Error("Error marking epoch as paid", zap.Int64("epoch", previousEpoch), zap.Error(err))
 			}
 
 			// Update the balance for the current epoch
 			err = pm.UpdateEpochBalance(previousEpoch)
 			if err != nil {
-				log.Printf("Error updating balance for epoch %d: %v", previousEpoch, err)
+				logger.Logger.Error("Error updating balance for epoch", zap.Int64("epoch", previousEpoch), zap.Error(err))
 			}
 		} else {
-			log.Printf("No rewards received for epoch %d. Skipping payout.", previousEpoch)
+			logger.Logger.Info("No rewards received for epoch. Skipping payout.", zap.Int64("epoch", previousEpoch))
 		}
 
 		// Sleep until the next epoch
 		sleepDuration, err := CalculateTimeUntilNextEpoch(pm.config)
 		if err != nil {
-			log.Printf("Error calculating time until next epoch: %v", err)
+			logger.Logger.Error("Error calculating time until next epoch", zap.Error(err))
 			time.Sleep(1 * time.Minute)
 			continue
 		}
 
-		log.Printf("Sleeping until next epoch: %v", sleepDuration)
+		logger.Logger.Info("Sleeping until next epoch", zap.Duration("duration", sleepDuration))
 		Countdown(sleepDuration)
 	}
 }
@@ -107,8 +110,7 @@ func (pm *PoolManager) RecordPoolPayout(epochID int64, totalAmount, feePercentag
 		return fmt.Errorf("error recording pool payout: %v", err)
 	}
 
-	log.Printf("Recorded pool payout for epoch %d: amount=%.4f, fee=%.4f (%.2f%%), tx_hash=%s",
-		epochID, totalAmount, feeAmount, feePercentage*100, feeTxHash)
+	logger.Logger.Info("Recorded pool payout", zap.Int64("epoch", epochID), zap.Float64("amount", totalAmount), zap.Float64("feeAmount", feeAmount), zap.Float64("feePercentage", feePercentage*100), zap.String("txHash", feeTxHash))
 	return nil
 }
 
@@ -174,7 +176,7 @@ func (pm *PoolManager) InsertStakers(epochID int64, stakers map[string]float64) 
 
 func (pm *PoolManager) StoreEpochAndBalanceAtStartup() error {
 	currentEpoch, err := GetEpochNumber(pm.config)
-	if err != nil {
+	if (err) != nil {
 		return fmt.Errorf("error getting current epoch number: %v", err)
 	}
 
@@ -200,9 +202,9 @@ func (pm *PoolManager) StoreEpochAndBalanceAtStartup() error {
 			return fmt.Errorf("error inserting epoch and balance: %v", err)
 		}
 
-		log.Printf("Stored epoch %d and balance %d at startup.", currentEpoch, balance)
+		logger.Logger.Info("Stored epoch and balance at startup", zap.Int64("epoch", currentEpoch), zap.Int64("balance", balance))
 	} else {
-		log.Printf("Epoch %d is already stored. Skipping storage at startup.", currentEpoch)
+		logger.Logger.Info("Epoch is already stored. Skipping storage at startup", zap.Int64("epoch", currentEpoch))
 	}
 
 	return nil
@@ -223,7 +225,7 @@ func (pm *PoolManager) UpdateEpochBalance(epochNumber int64) error {
 		return fmt.Errorf("error updating epoch balance: %v", err)
 	}
 
-	log.Printf("Updated balance for epoch %d to %d.", epochNumber, balance)
+	logger.Logger.Info("Updated balance for epoch", zap.Int64("epoch", epochNumber), zap.Int64("balance", balance))
 	return nil
 }
 
@@ -302,7 +304,7 @@ func (pm *PoolManager) SendPoolFee(amount float64) error {
 	}
 
 	if txHash, ok := result["result"].(string); ok {
-		log.Printf("Sent pool fee of %.4f to %s. Transaction hash: %s", amount, pm.config.PoolFeeWallet, txHash)
+		logger.Logger.Info("Sent pool fee", zap.Float64("amount", amount), zap.String("wallet", pm.config.PoolFeeWallet), zap.String("txHash", txHash))
 		return nil
 	}
 
@@ -335,7 +337,7 @@ func (pm *PoolManager) PayOutStake(stakerAddress string, amount float64) error {
 	}
 
 	if txHash, ok := result["result"].(string); ok {
-		log.Printf("Paid out %.4f to %s. Transaction hash: %s", amount, stakerAddress, txHash)
+		logger.Logger.Info("Paid out stake", zap.Float64("amount", amount), zap.String("stakerAddress", stakerAddress), zap.String("txHash", txHash))
 		return nil
 	}
 
@@ -413,14 +415,14 @@ func (pm *PoolManager) CompareStakers(currentStakers map[string]float64) (map[st
 }
 
 func EnsurePoolAddress(config *Config) (string, error) {
-	log.Println("Ensuring pool address is set up...")
+	logger.Logger.Info("Ensuring pool address is set up...")
 
 	// Step 1: Import the private key
 	poolAddress, err := ImportPrivateKey(config)
 	if err != nil {
 		return "", fmt.Errorf("failed to import private key: %w", err)
 	}
-	log.Printf("Pool Address: %s", poolAddress)
+	logger.Logger.Info("Pool Address", zap.String("address", poolAddress))
 
 	// Step 2: Check if the account is imported
 	isImported, err := IsAccountImported(config, poolAddress)
@@ -431,14 +433,14 @@ func EnsurePoolAddress(config *Config) (string, error) {
 	if !isImported {
 		return "", fmt.Errorf("account was not imported correctly")
 	}
-	log.Println("Account is imported successfully.")
+	logger.Logger.Info("Account is imported successfully.")
 
 	// Step 3: Unlock the account
 	err = UnlockAccount(config, poolAddress)
 	if err != nil {
 		return "", fmt.Errorf("failed to unlock account: %w", err)
 	}
-	log.Println("Account unlocked successfully.")
+	logger.Logger.Info("Account unlocked successfully.")
 
 	return poolAddress, nil
 }
@@ -483,7 +485,7 @@ func Countdown(duration time.Duration) {
 		case <-ticker.C:
 			remaining -= 1 * time.Minute
 			if remaining > 0 {
-				log.Printf("Time until next epoch: %v", remaining)
+				logger.Logger.Info("Time until next epoch", zap.Duration("remaining", remaining))
 			}
 		case <-time.After(remaining):
 			return

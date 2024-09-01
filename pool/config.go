@@ -1,48 +1,42 @@
 package pool
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
+	"github.com/Beardsoft/GoPool/internal/logger"
+	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 type Config struct {
-	RPCURL            string  `json:"rpc_url"`
-	APIKey            string  `json:"api_key"`
-	PoolAddress       string  `json:"pool_address"`
-	PoolFeeWallet     string  `json:"pool_fee_wallet"`
-	PoolFeePercentage float64 `json:"pool_fee_percentage"`
-	PrivateKey        string  `json:"private_key"`
+	RPCURL            string  `mapstructure:"rpc_url"`
+	APIKey            string  `mapstructure:"api_key"`
+	PoolAddress       string  `mapstructure:"pool_address"`
+	PoolFeeWallet     string  `mapstructure:"pool_fee_wallet"`
+	PoolFeePercentage float64 `mapstructure:"pool_fee_percentage"`
+	PrivateKey        string  `mapstructure:"private_key"`
 }
 
 func LoadConfig() (*Config, error) {
-	// First, check if config.json exists in the current directory
-	defaultConfigPath := filepath.Join(".", "config.json")
-	if _, err := os.Stat(defaultConfigPath); err == nil {
-		return loadConfigFromFile(defaultConfigPath)
-	}
+	viper.SetConfigName("config")
+	viper.SetConfigType("json")
+	viper.AddConfigPath(".")
+	viper.AutomaticEnv()
+	viper.SetEnvPrefix("POOL")
 
-	// If not found, fall back to the environment variable
-	configFile := os.Getenv("CONFIG_FILE")
-	if configFile == "" {
-		return nil, fmt.Errorf("CONFIG_FILE environment variable not set, and config.json not found in current directory")
-	}
-
-	return loadConfigFromFile(configFile)
-}
-
-func loadConfigFromFile(filePath string) (*Config, error) {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
+	if err := viper.ReadInConfig(); err != nil {
+		logger.Logger.Error("Error reading config file", zap.Error(err))
 		return nil, err
 	}
 
 	var config Config
-	err = json.Unmarshal(data, &config)
-	if err != nil {
+	if err := viper.Unmarshal(&config); err != nil {
+		logger.Logger.Error("Unable to decode config into struct", zap.Error(err))
 		return nil, err
 	}
+
+	logger.Logger.Info("Config loaded successfully",
+		zap.String("rpc_url", config.RPCURL),
+		zap.Float64("pool_fee_percentage", config.PoolFeePercentage),
+		zap.String("pool_fee_wallet", config.PoolFeeWallet))
 
 	return &config, nil
 }
