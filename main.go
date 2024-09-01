@@ -3,8 +3,21 @@ package main
 import (
 	"log"
 
+	"go.uber.org/zap"
+
 	"github.com/Beardsoft/GoPool/pool"
 )
+
+var logger *zap.Logger
+
+func initLogger() {
+	var err error
+	logger, err = zap.NewProduction() // For production logging
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Sync() // flushes buffer, if any
+}
 
 func main() {
 	// Load the config
