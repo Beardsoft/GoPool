@@ -1,4 +1,4 @@
-package pool
+package config
 
 import (
 	"github.com/Beardsoft/GoPool/internal/logger"

@@ -1,31 +1,38 @@
 package pool
 
 import (
+	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/Beardsoft/GoPool/internal/config"
+	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
+	"github.com/Beardsoft/GoPool/internal/rpc"
+
+	_ "github.com/mattn/go-sqlite3" // Import the SQLite driver
+
 	"go.uber.org/zap"
 )
 
 type PoolManager struct {
-	db              *sql.DB
-	config          *Config
-	previousStakers map[string]float64 // Keyed by staker address
+	queries         *db.Queries
+	config          *config.Config
+	db              *sql.DB // This field needs to be added if you intend to use it directly
+	previousStakers map[string]float64
 }
 
-func NewPoolManager(db *sql.DB, config *Config) *PoolManager {
+// Adjust your constructor to accept and store the *sql.DB:
+func NewPoolManager(db *sql.DB, queries *db.Queries, config *config.Config) *PoolManager {
 	return &PoolManager{
-		db:              db,
-		config:          config,
-		previousStakers: make(map[string]float64),
+		db:      db,
+		queries: queries,
+		config:  config,
 	}
 }
 
 func (pm *PoolManager) ProcessEpochs() {
-	// Store the current epoch and balance at startup
 	logger.Logger.Info("Storing epoch and balance at startup...")
 	err := pm.StoreEpochAndBalanceAtStartup()
 	if err != nil {
@@ -33,7 +40,7 @@ func (pm *PoolManager) ProcessEpochs() {
 	}
 
 	for {
-		currentEpoch, err := GetEpochNumber(pm.config)
+		currentEpoch, err := rpc.GetEpochNumber(pm.config)
 		if err != nil {
 			logger.Logger.Fatal("Error getting epoch number", zap.Error(err))
 			time.Sleep(1 * time.Minute)
@@ -43,14 +50,18 @@ func (pm *PoolManager) ProcessEpochs() {
 		previousEpoch := currentEpoch - 1
 		logger.Logger.Info("Processing Epoch", zap.Int64("epoch", previousEpoch))
 
-		var epochID int64
-		err = pm.db.QueryRow("SELECT id FROM epochs WHERE epoch_number = ?", previousEpoch).Scan(&epochID)
+		// Get the epoch ID
+		epochID, err := pm.queries.GetEpochID(context.Background(), previousEpoch)
 		if err == sql.ErrNoRows {
 			logger.Logger.Error("Epoch has not been processed yet", zap.Int64("epoch", previousEpoch))
 			time.Sleep(1 * time.Minute)
 			continue
+		} else if err != nil {
+			logger.Logger.Fatal("Failed to fetch epoch", zap.Error(err))
+			return
 		}
 
+		// Get rewards
 		rewards, err := pm.GetEpochRewards(epochID)
 		if err != nil {
 			logger.Logger.Error("Error getting rewards for epoch", zap.Int64("epoch", previousEpoch), zap.Error(err))
@@ -59,6 +70,7 @@ func (pm *PoolManager) ProcessEpochs() {
 		}
 
 		if rewards > 0 {
+			// Calculate and pay rewards
 			err = pm.CalculateAndPayRewards(epochID, rewards)
 			if err != nil {
 				logger.Logger.Error("Error paying rewards for epoch", zap.Int64("epoch", previousEpoch), zap.Error(err))
@@ -66,12 +78,13 @@ func (pm *PoolManager) ProcessEpochs() {
 				continue
 			}
 
+			// Mark epoch as paid
 			err = pm.MarkEpochAsPaid(epochID)
 			if err != nil {
 				logger.Logger.Error("Error marking epoch as paid", zap.Int64("epoch", previousEpoch), zap.Error(err))
 			}
 
-			// Update the balance for the current epoch
+			// Update epoch balance
 			err = pm.UpdateEpochBalance(previousEpoch)
 			if err != nil {
 				logger.Logger.Error("Error updating balance for epoch", zap.Int64("epoch", previousEpoch), zap.Error(err))
@@ -80,7 +93,7 @@ func (pm *PoolManager) ProcessEpochs() {
 			logger.Logger.Info("No rewards received for epoch. Skipping payout.", zap.Int64("epoch", previousEpoch))
 		}
 
-		// Sleep until the next epoch
+		// Calculate time until next epoch
 		sleepDuration, err := CalculateTimeUntilNextEpoch(pm.config)
 		if err != nil {
 			logger.Logger.Error("Error calculating time until next epoch", zap.Error(err))
@@ -88,24 +101,29 @@ func (pm *PoolManager) ProcessEpochs() {
 			continue
 		}
 
+		// Sleep until the next epoch
 		logger.Logger.Info("Sleeping until next epoch", zap.Duration("duration", sleepDuration))
 		Countdown(sleepDuration)
 	}
 }
 
 func (pm *PoolManager) InsertPayout(epochID int64, stakerAddress, txHash string) error {
-	_, err := pm.db.Exec(`
-        INSERT INTO payouts (epoch_id, staker_address, payout_tx_hash, payout_completed) 
-        VALUES (?, ?, ?, 1)
-    `, epochID, stakerAddress, txHash)
+	err := pm.queries.InsertPayout(context.Background(), db.InsertPayoutParams{
+		EpochID:       epochID,
+		StakerAddress: stakerAddress,
+		PayoutTxHash:  txHash,
+	})
 	return err
 }
 
 func (pm *PoolManager) RecordPoolPayout(epochID int64, totalAmount, feePercentage, feeAmount float64, feeTxHash string) error {
-	_, err := pm.db.Exec(`
-        INSERT INTO pool_payouts (epoch_id, amount, fee_percentage, fee_amount, fee_tx_hash) 
-        VALUES (?, ?, ?, ?, ?)
-    `, epochID, totalAmount, feePercentage, feeAmount, feeTxHash)
+	err := pm.queries.InsertPoolPayout(context.Background(), db.InsertPoolPayoutParams{
+		EpochID:       epochID,
+		Amount:        totalAmount,
+		FeePercentage: feePercentage,
+		FeeAmount:     feeAmount,
+		FeeTxHash:     feeTxHash,
+	})
 	if err != nil {
 		return fmt.Errorf("error recording pool payout: %v", err)
 	}
@@ -115,11 +133,7 @@ func (pm *PoolManager) RecordPoolPayout(epochID int64, totalAmount, feePercentag
 }
 
 func (pm *PoolManager) AreAllPayoutsCompleted(epochID int64) (bool, error) {
-	var count int
-	err := pm.db.QueryRow(`
-        SELECT COUNT(*) FROM payouts 
-        WHERE epoch_id = ? AND payout_completed = 0
-    `, epochID).Scan(&count)
+	count, err := pm.queries.CountIncompletePayouts(context.Background(), epochID)
 	if err != nil {
 		return false, err
 	}
@@ -127,82 +141,52 @@ func (pm *PoolManager) AreAllPayoutsCompleted(epochID int64) (bool, error) {
 }
 
 func (pm *PoolManager) MarkEpochAsPaid(epochID int64) error {
-	_, err := pm.db.Exec("UPDATE epochs SET paid_out = 1 WHERE id = ?", epochID)
+	err := pm.queries.MarkEpochAsPaid(context.Background(), epochID)
 	return err
 }
 
 func (pm *PoolManager) InsertEpoch(epochNumber int64) (int64, error) {
-	balance, err := GetValidatorBalance(pm.config, pm.config.PoolAddress)
+	balance, err := rpc.GetValidatorBalance(pm.config, pm.config.PoolAddress)
 	if err != nil {
 		return 0, err
 	}
 
-	result, err := pm.db.Exec(`
-        INSERT INTO epochs (epoch_number, validator_balance) 
-        VALUES (?, ?)
-    `, epochNumber, balance)
+	var epochID int64
+	err = pm.queries.InsertEpoch(context.Background(), db.InsertEpochParams{
+		EpochNumber:      epochNumber,
+		ValidatorBalance: balance,
+	}).Scan(&epochID) // Corrected line
 	if err != nil {
 		return 0, err
 	}
-	epochID, err := result.LastInsertId()
-	if err != nil {
-		return 0, err
-	}
+
 	return epochID, nil
 }
 
-func (pm *PoolManager) InsertStakers(epochID int64, stakers map[string]float64) error {
-	tx, err := pm.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare("INSERT INTO stakers (epoch_id, address, stake) VALUES (?, ?, ?)")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for address, stake := range stakers {
-		_, err := stmt.Exec(epochID, address, stake)
-		if err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
-}
-
 func (pm *PoolManager) StoreEpochAndBalanceAtStartup() error {
-	currentEpoch, err := GetEpochNumber(pm.config)
-	if (err) != nil {
+	currentEpoch, err := rpc.GetEpochNumber(pm.config)
+	if err != nil {
 		return fmt.Errorf("error getting current epoch number: %v", err)
 	}
 
-	// Check if the current epoch is already stored
-	var epochID int64
-	err = pm.db.QueryRow("SELECT id FROM epochs WHERE epoch_number = ?", currentEpoch).Scan(&epochID)
-	if err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("error checking epoch existence: %v", err)
-	}
-
+	_, err = pm.queries.GetEpochID(context.Background(), currentEpoch)
 	if err == sql.ErrNoRows {
-		// If the epoch is not stored, fetch the current balance and store it
-		balance, err := GetValidatorBalance(pm.config, pm.config.PoolAddress)
+		balance, err := rpc.GetValidatorBalance(pm.config, pm.config.PoolAddress)
 		if err != nil {
 			return fmt.Errorf("error getting validator balance: %v", err)
 		}
 
-		_, err = pm.db.Exec(`
-            INSERT INTO epochs (epoch_number, validator_balance) 
-            VALUES (?, ?)
-        `, currentEpoch, balance)
+		err = pm.queries.InsertEpoch(context.Background(), db.InsertEpochParams{
+			EpochNumber:      currentEpoch,
+			ValidatorBalance: balance,
+		})
 		if err != nil {
 			return fmt.Errorf("error inserting epoch and balance: %v", err)
 		}
 
 		logger.Logger.Info("Stored epoch and balance at startup", zap.Int64("epoch", currentEpoch), zap.Int64("balance", balance))
+	} else if err != nil {
+		return fmt.Errorf("error checking epoch existence: %v", err)
 	} else {
 		logger.Logger.Info("Epoch is already stored. Skipping storage at startup", zap.Int64("epoch", currentEpoch))
 	}
@@ -210,17 +194,43 @@ func (pm *PoolManager) StoreEpochAndBalanceAtStartup() error {
 	return nil
 }
 
+func (pm *PoolManager) InsertStakers(epochID int64, stakers map[string]float64) error {
+	// Start a new transaction using the *sql.DB instance from PoolManager
+	tx, err := pm.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Use sqlc's WithTx method to create a transaction-specific Queries instance
+	qtx := pm.queries.WithTx(tx)
+
+	// Insert each staker
+	for address, stake := range stakers {
+		err := qtx.InsertStaker(context.Background(), db.InsertStakerParams{
+			EpochID: epochID,
+			Address: address,
+			Stake:   int64(stake), // Ensure the Stake field is float64 in both the database schema and generated code
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	// Commit the transaction
+	return tx.Commit()
+}
+
 func (pm *PoolManager) UpdateEpochBalance(epochNumber int64) error {
-	balance, err := GetValidatorBalance(pm.config, pm.config.PoolAddress)
+	balance, err := rpc.GetValidatorBalance(pm.config, pm.config.PoolAddress)
 	if err != nil {
 		return fmt.Errorf("error getting validator balance: %v", err)
 	}
 
-	_, err = pm.db.Exec(`
-        UPDATE epochs 
-        SET validator_balance = ? 
-        WHERE epoch_number = ?
-    `, balance, epochNumber)
+	err = pm.queries.UpdateEpochBalance(context.Background(), db.UpdateEpochBalanceParams{
+		ValidatorBalance: balance,
+		EpochNumber:      epochNumber,
+	})
 	if err != nil {
 		return fmt.Errorf("error updating epoch balance: %v", err)
 	}
@@ -230,24 +240,28 @@ func (pm *PoolManager) UpdateEpochBalance(epochNumber int64) error {
 }
 
 func (pm *PoolManager) CalculateAndPayRewards(epochID int64, totalRewards float64) error {
-	// Retrieve all stakers for the given epoch
-	rows, err := pm.db.Query("SELECT staker_address, stake FROM staker_history WHERE epoch_id = ?", epochID)
+	// Start a transaction
+	tx, err := pm.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer tx.Rollback()
+
+	// Create a new Queries instance that uses the transaction
+	qtx := pm.queries.WithTx(tx)
+
+	// Retrieve all stakers for the given epoch using sqlc-generated query
+	stakers, err := qtx.GetStakersForEpoch(context.Background(), epochID)
+	if err != nil {
+		return err
+	}
 
 	// Calculate the total stake
 	var totalStake float64
 	stakerMap := make(map[string]float64)
-	for rows.Next() {
-		var address string
-		var stake float64
-		if err := rows.Scan(&address, &stake); err != nil {
-			return err
-		}
-		totalStake += stake
-		stakerMap[address] = stake
+	for _, staker := range stakers {
+		totalStake += staker.Stake
+		stakerMap[staker.StakerAddress] = staker.Stake
 	}
 
 	// Calculate the pool fee
@@ -255,7 +269,7 @@ func (pm *PoolManager) CalculateAndPayRewards(epochID int64, totalRewards float6
 	rewardsAfterFee := totalRewards - poolFee
 
 	// Send the pool fee to the configured wallet
-	err = pm.SendPoolFee(poolFee)
+	err = rpc.SendPoolFee(pm.config, poolFee)
 	if err != nil {
 		return err
 	}
@@ -263,85 +277,26 @@ func (pm *PoolManager) CalculateAndPayRewards(epochID int64, totalRewards float6
 	// Pay out each staker their portion of the rewards
 	for address, stake := range stakerMap {
 		reward := (stake / totalStake) * rewardsAfterFee
-		err = pm.PayOutStake(address, reward)
+		err = rpc.PayOutStake(pm.config, address, reward)
 		if err != nil {
 			return err
 		}
 	}
 
 	// Record the pool payout in the database
-	err = pm.RecordPoolPayout(epochID, totalRewards, pm.config.PoolFeePercentage, poolFee, "example_fee_tx_hash")
+	err = qtx.RecordPoolPayout(context.Background(), db.InsertPoolPayoutParams{
+		EpochID:       epochID,
+		Amount:        totalRewards,
+		FeePercentage: pm.config.PoolFeePercentage,
+		FeeAmount:     poolFee,
+		FeeTxHash:     "example_fee_tx_hash",
+	})
 	if err != nil {
 		return err
 	}
 
-	return nil
-}
-
-func (pm *PoolManager) SendPoolFee(amount float64) error {
-	payload := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "sendBasicTransaction",
-		"params": []interface{}{
-			pm.config.PoolAddress,   // Sender address
-			pm.config.PoolFeeWallet, // Receiver address (pool fee wallet)
-			amount,                  // Amount in Luna
-			0,                       // Fee in Luna (can be 0)
-			"+0",                    // Validity start height
-		},
-	}
-
-	response, err := sendRPCRequest(pm.config, payload)
-	if err != nil {
-		return err
-	}
-
-	var result map[string]interface{}
-	err = json.Unmarshal(response, &result)
-	if err != nil {
-		return err
-	}
-
-	if txHash, ok := result["result"].(string); ok {
-		logger.Logger.Info("Sent pool fee", zap.Float64("amount", amount), zap.String("wallet", pm.config.PoolFeeWallet), zap.String("txHash", txHash))
-		return nil
-	}
-
-	return fmt.Errorf("unexpected response structure: %v", result)
-}
-
-func (pm *PoolManager) PayOutStake(stakerAddress string, amount float64) error {
-	payload := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "sendStakeTransaction",
-		"params": []interface{}{
-			pm.config.PoolAddress, // Sender address (pool address)
-			stakerAddress,         // Staker address
-			amount,                // Amount in Luna
-			0,                     // Fee in Luna (can be 0)
-			"+0",                  // Validity start height
-		},
-	}
-
-	response, err := sendRPCRequest(pm.config, payload)
-	if err != nil {
-		return err
-	}
-
-	var result map[string]interface{}
-	err = json.Unmarshal(response, &result)
-	if err != nil {
-		return err
-	}
-
-	if txHash, ok := result["result"].(string); ok {
-		logger.Logger.Info("Paid out stake", zap.Float64("amount", amount), zap.String("stakerAddress", stakerAddress), zap.String("txHash", txHash))
-		return nil
-	}
-
-	return fmt.Errorf("unexpected response structure: %v", result)
+	// Commit the transaction
+	return tx.Commit()
 }
 
 func (pm *PoolManager) InsertStakerHistory(epochID int64, stakers map[string]float64, changeType string) error {
@@ -371,27 +326,17 @@ func (pm *PoolManager) InsertStakerHistory(epochID int64, stakers map[string]flo
 }
 
 func (pm *PoolManager) GetEpochRewards(epochID int64) (float64, error) {
-	var prevEpochBalance, currEpochBalance int64
-
-	err := pm.db.QueryRow(`
-        SELECT validator_balance 
-        FROM epochs 
-        WHERE id = ?
-    `, epochID).Scan(&currEpochBalance)
+	currBalance, err := pm.queries.GetValidatorBalance(context.Background(), epochID)
 	if err != nil {
 		return 0, err
 	}
 
-	err = pm.db.QueryRow(`
-        SELECT validator_balance 
-        FROM epochs 
-        WHERE id = ?
-    `, epochID-1).Scan(&prevEpochBalance)
+	prevBalance, err := pm.queries.GetValidatorBalance(context.Background(), epochID-1)
 	if err != nil {
 		return 0, err
 	}
 
-	rewards := float64(currEpochBalance - prevEpochBalance)
+	rewards := float64(currBalance - prevBalance)
 	return rewards, nil
 }
 
@@ -414,18 +359,18 @@ func (pm *PoolManager) CompareStakers(currentStakers map[string]float64) (map[st
 	return newStakers, leftStakers
 }
 
-func EnsurePoolAddress(config *Config) (string, error) {
+func EnsurePoolAddress(config *config.Config) (string, error) {
 	logger.Logger.Info("Ensuring pool address is set up...")
 
 	// Step 1: Import the private key
-	poolAddress, err := ImportPrivateKey(config)
+	poolAddress, err := rpc.ImportPrivateKey(config)
 	if err != nil {
 		return "", fmt.Errorf("failed to import private key: %w", err)
 	}
 	logger.Logger.Info("Pool Address", zap.String("address", poolAddress))
 
 	// Step 2: Check if the account is imported
-	isImported, err := IsAccountImported(config, poolAddress)
+	isImported, err := rpc.IsAccountImported(config, poolAddress)
 	if err != nil {
 		return "", fmt.Errorf("failed to check if account is imported: %w", err)
 	}
@@ -436,7 +381,7 @@ func EnsurePoolAddress(config *Config) (string, error) {
 	logger.Logger.Info("Account is imported successfully.")
 
 	// Step 3: Unlock the account
-	err = UnlockAccount(config, poolAddress)
+	err = rpc.UnlockAccount(config, poolAddress)
 	if err != nil {
 		return "", fmt.Errorf("failed to unlock account: %w", err)
 	}
@@ -445,9 +390,9 @@ func EnsurePoolAddress(config *Config) (string, error) {
 	return poolAddress, nil
 }
 
-func CalculateTimeUntilNextEpoch(config *Config) (time.Duration, error) {
+func CalculateTimeUntilNextEpoch(config *config.Config) (time.Duration, error) {
 	// Fetch the policy constants
-	policyConstants, err := GetPolicyConstants(config)
+	policyConstants, err := rpc.GetPolicyConstants(config)
 	if err != nil {
 		return 0, err
 	}
@@ -456,7 +401,7 @@ func CalculateTimeUntilNextEpoch(config *Config) (time.Duration, error) {
 	blockSeparationTime := policyConstants["blockSeparationTime"].(float64) / 1000 // Convert milliseconds to seconds
 
 	// Fetch the current block number
-	currentBlockNumber, err := GetCurrentBlockNumber(config)
+	currentBlockNumber, err := rpc.GetCurrentBlockNumber(config)
 	if err != nil {
 		return 0, err
 	}

@@ -2,7 +2,11 @@ module github.com/Beardsoft/GoPool
 
 go 1.21.6
 
-require github.com/mattn/go-sqlite3 v1.14.22
+require (
+	github.com/mattn/go-sqlite3 v1.14.22
+	github.com/spf13/viper v1.19.0
+	go.uber.org/zap v1.27.0
+)
 
 require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
@@ -16,10 +20,8 @@ require (
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.7.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/spf13/viper v1.19.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
 	golang.org/x/sys v0.24.0 // indirect
 	golang.org/x/text v0.17.0 // indirect

@@ -1,17 +1,22 @@
-package pool
+package rpc
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
+
+	"github.com/Beardsoft/GoPool/internal/config"
+	"github.com/Beardsoft/GoPool/internal/logger"
+	_ "github.com/mattn/go-sqlite3" // Import the SQLite driver
+	"go.uber.org/zap"
 )
 
 // import necessary packages for making HTTP requests
 
-func GetEpochNumber(config *Config) (int64, error) {
+func GetEpochNumber(config *config.Config) (int64, error) {
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -19,7 +24,7 @@ func GetEpochNumber(config *Config) (int64, error) {
 		"params":  []interface{}{},
 	}
 
-	response, err := sendRPCRequest(config, payload)
+	response, err := SendRPCRequest(config, payload)
 	if err != nil {
 		return 0, err
 	}
@@ -44,7 +49,7 @@ func GetEpochNumber(config *Config) (int64, error) {
 	return 0, fmt.Errorf("unexpected response structure: %v", result)
 }
 
-func GetStakersByValidatorAddress(config *Config, validatorAddress string) (map[string]float64, error) {
+func GetStakersByValidatorAddress(config *config.Config, validatorAddress string) (map[string]float64, error) {
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -52,7 +57,7 @@ func GetStakersByValidatorAddress(config *Config, validatorAddress string) (map[
 		"params":  []interface{}{validatorAddress},
 	}
 
-	response, err := sendRPCRequest(config, payload)
+	response, err := SendRPCRequest(config, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +97,7 @@ func GetStakersByValidatorAddress(config *Config, validatorAddress string) (map[
 	return nil, fmt.Errorf("unexpected response structure: %v", result)
 }
 
-func sendRPCRequest(config *Config, payload map[string]interface{}) ([]byte, error) {
+func SendRPCRequest(config *config.Config, payload map[string]interface{}) ([]byte, error) {
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
@@ -115,7 +120,7 @@ func sendRPCRequest(config *Config, payload map[string]interface{}) ([]byte, err
 	}
 	defer resp.Body.Close()
 
-	responseBody, err := ioutil.ReadAll(resp.Body)
+	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +128,7 @@ func sendRPCRequest(config *Config, payload map[string]interface{}) ([]byte, err
 	return responseBody, nil
 }
 
-func ImportPrivateKey(config *Config) (string, error) {
+func ImportPrivateKey(config *config.Config) (string, error) {
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -131,7 +136,7 @@ func ImportPrivateKey(config *Config) (string, error) {
 		"params":  []interface{}{config.PrivateKey, ""},
 	}
 
-	response, err := sendRPCRequest(config, payload)
+	response, err := SendRPCRequest(config, payload)
 	if err != nil {
 		return "", err
 	}
@@ -150,7 +155,7 @@ func ImportPrivateKey(config *Config) (string, error) {
 	return "", fmt.Errorf("failed to import private key")
 }
 
-func IsAccountImported(config *Config, address string) (bool, error) {
+func IsAccountImported(config *config.Config, address string) (bool, error) {
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -158,7 +163,7 @@ func IsAccountImported(config *Config, address string) (bool, error) {
 		"params":  []interface{}{address},
 	}
 
-	response, err := sendRPCRequest(config, payload)
+	response, err := SendRPCRequest(config, payload)
 	if err != nil {
 		return false, err
 	}
@@ -181,7 +186,7 @@ func IsAccountImported(config *Config, address string) (bool, error) {
 	return false, fmt.Errorf("unexpected response structure: %v", result)
 }
 
-func UnlockAccount(config *Config, address string) error {
+func UnlockAccount(config *config.Config, address string) error {
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -189,11 +194,11 @@ func UnlockAccount(config *Config, address string) error {
 		"params":  []interface{}{address, "", 0},
 	}
 
-	_, err := sendRPCRequest(config, payload)
+	_, err := SendRPCRequest(config, payload)
 	return err
 }
 
-func SendStakeTransaction(config *Config, senderAddress, stakerAddress string, valueInLuna, feeInLuna, validityStartHeight int64) error {
+func SendStakeTransaction(config *config.Config, senderAddress, stakerAddress string, valueInLuna, feeInLuna, validityStartHeight int64) error {
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -207,11 +212,11 @@ func SendStakeTransaction(config *Config, senderAddress, stakerAddress string, v
 		},
 	}
 
-	_, err := sendRPCRequest(config, payload)
+	_, err := SendRPCRequest(config, payload)
 	return err
 }
 
-func GetPolicyConstants(config *Config) (map[string]interface{}, error) {
+func GetPolicyConstants(config *config.Config) (map[string]interface{}, error) {
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -219,7 +224,7 @@ func GetPolicyConstants(config *Config) (map[string]interface{}, error) {
 		"params":  []interface{}{},
 	}
 
-	response, err := sendRPCRequest(config, payload)
+	response, err := SendRPCRequest(config, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +246,7 @@ func GetPolicyConstants(config *Config) (map[string]interface{}, error) {
 	return nil, fmt.Errorf("unexpected response structure: %v", result)
 }
 
-func GetValidatorBalance(config *Config, address string) (int64, error) {
+func GetValidatorBalance(config *config.Config, address string) (int64, error) {
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -249,7 +254,7 @@ func GetValidatorBalance(config *Config, address string) (int64, error) {
 		"params":  []interface{}{address},
 	}
 
-	response, err := sendRPCRequest(config, payload)
+	response, err := SendRPCRequest(config, payload)
 	if err != nil {
 		return 0, err
 	}
@@ -271,7 +276,7 @@ func GetValidatorBalance(config *Config, address string) (int64, error) {
 	return 0, fmt.Errorf("unexpected response structure: %v", result)
 }
 
-func GetCurrentBlockNumber(config *Config) (int64, error) {
+func GetCurrentBlockNumber(config *config.Config) (int64, error) {
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -279,7 +284,7 @@ func GetCurrentBlockNumber(config *Config) (int64, error) {
 		"params":  []interface{}{},
 	}
 
-	response, err := sendRPCRequest(config, payload)
+	response, err := SendRPCRequest(config, payload)
 	if err != nil {
 		return 0, err
 	}
@@ -302,7 +307,7 @@ func GetCurrentBlockNumber(config *Config) (int64, error) {
 	return 0, fmt.Errorf("unexpected response structure: %v", result)
 }
 
-func GetCurrentBatchNumber(config *Config) (int64, error) {
+func GetCurrentBatchNumber(config *config.Config) (int64, error) {
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -310,7 +315,7 @@ func GetCurrentBatchNumber(config *Config) (int64, error) {
 		"params":  []interface{}{},
 	}
 
-	response, err := sendRPCRequest(config, payload)
+	response, err := SendRPCRequest(config, payload)
 	if err != nil {
 		return 0, err
 	}
@@ -328,4 +333,70 @@ func GetCurrentBatchNumber(config *Config) (int64, error) {
 	}
 
 	return 0, fmt.Errorf("unexpected response structure: %v", result)
+}
+
+func PayOutStake(config *config.Config, stakerAddress string, amount float64) error {
+	payload := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "sendStakeTransaction",
+		"params": []interface{}{
+			config.PoolAddress, // Sender address (pool address)
+			stakerAddress,      // Staker address
+			amount,             // Amount in Luna
+			0,                  // Fee in Luna (can be 0)
+			"+0",               // Validity start height
+		},
+	}
+
+	response, err := SendRPCRequest(config, payload)
+	if err != nil {
+		return err
+	}
+
+	var result map[string]interface{}
+	err = json.Unmarshal(response, &result)
+	if err != nil {
+		return err
+	}
+
+	if txHash, ok := result["result"].(string); ok {
+		logger.Logger.Info("Paid out stake", zap.Float64("amount", amount), zap.String("stakerAddress", stakerAddress), zap.String("txHash", txHash))
+		return nil
+	}
+
+	return fmt.Errorf("unexpected response structure: %v", result)
+}
+
+func SendPoolFee(config *config.Config, amount float64) error {
+	payload := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "sendBasicTransaction",
+		"params": []interface{}{
+			config.PoolAddress,   // Sender address
+			config.PoolFeeWallet, // Receiver address (pool fee wallet)
+			amount,               // Amount in Luna
+			0,                    // Fee in Luna (can be 0)
+			"+0",                 // Validity start height
+		},
+	}
+
+	response, err := SendRPCRequest(config, payload)
+	if err != nil {
+		return err
+	}
+
+	var result map[string]interface{}
+	err = json.Unmarshal(response, &result)
+	if err != nil {
+		return err
+	}
+
+	if txHash, ok := result["result"].(string); ok {
+		logger.Logger.Info("Sent pool fee", zap.Float64("amount", amount), zap.String("wallet", pm.config.PoolFeeWallet), zap.String("txHash", txHash))
+		return nil
+	}
+
+	return fmt.Errorf("unexpected response structure: %v", result)
 }
