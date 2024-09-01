@@ -37,6 +37,6 @@ func main() {
 	logger.Logger.Info("Pool Address ready: %s", zap.String("pool_address", poolAddress))
 
 	// Start the pool manager and process epochs continuously
-	manager := pool.NewPoolManager(queries, cfg) // Pass `queries` to the manager
+	manager := pool.NewPoolManager(sqlDB, queries, cfg) // Pass `queries` to the manager
 	manager.ProcessEpochs()
 }

@@ -7,11 +7,13 @@ package db
 
 import (
 	"context"
-	"database/sql"
 )
 
 const CountIncompletePayouts = `-- name: CountIncompletePayouts :one
-SELECT COUNT(*) FROM payouts WHERE epoch_id = ? AND payout_completed = 0
+SELECT COUNT(*)
+FROM payouts
+WHERE epoch_id = ?
+    AND payout_completed = 0
 `
 
 // Get the count of incomplete payouts for an epoch
@@ -22,24 +24,31 @@ func (q *Queries) CountIncompletePayouts(ctx context.Context, epochID int64) (in
 	return count, err
 }
 
-const GetEpochID = `-- name: GetEpochID :execresult
-
-SELECT id FROM epochs WHERE epoch_number = ?
+const GetEpochID = `-- name: GetEpochID :one
+SELECT id
+FROM epochs
+WHERE epoch_number = ?
 `
 
 // queries.sql
 // Get the ID of an epoch
-func (q *Queries) GetEpochID(ctx context.Context, epochNumber int64) (sql.Result, error) {
-	return q.db.ExecContext(ctx, GetEpochID, epochNumber)
+func (q *Queries) GetEpochID(ctx context.Context, epochNumber int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, GetEpochID, epochNumber)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const GetStakersForEpoch = `-- name: GetStakersForEpoch :many
-SELECT address, stake FROM stakers WHERE epoch_id = ?
+SELECT address AS staker_address,
+    stake
+FROM stakers
+WHERE epoch_id = ?
 `
 
 type GetStakersForEpochRow struct {
-	Address string `json:"address"`
-	Stake   int64  `json:"stake"`
+	StakerAddress string `json:"staker_address"`
+	Stake         int64  `json:"stake"`
 }
 
 func (q *Queries) GetStakersForEpoch(ctx context.Context, epochID int64) ([]GetStakersForEpochRow, error) {
@@ -51,7 +60,7 @@ func (q *Queries) GetStakersForEpoch(ctx context.Context, epochID int64) ([]GetS
 	items := []GetStakersForEpochRow{}
 	for rows.Next() {
 		var i GetStakersForEpochRow
-		if err := rows.Scan(&i.Address, &i.Stake); err != nil {
+		if err := rows.Scan(&i.StakerAddress, &i.Stake); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -66,7 +75,9 @@ func (q *Queries) GetStakersForEpoch(ctx context.Context, epochID int64) ([]GetS
 }
 
 const GetValidatorBalance = `-- name: GetValidatorBalance :one
-SELECT validator_balance FROM epochs WHERE id = ?
+SELECT validator_balance
+FROM epochs
+WHERE id = ?
 `
 
 // Get the validator balance for a specific epoch ID
@@ -77,7 +88,7 @@ func (q *Queries) GetValidatorBalance(ctx context.Context, id int64) (int64, err
 	return validator_balance, err
 }
 
-const InsertEpoch = `-- name: InsertEpoch :exec
+const InsertEpoch = `-- name: InsertEpoch :one
 INSERT INTO epochs (epoch_number, validator_balance)
 VALUES (?, ?)
 RETURNING id
@@ -89,13 +100,20 @@ type InsertEpochParams struct {
 }
 
 // Insert a new epoch with its balance
-func (q *Queries) InsertEpoch(ctx context.Context, arg InsertEpochParams) error {
-	_, err := q.db.ExecContext(ctx, InsertEpoch, arg.EpochNumber, arg.ValidatorBalance)
-	return err
+func (q *Queries) InsertEpoch(ctx context.Context, arg InsertEpochParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, InsertEpoch, arg.EpochNumber, arg.ValidatorBalance)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const InsertPayout = `-- name: InsertPayout :exec
-INSERT INTO payouts (epoch_id, staker_address, payout_tx_hash, payout_completed)
+INSERT INTO payouts (
+        epoch_id,
+        staker_address,
+        payout_tx_hash,
+        payout_completed
+    )
 VALUES (?, ?, ?, 1)
 `
 
@@ -112,7 +130,13 @@ func (q *Queries) InsertPayout(ctx context.Context, arg InsertPayoutParams) erro
 }
 
 const InsertPoolPayout = `-- name: InsertPoolPayout :exec
-INSERT INTO pool_payouts (epoch_id, amount, fee_percentage, fee_amount, fee_tx_hash)
+INSERT INTO pool_payouts (
+        epoch_id,
+        amount,
+        fee_percentage,
+        fee_amount,
+        fee_tx_hash
+    )
 VALUES (?, ?, ?, ?, ?)
 `
 
@@ -153,7 +177,9 @@ func (q *Queries) InsertStaker(ctx context.Context, arg InsertStakerParams) erro
 }
 
 const MarkEpochAsPaid = `-- name: MarkEpochAsPaid :exec
-UPDATE epochs SET paid_out = 1 WHERE id = ?
+UPDATE epochs
+SET paid_out = 1
+WHERE id = ?
 `
 
 // Mark an epoch as paid

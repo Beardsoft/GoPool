@@ -394,7 +394,7 @@ func SendPoolFee(config *config.Config, amount float64) error {
 	}
 
 	if txHash, ok := result["result"].(string); ok {
-		logger.Logger.Info("Sent pool fee", zap.Float64("amount", amount), zap.String("wallet", pm.config.PoolFeeWallet), zap.String("txHash", txHash))
+		logger.Logger.Info("Sent pool fee", zap.Float64("amount", amount), zap.String("wallet", config.PoolFeeWallet), zap.String("txHash", txHash))
 		return nil
 	}
 
