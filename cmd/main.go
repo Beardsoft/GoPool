@@ -38,5 +38,5 @@ func main() {
 
 	// Start the pool manager and process epochs continuously
 	manager := pool.NewPoolManager(sqlDB, queries, cfg) // Pass `queries` to the manager
-	manager.ProcessEpochs()
+	manager.MainLoop()
 }

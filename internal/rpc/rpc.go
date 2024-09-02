@@ -9,12 +9,12 @@ import (
 	"net/http"
 
 	"github.com/Beardsoft/GoPool/internal/config"
+	"github.com/Beardsoft/GoPool/internal/helper"
 	"github.com/Beardsoft/GoPool/internal/logger"
+	"github.com/Beardsoft/GoPool/internal/models"
 	_ "github.com/mattn/go-sqlite3" // Import the SQLite driver
 	"go.uber.org/zap"
 )
-
-// import necessary packages for making HTTP requests
 
 func GetEpochNumber(config *config.Config) (int64, error) {
 	payload := map[string]interface{}{
@@ -47,6 +47,82 @@ func GetEpochNumber(config *config.Config) (int64, error) {
 	}
 
 	return 0, fmt.Errorf("unexpected response structure: %v", result)
+}
+
+func GetValidatorByAddress(config *config.Config, validatorAddress string) (*models.Validator, error) {
+	payload := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "getValidatorByAddress",
+		"params":  []interface{}{validatorAddress},
+	}
+
+	response, err := SendRPCRequest(config, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result map[string]interface{}
+	err = json.Unmarshal(response, &result)
+	if err != nil {
+		return nil, err
+	}
+
+	if resultData, ok := result["result"].(map[string]interface{}); ok {
+		if data, ok := resultData["data"].(map[string]interface{}); ok {
+			validator := &models.Validator{}
+			if err := helper.MapToStruct(data, validator); err != nil {
+				return nil, err
+			}
+			logger.Logger.Info("Validator data retrieved successfully", zap.String("validatorAddress", validator.Address))
+			return validator, nil
+		}
+	}
+
+	return nil, fmt.Errorf("unexpected response structure: %v", result)
+}
+
+func GetInherentsByBlockNumber(config *config.Config, blockNumber int64) ([]models.Inherent, error) {
+	payload := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "getInherentsByBlockNumber",
+		"params":  []interface{}{blockNumber},
+	}
+
+	response, err := SendRPCRequest(config, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result map[string]interface{}
+	err = json.Unmarshal(response, &result)
+	if err != nil {
+		return nil, err
+	}
+
+	if resultData, ok := result["result"].(map[string]interface{}); ok {
+		if data, ok := resultData["data"].([]interface{}); ok {
+			inherents := []models.Inherent{}
+			for _, inherentData := range data {
+				inherentMap, ok := inherentData.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				inherent := models.Inherent{}
+				if err := helper.MapToStruct(inherentMap, &inherent); err != nil {
+					return nil, err
+				}
+				inherents = append(inherents, inherent)
+			}
+
+			logger.Logger.Info("Inherents retrieved successfully", zap.Int64("blockNumber", blockNumber))
+			return inherents, nil
+		}
+	}
+
+	return nil, fmt.Errorf("unexpected response structure: %v", result)
 }
 
 func GetStakersByValidatorAddress(config *config.Config, validatorAddress string) (map[string]float64, error) {

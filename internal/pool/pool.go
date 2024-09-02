@@ -9,6 +9,7 @@ import (
 	"github.com/Beardsoft/GoPool/internal/config"
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
+	"github.com/Beardsoft/GoPool/internal/models"
 	"github.com/Beardsoft/GoPool/internal/rpc"
 
 	_ "github.com/mattn/go-sqlite3" // Import the SQLite driver
@@ -32,80 +33,150 @@ func NewPoolManager(db *sql.DB, queries *db.Queries, config *config.Config) *Poo
 	}
 }
 
-// Correct the ProcessEpochs function
-func (pm *PoolManager) ProcessEpochs() {
-	logger.Logger.Info("Storing epoch and balance at startup...")
-	err := pm.StoreEpochAndBalanceAtStartup()
-	if err != nil {
-		logger.Logger.Fatal("Failed to store epoch and balance at startup", zap.Error(err))
-	}
+func (pm *PoolManager) MainLoop() {
+	logger.Logger.Info("Starting the MainLoop...")
 
 	for {
-		currentEpoch, err := rpc.GetEpochNumber(pm.config)
+		// Step 1: Fetch the current block number and determine if it's an election block or checkpoint block.
+		currentBlock, err := rpc.GetCurrentBlockNumber(pm.config)
 		if err != nil {
-			logger.Logger.Fatal("Error getting epoch number", zap.Error(err))
+			logger.Logger.Error("Error fetching current block number", zap.Error(err))
 			time.Sleep(1 * time.Minute)
 			continue
 		}
 
-		previousEpoch := currentEpoch - 1
-		logger.Logger.Info("Processing Epoch", zap.Int64("epoch", previousEpoch))
-
-		// Get the epoch ID
-		epochID, err := pm.queries.GetEpochID(context.Background(), previousEpoch)
-		if err == sql.ErrNoRows {
-			logger.Logger.Info("Epoch has not been processed yet", zap.Int64("epoch", previousEpoch))
-			time.Sleep(1 * time.Minute)
-			continue
-		} else if err != nil {
-			logger.Logger.Fatal("Failed to fetch epoch", zap.Error(err))
-			return
-		}
-
-		// Get rewards
-		rewards, err := pm.GetEpochRewards(epochID)
+		policyConstants, err := rpc.GetPolicyConstants(pm.config)
 		if err != nil {
-			logger.Logger.Error("Error getting rewards for epoch", zap.Int64("epoch", previousEpoch), zap.Error(err))
+			logger.Logger.Error("Error fetching policy constants", zap.Error(err))
 			time.Sleep(1 * time.Minute)
 			continue
 		}
 
-		if rewards > 0 {
-			// Calculate and pay rewards
-			err = pm.CalculateAndPayRewards(epochID, rewards)
-			if err != nil {
-				logger.Logger.Error("Error paying rewards for epoch", zap.Int64("epoch", previousEpoch), zap.Error(err))
-				time.Sleep(1 * time.Minute)
-				continue
-			}
+		blocksPerEpoch := policyConstants["blocksPerEpoch"].(float64)
+		electionBlock := int64(blocksPerEpoch)
 
-			// Mark epoch as paid
-			err = pm.MarkEpochAsPaid(epochID)
+		// If election block, handle validator state for the new epoch
+		if currentBlock%electionBlock == 0 {
+			logger.Logger.Info("Election block detected", zap.Int64("block", currentBlock))
+			err = pm.HandleElectionBlock(currentBlock)
 			if err != nil {
-				logger.Logger.Error("Error marking epoch as paid", zap.Int64("epoch", previousEpoch), zap.Error(err))
+				logger.Logger.Error("Error handling election block", zap.Error(err))
 			}
-
-			// Update epoch balance
-			err = pm.UpdateEpochBalance(previousEpoch)
-			if err != nil {
-				logger.Logger.Error("Error updating balance for epoch", zap.Int64("epoch", previousEpoch), zap.Error(err))
-			}
-		} else {
-			logger.Logger.Info("No rewards received for epoch. Skipping payout.", zap.Int64("epoch", previousEpoch))
 		}
 
-		// Calculate time until next epoch
-		sleepDuration, err := CalculateTimeUntilNextEpoch(pm.config)
-		if err != nil {
-			logger.Logger.Error("Error calculating time until next epoch", zap.Error(err))
-			time.Sleep(1 * time.Minute)
-			continue
+		// If checkpoint block, handle reward payout for the previous epoch
+		if currentBlock%60 == 0 { // assuming checkpoint block occurs every 60 blocks
+			logger.Logger.Info("Checkpoint block detected", zap.Int64("block", currentBlock))
+			err = pm.HandleCheckpointBlock(currentBlock)
+			if err != nil {
+				logger.Logger.Error("Error handling checkpoint block", zap.Error(err))
+			}
 		}
 
-		// Sleep until the next epoch
-		logger.Logger.Info("Sleeping until next epoch", zap.Duration("duration", sleepDuration))
-		Countdown(sleepDuration)
+		// Sleep a short time before checking again
+		time.Sleep(10 * time.Second)
 	}
+}
+
+func (pm *PoolManager) HandleElectionBlock(currentBlock int64) error {
+	validator, err := rpc.GetValidatorByAddress(pm.config, pm.config.PoolAddress)
+	if err != nil {
+		return fmt.Errorf("error fetching validator state: %v", err)
+	}
+
+	// Fetch stakers if the validator is active
+	if validator.NumStakers > 0 {
+		stakers, err := rpc.GetStakersByValidatorAddress(pm.config, validator.Address)
+		if err != nil {
+			return fmt.Errorf("error fetching stakers: %v", err)
+		}
+
+		// Convert stakers from float64 to int64 if necessary
+		stakersInt64 := make(map[string]int64)
+		for address, balance := range stakers {
+			stakersInt64[address] = int64(balance)
+		}
+
+		// Insert stakers using the converted map
+		err = pm.InsertStakers(currentBlock, stakersInt64)
+		if err != nil {
+			return fmt.Errorf("error storing stakers: %v", err)
+		}
+
+		logger.Logger.Info("Stakers stored for new epoch", zap.Int("numStakers", int(validator.NumStakers)))
+	}
+
+	return nil
+}
+
+func (pm *PoolManager) HandleCheckpointBlock(currentBlock int64) error {
+	inherents, err := rpc.GetInherentsByBlockNumber(pm.config, currentBlock-60)
+	if err != nil {
+		return fmt.Errorf("error fetching inherents for block %d: %v", currentBlock-60, err)
+	}
+
+	for _, inherent := range inherents {
+		logger.Logger.Info("Processing reward",
+			zap.String("validatorAddress", inherent.ValidatorAddress),
+			zap.String("rewardAddress", inherent.Target),
+			zap.Float64("rewardValue", float64(inherent.Value)))
+
+		// Convert Inherent to Reward
+		reward := models.InherentToReward(inherent)
+
+		// Process payout with the converted Reward
+		err = pm.PayoutRewards(reward, 0)
+		if err != nil {
+			logger.Logger.Error("Error processing reward payout", zap.Error(err))
+		}
+	}
+
+	return nil
+}
+
+func (pm *PoolManager) PayoutRewards(reward models.Reward, epochID int64) error {
+	// Retrieve stored stakers for the previous epoch
+	stakers, err := pm.queries.GetStakersForEpoch(context.Background(), epochID)
+	if err != nil {
+		return fmt.Errorf("error retrieving stakers for payout: %v", err)
+	}
+
+	// Calculate total stake and payout per staker
+	var totalStake int64
+	stakerMap := make(map[string]int64)
+	for _, staker := range stakers {
+		totalStake += staker.Stake
+		stakerMap[staker.StakerAddress] = staker.Stake
+	}
+
+	// Deduct the pool fee from the total reward
+	poolFee := float64(reward.Value) * pm.config.PoolFeePercentage
+	rewardsAfterFee := float64(reward.Value) - poolFee
+
+	// Send pool fee to configured wallet
+	err = rpc.SendPoolFee(pm.config, poolFee)
+	if err != nil {
+		return fmt.Errorf("error sending pool fee: %v", err)
+	}
+
+	// Pay each staker their share
+	for stakerAddress, stake := range stakerMap {
+		stakerReward := (float64(stake) / float64(totalStake)) * rewardsAfterFee
+		err = rpc.PayOutStake(pm.config, stakerAddress, stakerReward)
+		if err != nil {
+			return fmt.Errorf("error paying staker: %v", err)
+		}
+
+		logger.Logger.Info("Staker payout successful", zap.String("staker", stakerAddress), zap.Float64("amount", stakerReward))
+	}
+
+	// Record pool payout in the database
+	err = pm.RecordPoolPayout(epochID, float64(reward.Value), pm.config.PoolFeePercentage, poolFee, reward.Hash)
+	if err != nil {
+		return fmt.Errorf("error recording pool payout: %v", err)
+	}
+
+	return nil
 }
 
 func (pm *PoolManager) InsertPayout(epochID int64, stakerAddress, txHash string) error {
