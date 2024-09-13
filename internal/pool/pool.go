@@ -62,17 +62,16 @@ func (pm *PoolManager) MainLoop() {
 			continue
 		}
 
-		logger.Logger.Info("Current block number", zap.Int64("block", currentBlock))
-
 		// Calculate the next election block
 		nextElectionBlock := genesisBlockNumber + (((currentBlock-genesisBlockNumber)/blocksPerEpoch)+1)*blocksPerEpoch
 
-		logger.Logger.Info("Next election number", zap.Int64("block", nextElectionBlock))
+		// Calculate the last completed checkpoint block
+		lastCompletedCheckpoint := genesisBlockNumber + ((currentBlock-genesisBlockNumber)/blocksPerBatch)*blocksPerBatch
 
 		// Calculate the next checkpoint block
-		lastCheckpointBlock := genesisBlockNumber + ((currentBlock-genesisBlockNumber)/blocksPerBatch)*blocksPerBatch
+		nextCheckpointBlock := lastCompletedCheckpoint + blocksPerBatch
 
-		logger.Logger.Info("Next Checkpoint number", zap.Int64("block", lastCheckpointBlock))
+		logger.Logger.Info("Block status", zap.Int64("block", currentBlock), zap.Int64("checkpoint", nextCheckpointBlock), zap.Int64("election", nextElectionBlock))
 
 		// Check if we're approaching an election block
 		if currentBlock >= nextElectionBlock-5 && currentBlock < nextElectionBlock {
@@ -83,15 +82,23 @@ func (pm *PoolManager) MainLoop() {
 			}
 		}
 
-		// Check if we've just passed a checkpoint block
-		if lastCheckpointBlock > lastProcessedCheckpoint {
-			logger.Logger.Info("New checkpoint block passed", zap.Int64("block", lastCheckpointBlock))
-			//err = pm.HandleCheckpointBlock(lastCheckpointBlock)
+		// Check if we've completed a new checkpoint block
+		if lastCompletedCheckpoint > lastProcessedCheckpoint {
+			logger.Logger.Info("New checkpoint block completed", zap.Int64("block", lastCompletedCheckpoint))
+			err = pm.HandleCheckpointBlock(lastCompletedCheckpoint)
 			if err != nil {
 				logger.Logger.Error("Error handling checkpoint block", zap.Error(err))
+			} else {
+				// Only update if handling was successful
+				err = pm.UpdateLastProcessedCheckpoint(lastCompletedCheckpoint)
+				if err != nil {
+					logger.Logger.Error("Error updating last processed checkpoint", zap.Error(err))
+				} else {
+					lastProcessedCheckpoint = lastCompletedCheckpoint
+				}
 			}
-			lastProcessedCheckpoint = lastCheckpointBlock
 		}
+
 		time.Sleep(500 * time.Millisecond)
 	}
 }
@@ -110,16 +117,26 @@ func (pm *PoolManager) PrepareForElectionBlock(blockNumber int64) error {
 		return fmt.Errorf("failed to get validator: %w", err)
 	}
 
-	fmt.Println(validator)
-
 	// Check validator status
 	if validator == nil {
 		logger.Logger.Warn("Not a validator")
 		return nil
 	}
 
-	// Check inactivity, retirement, and jailed status
-	// ... (implement these checks based on the design)
+	if validator.InactivityFlag != nil && *validator.InactivityFlag > blockNumber {
+		logger.Logger.Info("Validator is inactive", zap.Int64("block", *validator.InactivityFlag))
+		return nil
+	}
+
+	if validator.Retired {
+		logger.Logger.Info("Validator is retired.")
+		return nil
+	}
+
+	if validator.JailedFrom != nil && *validator.JailedFrom > blockNumber {
+		logger.Logger.Info("Validator is jailed", zap.Int64("block", *validator.JailedFrom))
+		return nil
+	}
 
 	// Handle stakers if any
 	if validator.NumStakers > 0 {
@@ -127,9 +144,37 @@ func (pm *PoolManager) PrepareForElectionBlock(blockNumber int64) error {
 		if err != nil {
 			return fmt.Errorf("failed to get stakers: %w", err)
 		}
-		fmt.Println(stakers)
-		// Calculate and store stake percentages
-		// ... (implement this logic)
+
+		totalStake := validator.Balance
+		stakerPercentages := make(map[string]float64)
+
+		for address, balance := range stakers {
+			percentage := float64(balance) / float64(totalStake)
+			stakerPercentages[address] = percentage
+		}
+
+		// Store stake percentages in the database
+		epochID, err := rpc.GetEpochNumber(pm.config)
+		if err != nil {
+			return fmt.Errorf("failed to get epoch ID: %w", err)
+		}
+
+		for address, stake := range stakers {
+			percentage := float64(stake) / float64(totalStake)
+			err := pm.queries.InsertStakerWithPercentage(context.Background(), db.InsertStakerWithPercentageParams{
+				EpochID:    epochID,
+				Address:    address,
+				Stake:      int64(stake),
+				Percentage: percentage,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to store staker percentage: %w", err)
+			}
+		}
+
+		logger.Logger.Info("Stored stake percentages for stakers",
+			zap.Int("stakerCount", len(stakerPercentages)),
+			zap.Int64("totalStake", totalStake))
 	}
 
 	return nil
