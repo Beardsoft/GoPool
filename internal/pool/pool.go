@@ -18,10 +18,9 @@ import (
 )
 
 type PoolManager struct {
-	queries         *db.Queries
-	config          *config.Config
-	db              *sql.DB // This field needs to be added if you intend to use it directly
-	previousStakers map[string]float64
+	queries *db.Queries
+	config  *config.Config
+	db      *sql.DB // This field needs to be added if you intend to use it directly
 }
 
 // Adjust your constructor to accept and store the *sql.DB:
@@ -36,8 +35,26 @@ func NewPoolManager(db *sql.DB, queries *db.Queries, config *config.Config) *Poo
 func (pm *PoolManager) MainLoop() {
 	logger.Logger.Info("Starting the MainLoop...")
 
+	// Fetch policy constants from the database at startup
+	policyConstants, err := pm.GetPolicyConstants()
+	if err != nil {
+		logger.Logger.Fatal("Error fetching policy constants", zap.Error(err))
+		return
+	}
+
+	blocksPerEpoch := int64(policyConstants.BlocksPerEpoch)
+	blocksPerBatch := int64(policyConstants.BlocksPerBatch)
+	genesisBlockNumber := int64(policyConstants.GenesisBlockNumber)
+
+	// Retrieve the last processed checkpoint from the database
+	lastProcessedCheckpoint, err := pm.GetLastProcessedCheckpoint()
+	if err != nil {
+		logger.Logger.Error("Error fetching last processed checkpoint", zap.Error(err))
+		lastProcessedCheckpoint = genesisBlockNumber - blocksPerBatch // Initialize to a block before genesis if not found
+	}
+
 	for {
-		// Step 1: Fetch the current block number and determine if it's an election block or checkpoint block.
+		// Fetch the current block number
 		currentBlock, err := rpc.GetCurrentBlockNumber(pm.config)
 		if err != nil {
 			logger.Logger.Error("Error fetching current block number", zap.Error(err))
@@ -45,67 +62,199 @@ func (pm *PoolManager) MainLoop() {
 			continue
 		}
 
-		policyConstants, err := rpc.GetPolicyConstants(pm.config)
-		if err != nil {
-			logger.Logger.Error("Error fetching policy constants", zap.Error(err))
-			time.Sleep(1 * time.Minute)
-			continue
-		}
+		logger.Logger.Info("Current block number", zap.Int64("block", currentBlock))
 
-		blocksPerEpoch := policyConstants["blocksPerEpoch"].(float64)
-		electionBlock := int64(blocksPerEpoch)
+		// Calculate the next election block
+		nextElectionBlock := genesisBlockNumber + (((currentBlock-genesisBlockNumber)/blocksPerEpoch)+1)*blocksPerEpoch
 
-		// If election block, handle validator state for the new epoch
-		if currentBlock%electionBlock == 0 {
-			logger.Logger.Info("Election block detected", zap.Int64("block", currentBlock))
-			err = pm.HandleElectionBlock(currentBlock)
+		logger.Logger.Info("Next election number", zap.Int64("block", nextElectionBlock))
+
+		// Calculate the next checkpoint block
+		lastCheckpointBlock := genesisBlockNumber + ((currentBlock-genesisBlockNumber)/blocksPerBatch)*blocksPerBatch
+
+		logger.Logger.Info("Next Checkpoint number", zap.Int64("block", lastCheckpointBlock))
+
+		// Check if we're approaching an election block
+		if currentBlock >= nextElectionBlock-5 && currentBlock < nextElectionBlock {
+			logger.Logger.Info("Approaching election block", zap.Int64("block", nextElectionBlock))
+			err = pm.PrepareForElectionBlock(nextElectionBlock)
 			if err != nil {
-				logger.Logger.Error("Error handling election block", zap.Error(err))
+				logger.Logger.Error("Error preparing for election block", zap.Error(err))
 			}
 		}
 
-		// If checkpoint block, handle reward payout for the previous epoch
-		if currentBlock%60 == 0 { // assuming checkpoint block occurs every 60 blocks
-			logger.Logger.Info("Checkpoint block detected", zap.Int64("block", currentBlock))
-			err = pm.HandleCheckpointBlock(currentBlock)
+		// Check if we've just passed a checkpoint block
+		if lastCheckpointBlock > lastProcessedCheckpoint {
+			logger.Logger.Info("New checkpoint block passed", zap.Int64("block", lastCheckpointBlock))
+			//err = pm.HandleCheckpointBlock(lastCheckpointBlock)
 			if err != nil {
 				logger.Logger.Error("Error handling checkpoint block", zap.Error(err))
 			}
+			lastProcessedCheckpoint = lastCheckpointBlock
 		}
-
-		// Sleep a short time before checking again
-		time.Sleep(10 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
+func min(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func (pm *PoolManager) PrepareForElectionBlock(blockNumber int64) error {
+	// Implement steps from section A of the design
+	validator, err := rpc.GetValidatorByAddress(pm.config, pm.config.PoolAddress)
+	if err != nil {
+		return fmt.Errorf("failed to get validator: %w", err)
+	}
+
+	fmt.Println(validator)
+
+	// Check validator status
+	if validator == nil {
+		logger.Logger.Warn("Not a validator")
+		return nil
+	}
+
+	// Check inactivity, retirement, and jailed status
+	// ... (implement these checks based on the design)
+
+	// Handle stakers if any
+	if validator.NumStakers > 0 {
+		stakers, err := rpc.GetStakersByValidatorAddress(pm.config, pm.config.PoolAddress)
+		if err != nil {
+			return fmt.Errorf("failed to get stakers: %w", err)
+		}
+		fmt.Println(stakers)
+		// Calculate and store stake percentages
+		// ... (implement this logic)
+	}
+
+	return nil
+}
+
+func (pm *PoolManager) GetLastProcessedCheckpoint() (int64, error) {
+	ctx := context.Background()
+	policyConstants, err := pm.GetPolicyConstants()
+	if err != nil {
+		logger.Logger.Fatal("Error fetching policy constants", zap.Error(err))
+	}
+	checkpoint, err := pm.queries.GetLastProcessedCheckpoint(ctx)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// If no checkpoint is found, return a default value
+			return policyConstants.GenesisBlockNumber - policyConstants.BlocksPerBatch, nil
+		}
+		return 0, fmt.Errorf("error fetching last processed checkpoint: %w", err)
+	}
+	return checkpoint, nil
+}
+
+func (pm *PoolManager) UpdateLastProcessedCheckpoint(checkpoint int64) error {
+	ctx := context.Background()
+	err := pm.queries.UpdateLastProcessedCheckpoint(ctx, checkpoint)
+	if err != nil {
+		return fmt.Errorf("error updating last processed checkpoint: %w", err)
+	}
+	return nil
+}
+
+func (pm *PoolManager) GetPolicyConstants() (*models.PolicyConstants, error) {
+	constants, err := pm.queries.GetLatestPolicyConstants(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.PolicyConstants{
+		StakingContractAddress:    constants.StakingContractAddress,
+		CoinbaseAddress:           constants.CoinbaseAddress,
+		TransactionValidityWindow: constants.TransactionValidityWindow,
+		MaxSizeMicroBody:          constants.MaxSizeMicroBody,
+		Version:                   constants.Version,
+		Slots:                     constants.Slots,
+		BlocksPerBatch:            constants.BlocksPerBatch,
+		BatchesPerEpoch:           constants.BatchesPerEpoch,
+		BlocksPerEpoch:            constants.BlocksPerEpoch,
+		ValidatorDeposit:          constants.ValidatorDeposit,
+		MinimumStake:              constants.MinimumStake,
+		TotalSupply:               constants.TotalSupply,
+		BlockSeparationTime:       constants.BlockSeparationTime,
+		JailEpochs:                constants.JailEpochs,
+		GenesisBlockNumber:        constants.GenesisBlockNumber,
+	}, nil
+}
+
 func (pm *PoolManager) HandleElectionBlock(currentBlock int64) error {
+	// Step 1: Fetch the validator state for the new epoch
 	validator, err := rpc.GetValidatorByAddress(pm.config, pm.config.PoolAddress)
 	if err != nil {
 		return fmt.Errorf("error fetching validator state: %v", err)
 	}
 
-	// Fetch stakers if the validator is active
+	// Step 2: Check if the validator is active
+	if validator == nil {
+		logger.Logger.Info("Validator not found, you are not a validator.")
+		return nil
+	}
+
+	if validator.InactivityFlag != nil && *validator.InactivityFlag > currentBlock {
+		logger.Logger.Info("Validator is inactive", zap.Int64("block", *validator.InactivityFlag))
+		return nil
+	}
+
+	if validator.Retired {
+		logger.Logger.Info("Validator is retired.")
+		return nil
+	}
+
+	if validator.JailedFrom != nil && *validator.JailedFrom > currentBlock {
+		logger.Logger.Info("Validator is jailed", zap.Int64("block", *validator.JailedFrom))
+		return nil
+	}
+
+	// Step 3: Process stakers if the validator is active
 	if validator.NumStakers > 0 {
 		stakers, err := rpc.GetStakersByValidatorAddress(pm.config, validator.Address)
 		if err != nil {
 			return fmt.Errorf("error fetching stakers: %v", err)
 		}
 
-		// Convert stakers from float64 to int64 if necessary
-		stakersInt64 := make(map[string]int64)
+		totalStake := validator.Balance
+		stakerMap := make(map[string]int64)
+
 		for address, balance := range stakers {
-			stakersInt64[address] = int64(balance)
+			stakerMap[address] = int64(balance)
 		}
 
-		// Insert stakers using the converted map
-		err = pm.InsertStakers(currentBlock, stakersInt64)
+		// Insert stakers with their calculated percentage
+		err = pm.InsertStakersWithPercentage(currentBlock, stakerMap, totalStake)
 		if err != nil {
 			return fmt.Errorf("error storing stakers: %v", err)
 		}
 
 		logger.Logger.Info("Stakers stored for new epoch", zap.Int("numStakers", int(validator.NumStakers)))
+	} else {
+		logger.Logger.Info("No stakers found for the validator.")
 	}
 
+	return nil
+}
+
+func (pm *PoolManager) InsertStakersWithPercentage(epochID int64, stakers map[string]int64, totalStake int64) error {
+	for address, stake := range stakers {
+		percentage := float64(stake) / float64(totalStake)
+		err := pm.queries.InsertStakerWithPercentage(context.Background(), db.InsertStakerWithPercentageParams{
+			EpochID:    epochID,
+			Address:    address,
+			Stake:      stake,
+			Percentage: percentage,
+		})
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -179,6 +328,48 @@ func (pm *PoolManager) PayoutRewards(reward models.Reward, epochID int64) error 
 	return nil
 }
 
+func StorePolicyConstants(config *config.Config, queries *db.Queries) error {
+	// Check if constants already exist
+	_, err := queries.GetLatestPolicyConstants(context.Background())
+	if err == nil {
+		// Constants already exist, no need to insert
+		return nil
+	}
+	if err != sql.ErrNoRows {
+		// An error occurred other than "no rows"
+		return fmt.Errorf("error checking existing policy constants: %v", err)
+	}
+
+	// Fetch and insert new constants
+	policyConstants, err := rpc.GetPolicyConstants(config)
+	if err != nil {
+		return fmt.Errorf("failed to fetch policy constants: %v", err)
+	}
+
+	err = queries.InsertPolicyConstants(context.Background(), db.InsertPolicyConstantsParams{
+		StakingContractAddress:    policyConstants.StakingContractAddress,
+		CoinbaseAddress:           policyConstants.CoinbaseAddress,
+		TransactionValidityWindow: policyConstants.TransactionValidityWindow,
+		MaxSizeMicroBody:          policyConstants.MaxSizeMicroBody,
+		Version:                   policyConstants.Version,
+		Slots:                     policyConstants.Slots,
+		BlocksPerBatch:            policyConstants.BlocksPerBatch,
+		BatchesPerEpoch:           policyConstants.BatchesPerEpoch,
+		BlocksPerEpoch:            policyConstants.BlocksPerEpoch,
+		ValidatorDeposit:          policyConstants.ValidatorDeposit,
+		MinimumStake:              policyConstants.MinimumStake,
+		TotalSupply:               policyConstants.TotalSupply,
+		BlockSeparationTime:       policyConstants.BlockSeparationTime,
+		JailEpochs:                policyConstants.JailEpochs,
+		GenesisBlockNumber:        policyConstants.GenesisBlockNumber,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to insert policy constants: %v", err)
+	}
+
+	return nil
+}
+
 func (pm *PoolManager) InsertPayout(epochID int64, stakerAddress, txHash string) error {
 	err := pm.queries.InsertPayout(context.Background(), db.InsertPayoutParams{
 		EpochID:       epochID,
@@ -217,200 +408,6 @@ func (pm *PoolManager) MarkEpochAsPaid(epochID int64) error {
 	return err
 }
 
-func (pm *PoolManager) InsertEpoch(epochNumber int64) (int64, error) {
-	balance, err := rpc.GetValidatorBalance(pm.config, pm.config.PoolAddress)
-	if err != nil {
-		return 0, err
-	}
-
-	// InsertEpoch returns (int64, error)
-	epochID, err := pm.queries.InsertEpoch(context.Background(), db.InsertEpochParams{
-		EpochNumber:      epochNumber,
-		ValidatorBalance: balance,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	return epochID, nil
-}
-
-func (pm *PoolManager) StoreEpochAndBalanceAtStartup() error {
-	// Get the current epoch number
-	currentEpoch, err := rpc.GetEpochNumber(pm.config)
-	if err != nil {
-		return fmt.Errorf("error getting current epoch number: %v", err)
-	}
-
-	// Check if the epoch already exists
-	_, err = pm.queries.GetEpochID(context.Background(), currentEpoch)
-	if err == sql.ErrNoRows {
-		// If the epoch doesn't exist, get the validator balance
-		balance, err := rpc.GetValidatorBalance(pm.config, pm.config.PoolAddress)
-		if err != nil {
-			return fmt.Errorf("error getting validator balance: %v", err)
-		}
-
-		// Insert the new epoch and balance
-		_, err = pm.queries.InsertEpoch(context.Background(), db.InsertEpochParams{
-			EpochNumber:      currentEpoch, // Use currentEpoch here, not the erroneous "epoch"
-			ValidatorBalance: balance,
-		})
-		if err != nil {
-			return fmt.Errorf("error inserting epoch and balance: %v", err)
-		}
-
-		logger.Logger.Info("Stored epoch and balance at startup", zap.Int64("epoch", currentEpoch), zap.Int64("balance", balance))
-	} else if err != nil {
-		// If there's an error other than no rows found, return it
-		return fmt.Errorf("error checking epoch existence: %v", err)
-	} else {
-		// Epoch already exists, so we skip the insertion
-		logger.Logger.Info("Epoch is already stored. Skipping storage at startup", zap.Int64("epoch", currentEpoch))
-	}
-
-	return nil
-}
-
-func (pm *PoolManager) InsertStakers(epochID int64, stakers map[string]int64) error {
-	// Start a new transaction using the *sql.DB instance from PoolManager
-	tx, err := pm.db.BeginTx(context.Background(), nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Use sqlc's WithTx method to create a transaction-specific Queries instance
-	qtx := pm.queries.WithTx(tx)
-
-	// Insert each staker
-	for address, stake := range stakers {
-		err := qtx.InsertStaker(context.Background(), db.InsertStakerParams{
-			EpochID: epochID,
-			Address: address,
-			Stake:   stake, // Ensure Stake is an int64
-		})
-		if err != nil {
-			return err
-		}
-	}
-
-	// Commit the transaction
-	return tx.Commit()
-}
-
-func (pm *PoolManager) UpdateEpochBalance(epochNumber int64) error {
-	balance, err := rpc.GetValidatorBalance(pm.config, pm.config.PoolAddress)
-	if err != nil {
-		return fmt.Errorf("error getting validator balance: %v", err)
-	}
-
-	err = pm.queries.UpdateEpochBalance(context.Background(), db.UpdateEpochBalanceParams{
-		ValidatorBalance: balance,
-		EpochNumber:      epochNumber,
-	})
-	if err != nil {
-		return fmt.Errorf("error updating epoch balance: %v", err)
-	}
-
-	logger.Logger.Info("Updated balance for epoch", zap.Int64("epoch", epochNumber), zap.Int64("balance", balance))
-	return nil
-}
-
-func (pm *PoolManager) CalculateAndPayRewards(epochID int64, totalRewards float64) error {
-	// Start a transaction
-	tx, err := pm.db.BeginTx(context.Background(), nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Create a new Queries instance that uses the transaction
-	qtx := pm.queries.WithTx(tx)
-
-	// Retrieve all stakers for the given epoch using sqlc-generated query
-	stakers, err := qtx.GetStakersForEpoch(context.Background(), epochID)
-	if err != nil {
-		return err
-	}
-
-	// Calculate the total stake
-	var totalStake int64
-	stakerMap := make(map[string]int64)
-	for _, staker := range stakers {
-		totalStake += staker.Stake
-		stakerMap[staker.StakerAddress] = staker.Stake
-	}
-
-	// Calculate the pool fee in floating-point terms
-	poolFee := totalRewards * pm.config.PoolFeePercentage
-	rewardsAfterFee := totalRewards - poolFee
-
-	// Send the pool fee to the configured wallet
-	err = rpc.SendPoolFee(pm.config, poolFee)
-	if err != nil {
-		return err
-	}
-
-	// Pay out each staker their portion of the rewards
-	for address, stake := range stakerMap {
-		reward := (float64(stake) / float64(totalStake)) * rewardsAfterFee
-		err = rpc.PayOutStake(pm.config, address, reward)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Record the pool payout in the database
-	err = qtx.InsertPoolPayout(context.Background(), db.InsertPoolPayoutParams{
-		EpochID:       epochID,
-		Amount:        totalRewards,
-		FeePercentage: pm.config.PoolFeePercentage,
-		FeeAmount:     poolFee,
-		FeeTxHash:     "example_fee_tx_hash",
-	})
-	if err != nil {
-		return err
-	}
-
-	// Commit the transaction
-	return tx.Commit()
-}
-
-func (pm *PoolManager) GetEpochRewards(epochID int64) (float64, error) {
-	currBalance, err := pm.queries.GetValidatorBalance(context.Background(), epochID)
-	if err != nil {
-		return 0, err
-	}
-
-	prevBalance, err := pm.queries.GetValidatorBalance(context.Background(), epochID-1)
-	if err != nil {
-		return 0, err
-	}
-
-	rewards := float64(currBalance - prevBalance)
-	return rewards, nil
-}
-
-func (pm *PoolManager) CompareStakers(currentStakers map[string]float64) (map[string]float64, map[string]float64) {
-	newStakers := make(map[string]float64)
-	leftStakers := make(map[string]float64)
-
-	for address, stake := range currentStakers {
-		if _, exists := pm.previousStakers[address]; !exists {
-			newStakers[address] = stake
-		}
-	}
-
-	for address := range pm.previousStakers {
-		if _, exists := currentStakers[address]; !exists {
-			leftStakers[address] = pm.previousStakers[address]
-		}
-	}
-
-	return newStakers, leftStakers
-}
-
 func EnsurePoolAddress(config *config.Config) (string, error) {
 	logger.Logger.Info("Ensuring pool address is set up...")
 
@@ -440,52 +437,4 @@ func EnsurePoolAddress(config *config.Config) (string, error) {
 	logger.Logger.Info("Account unlocked successfully.")
 
 	return poolAddress, nil
-}
-
-func CalculateTimeUntilNextEpoch(config *config.Config) (time.Duration, error) {
-	// Fetch the policy constants
-	policyConstants, err := rpc.GetPolicyConstants(config)
-	if err != nil {
-		return 0, err
-	}
-
-	blocksPerEpoch := policyConstants["blocksPerEpoch"].(float64)
-	blockSeparationTime := policyConstants["blockSeparationTime"].(float64) / 1000 // Convert milliseconds to seconds
-
-	// Fetch the current block number
-	currentBlockNumber, err := rpc.GetCurrentBlockNumber(config)
-	if err != nil {
-		return 0, err
-	}
-
-	// Calculate how many blocks are left in the current epoch
-	blocksRemaining := blocksPerEpoch - float64(currentBlockNumber%int64(blocksPerEpoch))
-
-	// Calculate the time remaining until the next epoch
-	timeUntilNextEpoch := blocksRemaining * blockSeparationTime
-
-	if timeUntilNextEpoch < 0 {
-		return 0, fmt.Errorf("time calculation error: time until next epoch is negative")
-	}
-
-	return time.Duration(timeUntilNextEpoch) * time.Second, nil
-}
-
-func Countdown(duration time.Duration) {
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
-
-	remaining := duration
-
-	for remaining > 0 {
-		select {
-		case <-ticker.C:
-			remaining -= 1 * time.Minute
-			if remaining > 0 {
-				logger.Logger.Info("Time until next epoch", zap.Duration("remaining", remaining))
-			}
-		case <-time.After(remaining):
-			return
-		}
-	}
 }

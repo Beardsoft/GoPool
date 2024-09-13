@@ -292,7 +292,7 @@ func SendStakeTransaction(config *config.Config, senderAddress, stakerAddress st
 	return err
 }
 
-func GetPolicyConstants(config *config.Config) (map[string]interface{}, error) {
+func GetPolicyConstants(config *config.Config) (*models.PolicyConstants, error) {
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -311,11 +311,26 @@ func GetPolicyConstants(config *config.Config) (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	if resultData, ok := result["result"]; ok {
-		if resultMap, ok := resultData.(map[string]interface{}); ok {
-			if policyConstants, ok := resultMap["data"].(map[string]interface{}); ok {
-				return policyConstants, nil
+	if resultData, ok := result["result"].(map[string]interface{}); ok {
+		if data, ok := resultData["data"].(map[string]interface{}); ok {
+			constants := &models.PolicyConstants{
+				StakingContractAddress:    data["stakingContractAddress"].(string),
+				CoinbaseAddress:           data["coinbaseAddress"].(string),
+				TransactionValidityWindow: int64(data["transactionValidityWindow"].(float64)),
+				MaxSizeMicroBody:          int64(data["maxSizeMicroBody"].(float64)),
+				Version:                   int64(data["version"].(float64)),
+				Slots:                     int64(data["slots"].(float64)),
+				BlocksPerBatch:            int64(data["blocksPerBatch"].(float64)),
+				BatchesPerEpoch:           int64(data["batchesPerEpoch"].(float64)),
+				BlocksPerEpoch:            int64(data["blocksPerEpoch"].(float64)),
+				ValidatorDeposit:          int64(data["validatorDeposit"].(float64)),
+				MinimumStake:              int64(data["minimumStake"].(float64)),
+				TotalSupply:               int64(data["totalSupply"].(float64)),
+				BlockSeparationTime:       int64(data["blockSeparationTime"].(float64)),
+				JailEpochs:                int64(data["jailEpochs"].(float64)),
+				GenesisBlockNumber:        int64(data["genesisBlockNumber"].(float64)),
 			}
+			return constants, nil
 		}
 	}
 

@@ -43,3 +43,21 @@ func InherentToReward(inherent Inherent) Reward {
 		Hash:             inherent.Hash,
 	}
 }
+
+type PolicyConstants struct {
+	StakingContractAddress    string `json:"stakingContractAddress"`
+	CoinbaseAddress           string `json:"coinbaseAddress"`
+	TransactionValidityWindow int64  `json:"transactionValidityWindow"`
+	MaxSizeMicroBody          int64  `json:"maxSizeMicroBody"`
+	Version                   int64  `json:"version"`
+	Slots                     int64  `json:"slots"`
+	BlocksPerBatch            int64  `json:"blocksPerBatch"`
+	BatchesPerEpoch           int64  `json:"batchesPerEpoch"`
+	BlocksPerEpoch            int64  `json:"blocksPerEpoch"`
+	ValidatorDeposit          int64  `json:"validatorDeposit"`
+	MinimumStake              int64  `json:"minimumStake"`
+	TotalSupply               int64  `json:"totalSupply"`
+	BlockSeparationTime       int64  `json:"blockSeparationTime"`
+	JailEpochs                int64  `json:"jailEpochs"`
+	GenesisBlockNumber        int64  `json:"genesisBlockNumber"`
+}

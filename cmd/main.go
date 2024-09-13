@@ -28,6 +28,13 @@ func main() {
 
 	// Create a new Queries instance using the sqlc-generated code
 	queries := db.New(sqlDB)
+
+	// Store PolicyConstrains
+	err = pool.StorePolicyConstants(cfg, queries)
+	if err != nil {
+		logger.Logger.Fatal("Failed to store policy constraints: %v", zap.Error(err))
+	}
+
 	// Optionally, use context for queries
 	// Ensure the pool address is set up
 	poolAddress, err := pool.EnsurePoolAddress(cfg)

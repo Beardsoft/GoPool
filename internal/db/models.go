@@ -4,11 +4,20 @@
 
 package db
 
+import (
+	"database/sql"
+)
+
 type Epoch struct {
 	ID               int64 `json:"id"`
 	EpochNumber      int64 `json:"epoch_number"`
 	ValidatorBalance int64 `json:"validator_balance"`
 	PaidOut          bool  `json:"paid_out"`
+}
+
+type LastProcessedCheckpoint struct {
+	ID          int64 `json:"id"`
+	BlockNumber int64 `json:"block_number"`
 }
 
 type Payout struct {
@@ -17,6 +26,26 @@ type Payout struct {
 	StakerAddress   string `json:"staker_address"`
 	PayoutTxHash    string `json:"payout_tx_hash"`
 	PayoutCompleted bool   `json:"payout_completed"`
+}
+
+type PolicyConstant struct {
+	ID                        int64        `json:"id"`
+	StakingContractAddress    string       `json:"staking_contract_address"`
+	CoinbaseAddress           string       `json:"coinbase_address"`
+	TransactionValidityWindow int64        `json:"transaction_validity_window"`
+	MaxSizeMicroBody          int64        `json:"max_size_micro_body"`
+	Version                   int64        `json:"version"`
+	Slots                     int64        `json:"slots"`
+	BlocksPerBatch            int64        `json:"blocks_per_batch"`
+	BatchesPerEpoch           int64        `json:"batches_per_epoch"`
+	BlocksPerEpoch            int64        `json:"blocks_per_epoch"`
+	ValidatorDeposit          int64        `json:"validator_deposit"`
+	MinimumStake              int64        `json:"minimum_stake"`
+	TotalSupply               int64        `json:"total_supply"`
+	BlockSeparationTime       int64        `json:"block_separation_time"`
+	JailEpochs                int64        `json:"jail_epochs"`
+	GenesisBlockNumber        int64        `json:"genesis_block_number"`
+	CreatedAt                 sql.NullTime `json:"created_at"`
 }
 
 type PoolPayout struct {
@@ -29,8 +58,9 @@ type PoolPayout struct {
 }
 
 type Staker struct {
-	ID      int64  `json:"id"`
-	EpochID int64  `json:"epoch_id"`
-	Address string `json:"address"`
-	Stake   int64  `json:"stake"`
+	ID         int64   `json:"id"`
+	EpochID    int64   `json:"epoch_id"`
+	Address    string  `json:"address"`
+	Stake      int64   `json:"stake"`
+	Percentage float64 `json:"percentage"`
 }

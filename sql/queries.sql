@@ -19,6 +19,9 @@ WHERE id = ?;
 INSERT INTO epochs (epoch_number, validator_balance)
 VALUES (?, ?)
 RETURNING id;
+-- name: InsertStakerWithPercentage :exec
+INSERT INTO stakers (epoch_id, address, stake, percentage)
+VALUES (?, ?, ?, ?);
 -- Insert a new payout
 -- name: InsertPayout :exec
 INSERT INTO payouts (
@@ -56,3 +59,65 @@ SELECT address AS staker_address,
     stake
 FROM stakers
 WHERE epoch_id = ?;
+-- name: InsertPolicyConstants :exec
+INSERT INTO policy_constants (
+        staking_contract_address,
+        coinbase_address,
+        transaction_validity_window,
+        max_size_micro_body,
+        version,
+        slots,
+        blocks_per_batch,
+        batches_per_epoch,
+        blocks_per_epoch,
+        validator_deposit,
+        minimum_stake,
+        total_supply,
+        block_separation_time,
+        jail_epochs,
+        genesis_block_number
+    )
+VALUES (
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?
+    );
+-- name: GetLatestPolicyConstants :one
+SELECT staking_contract_address,
+    coinbase_address,
+    transaction_validity_window,
+    max_size_micro_body,
+    version,
+    slots,
+    blocks_per_batch,
+    batches_per_epoch,
+    blocks_per_epoch,
+    validator_deposit,
+    minimum_stake,
+    total_supply,
+    block_separation_time,
+    jail_epochs,
+    genesis_block_number
+FROM policy_constants
+ORDER BY id DESC
+LIMIT 1;
+
+-- name: GetLastProcessedCheckpoint :one
+SELECT block_number FROM last_processed_checkpoint LIMIT 1;
+
+-- name: UpdateLastProcessedCheckpoint :exec
+INSERT INTO last_processed_checkpoint (block_number)
+VALUES (?)
+ON CONFLICT (id) DO UPDATE SET block_number = EXCLUDED.block_number;

@@ -39,6 +39,79 @@ func (q *Queries) GetEpochID(ctx context.Context, epochNumber int64) (int64, err
 	return id, err
 }
 
+const GetLastProcessedCheckpoint = `-- name: GetLastProcessedCheckpoint :one
+SELECT block_number FROM last_processed_checkpoint LIMIT 1
+`
+
+func (q *Queries) GetLastProcessedCheckpoint(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, GetLastProcessedCheckpoint)
+	var block_number int64
+	err := row.Scan(&block_number)
+	return block_number, err
+}
+
+const GetLatestPolicyConstants = `-- name: GetLatestPolicyConstants :one
+SELECT staking_contract_address,
+    coinbase_address,
+    transaction_validity_window,
+    max_size_micro_body,
+    version,
+    slots,
+    blocks_per_batch,
+    batches_per_epoch,
+    blocks_per_epoch,
+    validator_deposit,
+    minimum_stake,
+    total_supply,
+    block_separation_time,
+    jail_epochs,
+    genesis_block_number
+FROM policy_constants
+ORDER BY id DESC
+LIMIT 1
+`
+
+type GetLatestPolicyConstantsRow struct {
+	StakingContractAddress    string `json:"staking_contract_address"`
+	CoinbaseAddress           string `json:"coinbase_address"`
+	TransactionValidityWindow int64  `json:"transaction_validity_window"`
+	MaxSizeMicroBody          int64  `json:"max_size_micro_body"`
+	Version                   int64  `json:"version"`
+	Slots                     int64  `json:"slots"`
+	BlocksPerBatch            int64  `json:"blocks_per_batch"`
+	BatchesPerEpoch           int64  `json:"batches_per_epoch"`
+	BlocksPerEpoch            int64  `json:"blocks_per_epoch"`
+	ValidatorDeposit          int64  `json:"validator_deposit"`
+	MinimumStake              int64  `json:"minimum_stake"`
+	TotalSupply               int64  `json:"total_supply"`
+	BlockSeparationTime       int64  `json:"block_separation_time"`
+	JailEpochs                int64  `json:"jail_epochs"`
+	GenesisBlockNumber        int64  `json:"genesis_block_number"`
+}
+
+func (q *Queries) GetLatestPolicyConstants(ctx context.Context) (GetLatestPolicyConstantsRow, error) {
+	row := q.db.QueryRowContext(ctx, GetLatestPolicyConstants)
+	var i GetLatestPolicyConstantsRow
+	err := row.Scan(
+		&i.StakingContractAddress,
+		&i.CoinbaseAddress,
+		&i.TransactionValidityWindow,
+		&i.MaxSizeMicroBody,
+		&i.Version,
+		&i.Slots,
+		&i.BlocksPerBatch,
+		&i.BatchesPerEpoch,
+		&i.BlocksPerEpoch,
+		&i.ValidatorDeposit,
+		&i.MinimumStake,
+		&i.TotalSupply,
+		&i.BlockSeparationTime,
+		&i.JailEpochs,
+		&i.GenesisBlockNumber,
+	)
+	return i, err
+}
+
 const GetStakersForEpoch = `-- name: GetStakersForEpoch :many
 SELECT address AS staker_address,
     stake
@@ -129,6 +202,82 @@ func (q *Queries) InsertPayout(ctx context.Context, arg InsertPayoutParams) erro
 	return err
 }
 
+const InsertPolicyConstants = `-- name: InsertPolicyConstants :exec
+INSERT INTO policy_constants (
+        staking_contract_address,
+        coinbase_address,
+        transaction_validity_window,
+        max_size_micro_body,
+        version,
+        slots,
+        blocks_per_batch,
+        batches_per_epoch,
+        blocks_per_epoch,
+        validator_deposit,
+        minimum_stake,
+        total_supply,
+        block_separation_time,
+        jail_epochs,
+        genesis_block_number
+    )
+VALUES (
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?
+    )
+`
+
+type InsertPolicyConstantsParams struct {
+	StakingContractAddress    string `json:"staking_contract_address"`
+	CoinbaseAddress           string `json:"coinbase_address"`
+	TransactionValidityWindow int64  `json:"transaction_validity_window"`
+	MaxSizeMicroBody          int64  `json:"max_size_micro_body"`
+	Version                   int64  `json:"version"`
+	Slots                     int64  `json:"slots"`
+	BlocksPerBatch            int64  `json:"blocks_per_batch"`
+	BatchesPerEpoch           int64  `json:"batches_per_epoch"`
+	BlocksPerEpoch            int64  `json:"blocks_per_epoch"`
+	ValidatorDeposit          int64  `json:"validator_deposit"`
+	MinimumStake              int64  `json:"minimum_stake"`
+	TotalSupply               int64  `json:"total_supply"`
+	BlockSeparationTime       int64  `json:"block_separation_time"`
+	JailEpochs                int64  `json:"jail_epochs"`
+	GenesisBlockNumber        int64  `json:"genesis_block_number"`
+}
+
+func (q *Queries) InsertPolicyConstants(ctx context.Context, arg InsertPolicyConstantsParams) error {
+	_, err := q.db.ExecContext(ctx, InsertPolicyConstants,
+		arg.StakingContractAddress,
+		arg.CoinbaseAddress,
+		arg.TransactionValidityWindow,
+		arg.MaxSizeMicroBody,
+		arg.Version,
+		arg.Slots,
+		arg.BlocksPerBatch,
+		arg.BatchesPerEpoch,
+		arg.BlocksPerEpoch,
+		arg.ValidatorDeposit,
+		arg.MinimumStake,
+		arg.TotalSupply,
+		arg.BlockSeparationTime,
+		arg.JailEpochs,
+		arg.GenesisBlockNumber,
+	)
+	return err
+}
+
 const InsertPoolPayout = `-- name: InsertPoolPayout :exec
 INSERT INTO pool_payouts (
         epoch_id,
@@ -176,6 +325,28 @@ func (q *Queries) InsertStaker(ctx context.Context, arg InsertStakerParams) erro
 	return err
 }
 
+const InsertStakerWithPercentage = `-- name: InsertStakerWithPercentage :exec
+INSERT INTO stakers (epoch_id, address, stake, percentage)
+VALUES (?, ?, ?, ?)
+`
+
+type InsertStakerWithPercentageParams struct {
+	EpochID    int64   `json:"epoch_id"`
+	Address    string  `json:"address"`
+	Stake      int64   `json:"stake"`
+	Percentage float64 `json:"percentage"`
+}
+
+func (q *Queries) InsertStakerWithPercentage(ctx context.Context, arg InsertStakerWithPercentageParams) error {
+	_, err := q.db.ExecContext(ctx, InsertStakerWithPercentage,
+		arg.EpochID,
+		arg.Address,
+		arg.Stake,
+		arg.Percentage,
+	)
+	return err
+}
+
 const MarkEpochAsPaid = `-- name: MarkEpochAsPaid :exec
 UPDATE epochs
 SET paid_out = 1
@@ -201,5 +372,16 @@ type UpdateEpochBalanceParams struct {
 
 func (q *Queries) UpdateEpochBalance(ctx context.Context, arg UpdateEpochBalanceParams) error {
 	_, err := q.db.ExecContext(ctx, UpdateEpochBalance, arg.ValidatorBalance, arg.EpochNumber)
+	return err
+}
+
+const UpdateLastProcessedCheckpoint = `-- name: UpdateLastProcessedCheckpoint :exec
+INSERT INTO last_processed_checkpoint (block_number)
+VALUES (?)
+ON CONFLICT (id) DO UPDATE SET block_number = EXCLUDED.block_number
+`
+
+func (q *Queries) UpdateLastProcessedCheckpoint(ctx context.Context, blockNumber int64) error {
+	_, err := q.db.ExecContext(ctx, UpdateLastProcessedCheckpoint, blockNumber)
 	return err
 }
