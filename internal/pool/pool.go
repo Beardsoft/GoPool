@@ -51,6 +51,28 @@ func (m *Manager) classify(height uint32) blockKind {
 	return blockMicro
 }
 
+// epochAt / batchAt match core-rs-albatross Policy::epoch_at / batch_at:
+// ceil division after genesis, with genesis itself as epoch/batch 0.
+// nimiq-go's Policy.EpochAt/BatchAt use truncating division, which numbers
+// the first epoch as 0 and would look up the wrong staker snapshot.
+func epochAt(p *rpc.Policy, height uint32) uint32 {
+	if height <= p.GenesisBlockNumber {
+		return 0
+	}
+	return divCeil(height-p.GenesisBlockNumber, p.BlocksPerEpoch)
+}
+
+func batchAt(p *rpc.Policy, height uint32) uint32 {
+	if height <= p.GenesisBlockNumber {
+		return 0
+	}
+	return divCeil(height-p.GenesisBlockNumber, p.BlocksPerBatch)
+}
+
+func divCeil(n, d uint32) uint32 {
+	return (n + d - 1) / d
+}
+
 // Run is the daemon's main loop: replay every height between the last
 // processed cursor and the current chain head, in order, then sleep.
 func (m *Manager) Run(ctx context.Context) error {
@@ -76,12 +98,17 @@ func (m *Manager) Run(ctx context.Context) error {
 			continue
 		}
 
+		// Missing cursor means "never started": include the genesis height
+		// itself. Genesis is an election block, and skipping it (the old
+		// cursor+1 start) left epoch 1 with no staker snapshot on a
+		// genesis-0 devnet.
+		start := m.policy.GenesisBlockNumber
 		cursor, err := m.queries.GetCursor(ctx, cursorName)
-		if err != nil {
-			cursor = int64(m.policy.GenesisBlockNumber)
+		if err == nil {
+			start = uint32(cursor) + 1
 		}
 
-		for h := uint32(cursor) + 1; h <= head; h++ {
+		for h := start; h <= head; h++ {
 			if err := m.processHeight(ctx, h); err != nil {
 				logger.Logger.Error("processing height", zap.Uint32("height", h), zap.Error(err))
 				break
@@ -112,7 +139,13 @@ func (m *Manager) Run(ctx context.Context) error {
 func (m *Manager) processHeight(ctx context.Context, height uint32) error {
 	switch m.classify(height) {
 	case blockElection:
-		return m.handleElection(ctx, height)
+		if err := m.handleElection(ctx, height); err != nil {
+			return err
+		}
+		// Election blocks are also batch boundaries. Collect the closing
+		// batch's reward; classify() prefers election so this would
+		// otherwise skip one batch per epoch.
+		return m.handleCheckpoint(ctx, height)
 	case blockCheckpoint:
 		return m.handleCheckpoint(ctx, height)
 	}

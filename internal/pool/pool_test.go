@@ -21,6 +21,7 @@ func TestClassify(t *testing.T) {
 		height uint32
 		want   blockKind
 	}{
+		{0, blockElection},
 		{60, blockCheckpoint},
 		{43200, blockElection},
 		{999, blockMicro},
@@ -29,6 +30,29 @@ func TestClassify(t *testing.T) {
 	for _, c := range cases {
 		if got := m.classify(c.height); got != c.want {
 			t.Errorf("classify(%d) = %v, want %v", c.height, got, c.want)
+		}
+	}
+}
+
+func TestEpochBatchAtMatchesNode(t *testing.T) {
+	p := &rpc.Policy{BlocksPerBatch: 60, BlocksPerEpoch: 240, GenesisBlockNumber: 0}
+	cases := []struct {
+		height, epoch, batch uint32
+	}{
+		{0, 0, 0},
+		{1, 1, 1},
+		{60, 1, 1},
+		{61, 1, 2},
+		{120, 1, 2},
+		{240, 1, 4},
+		{241, 2, 5},
+	}
+	for _, c := range cases {
+		if got := epochAt(p, c.height); got != c.epoch {
+			t.Errorf("epochAt(%d) = %d, want %d", c.height, got, c.epoch)
+		}
+		if got := batchAt(p, c.height); got != c.batch {
+			t.Errorf("batchAt(%d) = %d, want %d", c.height, got, c.batch)
 		}
 	}
 }

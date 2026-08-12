@@ -27,7 +27,7 @@ func stakerPercentage(stake, total nimiq.Luna) float64 {
 // validator cannot earn rewards next epoch (inactive, retired, jailed, no
 // stakers), the epoch is recorded with that status and no snapshot is taken.
 func (m *Manager) handleElection(ctx context.Context, height uint32) error {
-	nextEpoch := m.policy.EpochAt(height) + 1
+	nextEpoch := epochAt(m.policy, height) + 1
 
 	exists, err := m.queries.EpochExists(ctx, int64(nextEpoch))
 	if err != nil {

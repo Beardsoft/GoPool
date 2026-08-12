@@ -3,6 +3,7 @@ package pool
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/NimMiniApps/nimiq-go/rpc"
 
@@ -47,6 +48,11 @@ func (m *Manager) runConfirmations(ctx context.Context) error {
 	for _, tx := range pending {
 		conf, err := m.chain.RPC.CheckTransaction(ctx, tx.Hash)
 		if err != nil {
+			// Broadcast txs are often not indexed until they land in a block.
+			// nimiq-go documents ErrNotFound as "not yet", not failure.
+			if errors.Is(err, rpc.ErrNotFound) {
+				continue
+			}
 			logger.Logger.Error("checking transaction", zap.String("hash", tx.Hash), zap.Error(err))
 			continue
 		}

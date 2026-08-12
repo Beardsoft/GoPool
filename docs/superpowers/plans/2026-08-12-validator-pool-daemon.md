@@ -1657,11 +1657,11 @@ git commit -m "feat(cmd): daemon entrypoint and validator CLI subcommand"
 
 **Never run any step of this task against mainnet.**
 
-- [ ] **Step 1: Stand up a devnet**
+- [x] **Step 1: Stand up a devnet**
 
 Use GoPool's own `devlab/` setup or zpool's `devnet.config.toml` as a starting point for a disposable test-albatross network with one validator whose signing/private keys you control.
 
-- [ ] **Step 2: Configure and run the pool against it**
+- [x] **Step 2: Configure and run the pool against it**
 
 Copy `config/config.json-example` to `config.json`, fill in the devnet RPC URL, `network: "dev-albatross"` or `"test-albatross"` to match the devnet, and the devnet validator's private key. Run:
 
@@ -1669,7 +1669,7 @@ Copy `config/config.json-example` to `config.json`, fill in the devnet RPC URL, 
 go run ./cmd
 ```
 
-- [ ] **Step 3: Verify the daemon reaches steady state**
+- [x] **Step 3: Verify the daemon reaches steady state**
 
 Watch the logs for at least one full epoch: confirm "validator elected for next epoch" fires at election, "reward collected" fires at each checkpoint if the devnet validator earns anything, and (once a staker is delegated on the devnet and crosses `min_payout_luna`) "payout submitted" followed later by "payout confirmed".
 
@@ -1681,6 +1681,35 @@ go run ./cmd validator deactivate
 
 Confirm via `getValidatorByAddress` on the devnet RPC that `inactivityFlag` is now set, then run `go run ./cmd validator retire` after deactivation settles, and confirm `retired: true`. Do not run `validator delete` unless the plan's goal is specifically to test deposit reclaim, since it removes the validator from the devnet permanently.
 
-- [ ] **Step 5: Record findings**
+Tried `validator deactivate` against seed1. The tx was included (`3aff7928…` at height 991) but `executionResult: false`, so `inactivityFlag` stayed null. Did not run `retire` or `delete`.
+
+- [x] **Step 5: Record findings**
 
 If any step in Tasks 1–9 needed a correction to match real devnet behavior (a query, a payload shape, a status transition), open a short note in `docs/superpowers/plans/2026-08-12-validator-pool-daemon.md` (this file) under a new `## Devnet verification notes` heading at the end, rather than silently patching code without a record of why.
+
+## Devnet verification notes
+
+Ran 2026-08-13 against GoPool `devlab/` (4-validator `dev-albatross`, seed1 RPC `http://127.0.0.1:8647`). Did **not** use `run.sh up-albatross` — that script deletes every Docker volume on the host. Traefik was skipped because host `:8648`/`:8443` are already taken by a mainnet `nimiq-node`.
+
+Local `DEVNET_POLICY` (4 batches × 60 blocks = 240-block epochs) was patched into the lab's albatross clone so a full epoch finishes in minutes. Default Albatross policy is 43200-block epochs.
+
+Seed1 identity used for the pool:
+
+- validator `NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E`
+- secret key `6927eb8de74e8ea06a8afae5a66db176a7031f742b656651ac53bddb8a4ad3f3` (from `dev-albatross-4-validators.toml`)
+- genesis staker already delegated: `NQ32 EGL6 H9C8 0JJB PH4S 7RYY ULRC 5B6N 56RE`
+
+Observed and patched in this session:
+
+1. **Genesis height was skipped.** Missing cursor used `genesis+1`, so the genesis election block (height 0 on this lab) never snapshotted stakers. Cursor now starts at genesis.
+2. **Election blocks skipped the closing batch's rewards.** `classify()` prefers election, so `processHeight` never called `handleCheckpoint` on a batch+epoch boundary. Election heights now run both handlers.
+3. **`Policy.EpochAt` / `BatchAt` in nimiq-go use truncating division.** The node uses ceil (`div_ceil` after genesis). Floor numbered epoch 1 as 0 and looked up the wrong staker snapshot. GoPool now has local `epochAt`/`batchAt` matching `Policy::epoch_at` / `batch_at`.
+4. **Reward inherents live in the current checkpoint block, not the previous batch's macro.** `getInherentsByBlockNumber(60)` is empty; the batch-1 rewards appear at height 120. `handleCheckpoint` now fetches inherents at `height`.
+5. **`CheckTransaction` returns `ErrNotFound` until a tx is in a block** (and forever if the mempool dropped it). The SDK documents this as "not yet". Treated as pending instead of logging an error every tick.
+
+Still open (not patched):
+
+- **Payout wallet ≠ reward address.** Chain rewards credit `rewardAddress` (`NQ46 U66M…`, the fee key). The daemon pays from `private_key`'s address (the validator). `pool_fee_wallet` is loaded and never used. Seed1's validator account had 0 liquid NIM until we funded it from a genesis basic account. Production needs either `reward_address == payout wallet` or a sweep.
+- **Broadcast can return a hash for a tx the node then drops** (insufficient balance, expiry). Payslips stay `awaiting_confirmation` on a hash that will never confirm. Need a balance check before submit and a timeout that resets those payslips.
+- **`validator deactivate` included but failed execution** (`executionResult: false`), so `inactivityFlag` stayed null. Likely a staking-proof / sender issue in `Deactivate`. `retire` was not attempted.
+- First catch-up payout of 578 NIM was larger than the 1000 NIM we funded; that hash vanished. A later 64718959-luna AddStake (`c0ce3487…` at height 662) succeeded, the staker's stake rose, and the tx was marked `completed` in SQLite.

@@ -27,8 +27,11 @@ func splitReward(reward nimiq.Luna, feePercentage float64) (afterFee, fee nimiq.
 // timing), splits it, and fans out a payslip per staker using the epoch's
 // stored percentages.
 func (m *Manager) handleCheckpoint(ctx context.Context, height uint32) error {
-	rewardBatch := m.policy.BatchAt(height) - 1
-	rewardHeight := height - m.policy.BlocksPerBatch
+	currentBatch := batchAt(m.policy, height)
+	if currentBatch == 0 {
+		return nil
+	}
+	rewardBatch := currentBatch - 1
 
 	exists, err := m.queries.RewardExists(ctx, int64(rewardBatch))
 	if err != nil {
@@ -38,7 +41,9 @@ func (m *Manager) handleCheckpoint(ctx context.Context, height uint32) error {
 		return nil
 	}
 
-	inherents, err := m.chain.RPC.GetInherentsByBlockNumber(ctx, rewardHeight)
+	// Reward inherents for the previous batch are in this checkpoint block,
+	// not in the previous batch's macro (which is empty — verified on devlab).
+	inherents, err := m.chain.RPC.GetInherentsByBlockNumber(ctx, height)
 	if err != nil {
 		return err
 	}
@@ -51,7 +56,7 @@ func (m *Manager) handleCheckpoint(ctx context.Context, height uint32) error {
 		}
 	}
 
-	epoch := m.policy.EpochAt(rewardHeight)
+	epoch := epochAt(m.policy, height-m.policy.BlocksPerBatch)
 	stakers, err := m.queries.GetStakersForEpoch(ctx, int64(epoch))
 	if err != nil {
 		return err
