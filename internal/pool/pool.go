@@ -98,6 +98,11 @@ func (m *Manager) Run(ctx context.Context) error {
 		if err := m.runConfirmations(ctx); err != nil {
 			logger.Logger.Error("running confirmations", zap.Error(err))
 		}
+		if m.cfg.AutoReactivate {
+			if err := m.runAutoReactivate(ctx); err != nil {
+				logger.Logger.Error("running auto-reactivate", zap.Error(err))
+			}
+		}
 	}
 }
 
