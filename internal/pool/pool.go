@@ -95,6 +95,9 @@ func (m *Manager) Run(ctx context.Context) error {
 		if err := m.runPayouts(ctx); err != nil {
 			logger.Logger.Error("running payouts", zap.Error(err))
 		}
+		if err := m.runConfirmations(ctx); err != nil {
+			logger.Logger.Error("running confirmations", zap.Error(err))
+		}
 	}
 }
 
