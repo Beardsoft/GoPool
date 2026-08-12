@@ -106,9 +106,3 @@ func (m *Manager) processHeight(ctx context.Context, height uint32) error {
 	}
 	return nil
 }
-
-// handleCheckpoint is filled in by checkpoint.go; this stub keeps the package
-// compiling until that file lands.
-func (m *Manager) handleCheckpoint(ctx context.Context, height uint32) error {
-	return nil
-}
