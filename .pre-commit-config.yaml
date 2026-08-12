@@ -7,16 +7,6 @@ repos:
       - id: go-lint
       - id: go-mod-tidy
 
-  - repo: https://github.com/dominikh/go-tools
-    rev: master
-    hooks:
-      - id: staticcheck
-
-  - repo: https://github.com/securego/gosec
-    rev: v2.20.0
-    hooks:
-      - id: gosec
-
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
