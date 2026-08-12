@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Depends on the nimiq-go plan** (`docs/superpowers/plans/2026-08-12-pool-sdk-additions.md` in the `nimiq-go` repo): `rpc.Client.GetStakersByValidatorAddress`, `rpc.Client.GetInherentsByBlockNumber`, `nimiq.NewReactivateValidatorTransaction`, `nimiq.NewDeactivateValidatorTransaction`, `nimiq.NewRetireValidatorTransaction`, `nimiq.NewDeleteValidatorTransaction` must exist and be released (or replaced with a `go.mod replace` to a local checkout) before Task 3 onward.
+- **Depends on the nimiq-go plan** (`docs/superpowers/plans/2026-08-12-pool-sdk-additions.md` in the `nimiq-go` repo): `rpc.Client.GetStakersByValidatorAddress`, `rpc.Client.GetInherentsByBlockNumber`, `nimiq.NewReactivateValidatorTransaction`, `nimiq.NewDeactivateValidatorTransaction`, `nimiq.NewRetireValidatorTransaction`, `nimiq.NewDeleteValidatorTransaction`. **Satisfied as of `nimiq-go` v0.4.0** (tagged 2026-08-12, see its `CHANGELOG.md`) — Task 2 pins this version directly, no `replace` directive needed.
 - All on-chain amounts are `nimiq.Luna` end to end — no `float64` on any money path. Store as SQLite `INTEGER` (Luna fits in `int64`; `MaxLuna` is `2^53-1`).
 - Status columns are free-text matching the Go string constants defined in Task 1 — no numeric status table, the set is fixed and small.
 - No `float64` for stake percentages either where it can be avoided in comparisons, but `percentage REAL` for the *stored snapshot* is fine — it is a ratio for display/estimation, not a payout amount; payout amounts are computed from integer stake ratios directly (`stake * reward / totalStake`) in Task 4, not from the stored `REAL`.
@@ -279,11 +279,8 @@ git commit -m "feat(db): rewrite schema for zpool-style pool tracking"
 
 - [ ] **Step 1: Add the nimiq-go dependency**
 
-Run: `go get github.com/NimMiniApps/nimiq-go@latest`
-Expected: `go.mod`/`go.sum` updated. If the SDK plan's additions have not been tagged yet, use a `replace` directive in `go.mod` pointing at the local `nimiq-go` checkout instead:
-```
-replace github.com/NimMiniApps/nimiq-go => ../nimiq-go
-```
+Run: `go get github.com/NimMiniApps/nimiq-go@v0.4.0`
+Expected: `go.mod`/`go.sum` updated, pinned to `v0.4.0` — the release containing `GetStakersByValidatorAddress`, `GetInherentsByBlockNumber`, and the four validator-lifecycle transaction builders this plan depends on. Pin the exact tag rather than `@latest`, so a later `nimiq-go` release can't silently change behavior under this plan without a deliberate version bump.
 
 - [ ] **Step 2: Rewrite config**
 
