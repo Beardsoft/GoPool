@@ -107,12 +107,8 @@ func (m *Manager) processHeight(ctx context.Context, height uint32) error {
 	return nil
 }
 
-// Stubs replaced in place by Tasks 4 and 5. Needed so classify tests compile
-// before those files exist — Go type-checks every method in the package.
-func (m *Manager) handleElection(ctx context.Context, height uint32) error {
-	return nil
-}
-
+// handleCheckpoint is filled in by checkpoint.go; this stub keeps the package
+// compiling until that file lands.
 func (m *Manager) handleCheckpoint(ctx context.Context, height uint32) error {
 	return nil
 }
