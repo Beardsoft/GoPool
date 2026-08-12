@@ -7,77 +7,141 @@ package db
 
 import (
 	"context"
+	"database/sql"
 )
 
-const CountIncompletePayouts = `-- name: CountIncompletePayouts :one
-SELECT COUNT(*)
-FROM payouts
-WHERE epoch_id = ?
-    AND payout_completed = 0
+const EpochExists = `-- name: EpochExists :one
+SELECT EXISTS(SELECT 1 FROM epochs WHERE number = ?)
 `
 
-// Get the count of incomplete payouts for an epoch
-func (q *Queries) CountIncompletePayouts(ctx context.Context, epochID int64) (int64, error) {
-	row := q.db.QueryRowContext(ctx, CountIncompletePayouts, epochID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+func (q *Queries) EpochExists(ctx context.Context, number int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, EpochExists, number)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
-const GetEpochID = `-- name: GetEpochID :one
-SELECT id
-FROM epochs
-WHERE epoch_number = ?
+const FinalizeCompletedEpochs = `-- name: FinalizeCompletedEpochs :many
+UPDATE epochs SET status = 'completed' WHERE number IN (
+    SELECT r.epoch_number
+    FROM rewards AS r
+    INNER JOIN (
+        SELECT batch_number, COUNT(*) AS total, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS done
+        FROM payslips
+        GROUP BY batch_number
+    ) AS p ON p.batch_number = r.batch_number
+    INNER JOIN epochs AS e ON e.number = r.epoch_number
+    WHERE e.status = 'in_progress'
+    GROUP BY r.epoch_number
+    HAVING SUM(p.total) = SUM(p.done)
+) RETURNING number
 `
 
-// queries.sql
-// Get the ID of an epoch
-func (q *Queries) GetEpochID(ctx context.Context, epochNumber int64) (int64, error) {
-	row := q.db.QueryRowContext(ctx, GetEpochID, epochNumber)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
+func (q *Queries) FinalizeCompletedEpochs(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, FinalizeCompletedEpochs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var number int64
+		if err := rows.Scan(&number); err != nil {
+			return nil, err
+		}
+		items = append(items, number)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const GetLastProcessedCheckpoint = `-- name: GetLastProcessedCheckpoint :one
-SELECT block_number FROM last_processed_checkpoint LIMIT 1
+const FinalizePayslips = `-- name: FinalizePayslips :exec
+UPDATE payslips SET status = 'completed' WHERE tx_hash = ?
 `
 
-func (q *Queries) GetLastProcessedCheckpoint(ctx context.Context) (int64, error) {
-	row := q.db.QueryRowContext(ctx, GetLastProcessedCheckpoint)
-	var block_number int64
-	err := row.Scan(&block_number)
-	return block_number, err
+func (q *Queries) FinalizePayslips(ctx context.Context, txHash sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, FinalizePayslips, txHash)
+	return err
+}
+
+const GetCursor = `-- name: GetCursor :one
+SELECT height FROM cursor WHERE name = ?
+`
+
+func (q *Queries) GetCursor(ctx context.Context, name string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, GetCursor, name)
+	var height int64
+	err := row.Scan(&height)
+	return height, err
+}
+
+const GetEligibleForPayout = `-- name: GetEligibleForPayout :many
+SELECT address, CAST(SUM(amount) AS INTEGER) AS total
+FROM payslips
+WHERE status = 'pending'
+GROUP BY address
+HAVING SUM(amount) >= ?
+`
+
+type GetEligibleForPayoutRow struct {
+	Address string `json:"address"`
+	Total   int64  `json:"total"`
+}
+
+func (q *Queries) GetEligibleForPayout(ctx context.Context, amount int64) ([]GetEligibleForPayoutRow, error) {
+	rows, err := q.db.QueryContext(ctx, GetEligibleForPayout, amount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetEligibleForPayoutRow{}
+	for rows.Next() {
+		var i GetEligibleForPayoutRow
+		if err := rows.Scan(&i.Address, &i.Total); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const GetEpochStatus = `-- name: GetEpochStatus :one
+SELECT status, num_stakers FROM epochs WHERE number = ?
+`
+
+type GetEpochStatusRow struct {
+	Status     string `json:"status"`
+	NumStakers int64  `json:"num_stakers"`
+}
+
+func (q *Queries) GetEpochStatus(ctx context.Context, number int64) (GetEpochStatusRow, error) {
+	row := q.db.QueryRowContext(ctx, GetEpochStatus, number)
+	var i GetEpochStatusRow
+	err := row.Scan(&i.Status, &i.NumStakers)
+	return i, err
 }
 
 const GetLatestPolicyConstants = `-- name: GetLatestPolicyConstants :one
-SELECT staking_contract_address,
-    coinbase_address,
-    transaction_validity_window,
-    max_size_micro_body,
-    version,
-    slots,
-    blocks_per_batch,
-    batches_per_epoch,
-    blocks_per_epoch,
-    validator_deposit,
-    minimum_stake,
-    total_supply,
-    block_separation_time,
-    jail_epochs,
-    genesis_block_number
-FROM policy_constants
-ORDER BY id DESC
-LIMIT 1
+SELECT staking_contract_address, transaction_validity_window, blocks_per_batch,
+    batches_per_epoch, blocks_per_epoch, validator_deposit, minimum_stake,
+    total_supply, block_separation_time, jail_epochs, genesis_block_number
+FROM policy_constants ORDER BY id DESC LIMIT 1
 `
 
 type GetLatestPolicyConstantsRow struct {
 	StakingContractAddress    string `json:"staking_contract_address"`
-	CoinbaseAddress           string `json:"coinbase_address"`
 	TransactionValidityWindow int64  `json:"transaction_validity_window"`
-	MaxSizeMicroBody          int64  `json:"max_size_micro_body"`
-	Version                   int64  `json:"version"`
-	Slots                     int64  `json:"slots"`
 	BlocksPerBatch            int64  `json:"blocks_per_batch"`
 	BatchesPerEpoch           int64  `json:"batches_per_epoch"`
 	BlocksPerEpoch            int64  `json:"blocks_per_epoch"`
@@ -94,11 +158,7 @@ func (q *Queries) GetLatestPolicyConstants(ctx context.Context) (GetLatestPolicy
 	var i GetLatestPolicyConstantsRow
 	err := row.Scan(
 		&i.StakingContractAddress,
-		&i.CoinbaseAddress,
 		&i.TransactionValidityWindow,
-		&i.MaxSizeMicroBody,
-		&i.Version,
-		&i.Slots,
 		&i.BlocksPerBatch,
 		&i.BatchesPerEpoch,
 		&i.BlocksPerEpoch,
@@ -112,28 +172,26 @@ func (q *Queries) GetLatestPolicyConstants(ctx context.Context) (GetLatestPolicy
 	return i, err
 }
 
-const GetStakersForEpoch = `-- name: GetStakersForEpoch :many
-SELECT address AS staker_address,
-    stake
-FROM stakers
-WHERE epoch_id = ?
+const GetPendingTransactions = `-- name: GetPendingTransactions :many
+SELECT hash, address, amount FROM transactions WHERE status = 'awaiting_confirmation'
 `
 
-type GetStakersForEpochRow struct {
-	StakerAddress string `json:"staker_address"`
-	Stake         int64  `json:"stake"`
+type GetPendingTransactionsRow struct {
+	Hash    string `json:"hash"`
+	Address string `json:"address"`
+	Amount  int64  `json:"amount"`
 }
 
-func (q *Queries) GetStakersForEpoch(ctx context.Context, epochID int64) ([]GetStakersForEpochRow, error) {
-	rows, err := q.db.QueryContext(ctx, GetStakersForEpoch, epochID)
+func (q *Queries) GetPendingTransactions(ctx context.Context) ([]GetPendingTransactionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, GetPendingTransactions)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []GetStakersForEpochRow{}
+	items := []GetPendingTransactionsRow{}
 	for rows.Next() {
-		var i GetStakersForEpochRow
-		if err := rows.Scan(&i.StakerAddress, &i.Stake); err != nil {
+		var i GetPendingTransactionsRow
+		if err := rows.Scan(&i.Hash, &i.Address, &i.Amount); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -147,105 +205,103 @@ func (q *Queries) GetStakersForEpoch(ctx context.Context, epochID int64) ([]GetS
 	return items, nil
 }
 
-const GetValidatorBalance = `-- name: GetValidatorBalance :one
-SELECT validator_balance
-FROM epochs
-WHERE id = ?
+const GetStakersForEpoch = `-- name: GetStakersForEpoch :many
+SELECT address, stake, percentage FROM stakers WHERE epoch_number = ?
 `
 
-// Get the validator balance for a specific epoch ID
-func (q *Queries) GetValidatorBalance(ctx context.Context, id int64) (int64, error) {
-	row := q.db.QueryRowContext(ctx, GetValidatorBalance, id)
-	var validator_balance int64
-	err := row.Scan(&validator_balance)
-	return validator_balance, err
+type GetStakersForEpochRow struct {
+	Address    string  `json:"address"`
+	Stake      int64   `json:"stake"`
+	Percentage float64 `json:"percentage"`
 }
 
-const InsertEpoch = `-- name: InsertEpoch :one
-INSERT INTO epochs (epoch_number, validator_balance)
-VALUES (?, ?)
-RETURNING id
+func (q *Queries) GetStakersForEpoch(ctx context.Context, epochNumber int64) ([]GetStakersForEpochRow, error) {
+	rows, err := q.db.QueryContext(ctx, GetStakersForEpoch, epochNumber)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetStakersForEpochRow{}
+	for rows.Next() {
+		var i GetStakersForEpochRow
+		if err := rows.Scan(&i.Address, &i.Stake, &i.Percentage); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const HasPendingValidatorAction = `-- name: HasPendingValidatorAction :one
+SELECT EXISTS(SELECT 1 FROM validator_actions WHERE action = ? AND outcome = 'pending')
+`
+
+func (q *Queries) HasPendingValidatorAction(ctx context.Context, action string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, HasPendingValidatorAction, action)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const InsertEpoch = `-- name: InsertEpoch :exec
+INSERT INTO epochs (number, num_stakers, balance, status) VALUES (?, ?, ?, ?)
 `
 
 type InsertEpochParams struct {
-	EpochNumber      int64 `json:"epoch_number"`
-	ValidatorBalance int64 `json:"validator_balance"`
+	Number     int64  `json:"number"`
+	NumStakers int64  `json:"num_stakers"`
+	Balance    int64  `json:"balance"`
+	Status     string `json:"status"`
 }
 
-// Insert a new epoch with its balance
-func (q *Queries) InsertEpoch(ctx context.Context, arg InsertEpochParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, InsertEpoch, arg.EpochNumber, arg.ValidatorBalance)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
+func (q *Queries) InsertEpoch(ctx context.Context, arg InsertEpochParams) error {
+	_, err := q.db.ExecContext(ctx, InsertEpoch,
+		arg.Number,
+		arg.NumStakers,
+		arg.Balance,
+		arg.Status,
+	)
+	return err
 }
 
-const InsertPayout = `-- name: InsertPayout :exec
-INSERT INTO payouts (
-        epoch_id,
-        staker_address,
-        payout_tx_hash,
-        payout_completed
-    )
-VALUES (?, ?, ?, 1)
+const InsertPayslip = `-- name: InsertPayslip :exec
+INSERT INTO payslips (batch_number, address, amount, status) VALUES (?, ?, ?, ?)
 `
 
-type InsertPayoutParams struct {
-	EpochID       int64  `json:"epoch_id"`
-	StakerAddress string `json:"staker_address"`
-	PayoutTxHash  string `json:"payout_tx_hash"`
+type InsertPayslipParams struct {
+	BatchNumber int64  `json:"batch_number"`
+	Address     string `json:"address"`
+	Amount      int64  `json:"amount"`
+	Status      string `json:"status"`
 }
 
-// Insert a new payout
-func (q *Queries) InsertPayout(ctx context.Context, arg InsertPayoutParams) error {
-	_, err := q.db.ExecContext(ctx, InsertPayout, arg.EpochID, arg.StakerAddress, arg.PayoutTxHash)
+func (q *Queries) InsertPayslip(ctx context.Context, arg InsertPayslipParams) error {
+	_, err := q.db.ExecContext(ctx, InsertPayslip,
+		arg.BatchNumber,
+		arg.Address,
+		arg.Amount,
+		arg.Status,
+	)
 	return err
 }
 
 const InsertPolicyConstants = `-- name: InsertPolicyConstants :exec
 INSERT INTO policy_constants (
-        staking_contract_address,
-        coinbase_address,
-        transaction_validity_window,
-        max_size_micro_body,
-        version,
-        slots,
-        blocks_per_batch,
-        batches_per_epoch,
-        blocks_per_epoch,
-        validator_deposit,
-        minimum_stake,
-        total_supply,
-        block_separation_time,
-        jail_epochs,
-        genesis_block_number
-    )
-VALUES (
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?
-    )
+    staking_contract_address, transaction_validity_window, blocks_per_batch,
+    batches_per_epoch, blocks_per_epoch, validator_deposit, minimum_stake,
+    total_supply, block_separation_time, jail_epochs, genesis_block_number
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertPolicyConstantsParams struct {
 	StakingContractAddress    string `json:"staking_contract_address"`
-	CoinbaseAddress           string `json:"coinbase_address"`
 	TransactionValidityWindow int64  `json:"transaction_validity_window"`
-	MaxSizeMicroBody          int64  `json:"max_size_micro_body"`
-	Version                   int64  `json:"version"`
-	Slots                     int64  `json:"slots"`
 	BlocksPerBatch            int64  `json:"blocks_per_batch"`
 	BatchesPerEpoch           int64  `json:"batches_per_epoch"`
 	BlocksPerEpoch            int64  `json:"blocks_per_epoch"`
@@ -260,11 +316,7 @@ type InsertPolicyConstantsParams struct {
 func (q *Queries) InsertPolicyConstants(ctx context.Context, arg InsertPolicyConstantsParams) error {
 	_, err := q.db.ExecContext(ctx, InsertPolicyConstants,
 		arg.StakingContractAddress,
-		arg.CoinbaseAddress,
 		arg.TransactionValidityWindow,
-		arg.MaxSizeMicroBody,
-		arg.Version,
-		arg.Slots,
 		arg.BlocksPerBatch,
 		arg.BatchesPerEpoch,
 		arg.BlocksPerEpoch,
@@ -278,68 +330,44 @@ func (q *Queries) InsertPolicyConstants(ctx context.Context, arg InsertPolicyCon
 	return err
 }
 
-const InsertPoolPayout = `-- name: InsertPoolPayout :exec
-INSERT INTO pool_payouts (
-        epoch_id,
-        amount,
-        fee_percentage,
-        fee_amount,
-        fee_tx_hash
-    )
+const InsertReward = `-- name: InsertReward :exec
+INSERT INTO rewards (batch_number, epoch_number, amount, pool_fee, num_stakers)
 VALUES (?, ?, ?, ?, ?)
 `
 
-type InsertPoolPayoutParams struct {
-	EpochID       int64   `json:"epoch_id"`
-	Amount        float64 `json:"amount"`
-	FeePercentage float64 `json:"fee_percentage"`
-	FeeAmount     float64 `json:"fee_amount"`
-	FeeTxHash     string  `json:"fee_tx_hash"`
+type InsertRewardParams struct {
+	BatchNumber int64 `json:"batch_number"`
+	EpochNumber int64 `json:"epoch_number"`
+	Amount      int64 `json:"amount"`
+	PoolFee     int64 `json:"pool_fee"`
+	NumStakers  int64 `json:"num_stakers"`
 }
 
-// Insert a pool payout
-func (q *Queries) InsertPoolPayout(ctx context.Context, arg InsertPoolPayoutParams) error {
-	_, err := q.db.ExecContext(ctx, InsertPoolPayout,
-		arg.EpochID,
+func (q *Queries) InsertReward(ctx context.Context, arg InsertRewardParams) error {
+	_, err := q.db.ExecContext(ctx, InsertReward,
+		arg.BatchNumber,
+		arg.EpochNumber,
 		arg.Amount,
-		arg.FeePercentage,
-		arg.FeeAmount,
-		arg.FeeTxHash,
+		arg.PoolFee,
+		arg.NumStakers,
 	)
 	return err
 }
 
 const InsertStaker = `-- name: InsertStaker :exec
-INSERT INTO stakers (epoch_id, address, stake)
-VALUES (?, ?, ?)
+INSERT INTO stakers (epoch_number, address, stake, percentage) VALUES (?, ?, ?, ?)
 `
 
 type InsertStakerParams struct {
-	EpochID int64  `json:"epoch_id"`
-	Address string `json:"address"`
-	Stake   int64  `json:"stake"`
+	EpochNumber int64   `json:"epoch_number"`
+	Address     string  `json:"address"`
+	Stake       int64   `json:"stake"`
+	Percentage  float64 `json:"percentage"`
 }
 
 func (q *Queries) InsertStaker(ctx context.Context, arg InsertStakerParams) error {
-	_, err := q.db.ExecContext(ctx, InsertStaker, arg.EpochID, arg.Address, arg.Stake)
-	return err
-}
-
-const InsertStakerWithPercentage = `-- name: InsertStakerWithPercentage :exec
-INSERT INTO stakers (epoch_id, address, stake, percentage)
-VALUES (?, ?, ?, ?)
-`
-
-type InsertStakerWithPercentageParams struct {
-	EpochID    int64   `json:"epoch_id"`
-	Address    string  `json:"address"`
-	Stake      int64   `json:"stake"`
-	Percentage float64 `json:"percentage"`
-}
-
-func (q *Queries) InsertStakerWithPercentage(ctx context.Context, arg InsertStakerWithPercentageParams) error {
-	_, err := q.db.ExecContext(ctx, InsertStakerWithPercentage,
-		arg.EpochID,
+	_, err := q.db.ExecContext(ctx, InsertStaker,
+		arg.EpochNumber,
 		arg.Address,
 		arg.Stake,
 		arg.Percentage,
@@ -347,41 +375,125 @@ func (q *Queries) InsertStakerWithPercentage(ctx context.Context, arg InsertStak
 	return err
 }
 
-const MarkEpochAsPaid = `-- name: MarkEpochAsPaid :exec
-UPDATE epochs
-SET paid_out = 1
-WHERE id = ?
+const InsertTransaction = `-- name: InsertTransaction :exec
+INSERT INTO transactions (hash, address, amount, status) VALUES (?, ?, ?, ?)
 `
 
-// Mark an epoch as paid
-func (q *Queries) MarkEpochAsPaid(ctx context.Context, id int64) error {
-	_, err := q.db.ExecContext(ctx, MarkEpochAsPaid, id)
+type InsertTransactionParams struct {
+	Hash    string `json:"hash"`
+	Address string `json:"address"`
+	Amount  int64  `json:"amount"`
+	Status  string `json:"status"`
+}
+
+func (q *Queries) InsertTransaction(ctx context.Context, arg InsertTransactionParams) error {
+	_, err := q.db.ExecContext(ctx, InsertTransaction,
+		arg.Hash,
+		arg.Address,
+		arg.Amount,
+		arg.Status,
+	)
 	return err
 }
 
-const UpdateEpochBalance = `-- name: UpdateEpochBalance :exec
-UPDATE epochs
-SET validator_balance = ?
-WHERE epoch_number = ?
+const InsertValidatorAction = `-- name: InsertValidatorAction :exec
+INSERT INTO validator_actions (action, tx_hash, outcome) VALUES (?, ?, ?)
 `
 
-type UpdateEpochBalanceParams struct {
-	ValidatorBalance int64 `json:"validator_balance"`
-	EpochNumber      int64 `json:"epoch_number"`
+type InsertValidatorActionParams struct {
+	Action  string         `json:"action"`
+	TxHash  sql.NullString `json:"tx_hash"`
+	Outcome string         `json:"outcome"`
 }
 
-func (q *Queries) UpdateEpochBalance(ctx context.Context, arg UpdateEpochBalanceParams) error {
-	_, err := q.db.ExecContext(ctx, UpdateEpochBalance, arg.ValidatorBalance, arg.EpochNumber)
+func (q *Queries) InsertValidatorAction(ctx context.Context, arg InsertValidatorActionParams) error {
+	_, err := q.db.ExecContext(ctx, InsertValidatorAction, arg.Action, arg.TxHash, arg.Outcome)
 	return err
 }
 
-const UpdateLastProcessedCheckpoint = `-- name: UpdateLastProcessedCheckpoint :exec
-INSERT INTO last_processed_checkpoint (block_number)
-VALUES (?)
-ON CONFLICT (id) DO UPDATE SET block_number = EXCLUDED.block_number
+const MarkPayslipsOutForPayment = `-- name: MarkPayslipsOutForPayment :exec
+UPDATE payslips SET status = 'out_for_payment' WHERE address = ? AND status = 'pending'
 `
 
-func (q *Queries) UpdateLastProcessedCheckpoint(ctx context.Context, blockNumber int64) error {
-	_, err := q.db.ExecContext(ctx, UpdateLastProcessedCheckpoint, blockNumber)
+func (q *Queries) MarkPayslipsOutForPayment(ctx context.Context, address string) error {
+	_, err := q.db.ExecContext(ctx, MarkPayslipsOutForPayment, address)
+	return err
+}
+
+const ResetPayslipsToPending = `-- name: ResetPayslipsToPending :exec
+UPDATE payslips SET tx_hash = NULL, status = 'pending' WHERE tx_hash = ?
+`
+
+func (q *Queries) ResetPayslipsToPending(ctx context.Context, txHash sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, ResetPayslipsToPending, txHash)
+	return err
+}
+
+const RewardExists = `-- name: RewardExists :one
+SELECT EXISTS(SELECT 1 FROM rewards WHERE batch_number = ?)
+`
+
+func (q *Queries) RewardExists(ctx context.Context, batchNumber int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, RewardExists, batchNumber)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const SetEpochStatus = `-- name: SetEpochStatus :exec
+UPDATE epochs SET status = ? WHERE number = ?
+`
+
+type SetEpochStatusParams struct {
+	Status string `json:"status"`
+	Number int64  `json:"number"`
+}
+
+func (q *Queries) SetEpochStatus(ctx context.Context, arg SetEpochStatusParams) error {
+	_, err := q.db.ExecContext(ctx, SetEpochStatus, arg.Status, arg.Number)
+	return err
+}
+
+const SetPayslipsTransaction = `-- name: SetPayslipsTransaction :exec
+UPDATE payslips SET tx_hash = ?, status = 'awaiting_confirmation'
+WHERE address = ? AND status = 'out_for_payment'
+`
+
+type SetPayslipsTransactionParams struct {
+	TxHash  sql.NullString `json:"tx_hash"`
+	Address string         `json:"address"`
+}
+
+func (q *Queries) SetPayslipsTransaction(ctx context.Context, arg SetPayslipsTransactionParams) error {
+	_, err := q.db.ExecContext(ctx, SetPayslipsTransaction, arg.TxHash, arg.Address)
+	return err
+}
+
+const SetTransactionStatus = `-- name: SetTransactionStatus :exec
+UPDATE transactions SET status = ? WHERE hash = ?
+`
+
+type SetTransactionStatusParams struct {
+	Status string `json:"status"`
+	Hash   string `json:"hash"`
+}
+
+func (q *Queries) SetTransactionStatus(ctx context.Context, arg SetTransactionStatusParams) error {
+	_, err := q.db.ExecContext(ctx, SetTransactionStatus, arg.Status, arg.Hash)
+	return err
+}
+
+const UpsertCursor = `-- name: UpsertCursor :exec
+INSERT INTO cursor (name, height) VALUES (?, ?)
+ON CONFLICT (name) DO UPDATE SET height = excluded.height
+`
+
+type UpsertCursorParams struct {
+	Name   string `json:"name"`
+	Height int64  `json:"height"`
+}
+
+func (q *Queries) UpsertCursor(ctx context.Context, arg UpsertCursorParams) error {
+	_, err := q.db.ExecContext(ctx, UpsertCursor, arg.Name, arg.Height)
 	return err
 }

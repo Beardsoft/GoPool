@@ -8,34 +8,32 @@ import (
 	"database/sql"
 )
 
+type Cursor struct {
+	Name   string `json:"name"`
+	Height int64  `json:"height"`
+}
+
 type Epoch struct {
-	ID               int64 `json:"id"`
-	EpochNumber      int64 `json:"epoch_number"`
-	ValidatorBalance int64 `json:"validator_balance"`
-	PaidOut          bool  `json:"paid_out"`
+	Number     int64        `json:"number"`
+	NumStakers int64        `json:"num_stakers"`
+	Balance    int64        `json:"balance"`
+	Status     string       `json:"status"`
+	CreatedAt  sql.NullTime `json:"created_at"`
 }
 
-type LastProcessedCheckpoint struct {
-	ID          int64 `json:"id"`
-	BlockNumber int64 `json:"block_number"`
-}
-
-type Payout struct {
-	ID              int64  `json:"id"`
-	EpochID         int64  `json:"epoch_id"`
-	StakerAddress   string `json:"staker_address"`
-	PayoutTxHash    string `json:"payout_tx_hash"`
-	PayoutCompleted bool   `json:"payout_completed"`
+type Payslip struct {
+	ID          int64          `json:"id"`
+	BatchNumber int64          `json:"batch_number"`
+	Address     string         `json:"address"`
+	Amount      int64          `json:"amount"`
+	Status      string         `json:"status"`
+	TxHash      sql.NullString `json:"tx_hash"`
 }
 
 type PolicyConstant struct {
 	ID                        int64        `json:"id"`
 	StakingContractAddress    string       `json:"staking_contract_address"`
-	CoinbaseAddress           string       `json:"coinbase_address"`
 	TransactionValidityWindow int64        `json:"transaction_validity_window"`
-	MaxSizeMicroBody          int64        `json:"max_size_micro_body"`
-	Version                   int64        `json:"version"`
-	Slots                     int64        `json:"slots"`
 	BlocksPerBatch            int64        `json:"blocks_per_batch"`
 	BatchesPerEpoch           int64        `json:"batches_per_epoch"`
 	BlocksPerEpoch            int64        `json:"blocks_per_epoch"`
@@ -48,19 +46,34 @@ type PolicyConstant struct {
 	CreatedAt                 sql.NullTime `json:"created_at"`
 }
 
-type PoolPayout struct {
-	ID            int64   `json:"id"`
-	EpochID       int64   `json:"epoch_id"`
-	Amount        float64 `json:"amount"`
-	FeePercentage float64 `json:"fee_percentage"`
-	FeeAmount     float64 `json:"fee_amount"`
-	FeeTxHash     string  `json:"fee_tx_hash"`
+type Reward struct {
+	BatchNumber int64        `json:"batch_number"`
+	EpochNumber int64        `json:"epoch_number"`
+	Amount      int64        `json:"amount"`
+	PoolFee     int64        `json:"pool_fee"`
+	NumStakers  int64        `json:"num_stakers"`
+	CreatedAt   sql.NullTime `json:"created_at"`
 }
 
 type Staker struct {
-	ID         int64   `json:"id"`
-	EpochID    int64   `json:"epoch_id"`
-	Address    string  `json:"address"`
-	Stake      int64   `json:"stake"`
-	Percentage float64 `json:"percentage"`
+	EpochNumber int64   `json:"epoch_number"`
+	Address     string  `json:"address"`
+	Stake       int64   `json:"stake"`
+	Percentage  float64 `json:"percentage"`
+}
+
+type Transaction struct {
+	Hash        string       `json:"hash"`
+	Address     string       `json:"address"`
+	Amount      int64        `json:"amount"`
+	Status      string       `json:"status"`
+	SubmittedAt sql.NullTime `json:"submitted_at"`
+}
+
+type ValidatorAction struct {
+	ID          int64          `json:"id"`
+	Action      string         `json:"action"`
+	AttemptedAt sql.NullTime   `json:"attempted_at"`
+	TxHash      sql.NullString `json:"tx_hash"`
+	Outcome     string         `json:"outcome"`
 }
