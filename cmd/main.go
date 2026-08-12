@@ -1,49 +1,84 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	nimiq "github.com/NimMiniApps/nimiq-go"
+
+	"github.com/Beardsoft/GoPool/internal/chain"
 	"github.com/Beardsoft/GoPool/internal/config"
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
 	"github.com/Beardsoft/GoPool/internal/pool"
+
 	"go.uber.org/zap"
 )
 
 func main() {
-
 	logger.InitLogger()
-	defer logger.Sync() // Ensure all logs are flushed before exiting
+	defer logger.Sync()
 
-	// Load the config
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		logger.Logger.Fatal("Failed to load config: %v", zap.Error(err))
+		logger.Logger.Fatal("failed to load config", zap.Error(err))
 	}
 
-	// Initialize the database
+	c, err := chain.New(cfg)
+	if err != nil {
+		logger.Logger.Fatal("failed to set up chain client", zap.Error(err))
+	}
+
 	sqlDB, err := db.InitDB("pool.db")
 	if err != nil {
-		logger.Logger.Fatal("Failed to initialize the database: %v", zap.Error(err))
+		logger.Logger.Fatal("failed to initialize the database", zap.Error(err))
 	}
 	defer sqlDB.Close()
-
-	// Create a new Queries instance using the sqlc-generated code
 	queries := db.New(sqlDB)
 
-	// Store PolicyConstrains
-	err = pool.StorePolicyConstants(cfg, queries)
-	if err != nil {
-		logger.Logger.Fatal("Failed to store policy constraints: %v", zap.Error(err))
+	manager := pool.NewManager(c, queries, cfg)
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	if len(os.Args) > 1 && os.Args[1] == "validator" {
+		if err := runValidatorCLI(ctx, manager, os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
 	}
 
-	// Optionally, use context for queries
-	// Ensure the pool address is set up
-	poolAddress, err := pool.EnsurePoolAddress(cfg)
-	if err != nil {
-		logger.Logger.Fatal("Failed to ensure pool address: %v", zap.Error(err))
+	if err := manager.Run(ctx); err != nil {
+		logger.Logger.Error("pool manager stopped", zap.Error(err))
 	}
-	logger.Logger.Info("Pool Address ready: %s", zap.String("pool_address", poolAddress))
+}
 
-	// Start the pool manager and process epochs continuously
-	manager := pool.NewPoolManager(sqlDB, queries, cfg) // Pass `queries` to the manager
-	manager.MainLoop()
+func runValidatorCLI(ctx context.Context, m *pool.Manager, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: gopool validator deactivate|retire|delete <recipient> <value-luna>")
+	}
+	switch args[0] {
+	case "deactivate":
+		return m.Deactivate(ctx)
+	case "retire":
+		return m.Retire(ctx)
+	case "delete":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: gopool validator delete <recipient> <value-luna>")
+		}
+		recipient, err := nimiq.ParseAddress(args[1])
+		if err != nil {
+			return err
+		}
+		var value uint64
+		if _, err := fmt.Sscanf(args[2], "%d", &value); err != nil {
+			return fmt.Errorf("invalid value %q: %w", args[2], err)
+		}
+		return m.Delete(ctx, recipient, nimiq.Luna(value))
+	}
+	return fmt.Errorf("unknown validator action %q", args[0])
 }
