@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	nimiq "github.com/NimMiniApps/nimiq-go"
+	"github.com/NimMiniApps/nimiq-go/rpc"
 
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
@@ -146,4 +147,18 @@ func (m *Manager) Delete(ctx context.Context, recipient nimiq.Address, value nim
 	}
 	fmt.Printf("delete transaction submitted: %s\n", hash)
 	return nil
+}
+
+// validatorLiveState maps GetValidator fields to the 1/0 gauge enum.
+// Inactive/jailed tests match handleElection.
+func validatorLiveState(v *rpc.Validator, height uint32) string {
+	switch {
+	case v.Retired:
+		return "retired"
+	case v.InactivityFlag != nil && *v.InactivityFlag > height:
+		return "inactive"
+	case v.JailedFrom != nil && *v.JailedFrom > height:
+		return "jailed"
+	}
+	return "active"
 }

@@ -19,6 +19,13 @@ const (
 	payoutDelegate
 )
 
+func payoutKindLabel(k payoutKind) string {
+	if k == payoutDelegate {
+		return "delegate"
+	}
+	return "transfer"
+}
+
 // feePayoutMultiple is how many times the tx fee the pending amount must
 // cover before we send. The pool pays the fee on top; this keeps that cost
 // from eating the payout.

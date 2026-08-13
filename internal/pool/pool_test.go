@@ -2,6 +2,7 @@ package pool
 
 import (
 	"testing"
+	"time"
 
 	"github.com/NimMiniApps/nimiq-go/rpc"
 )
@@ -54,5 +55,18 @@ func TestEpochBatchAtMatchesNode(t *testing.T) {
 		if got := batchAt(p, c.height); got != c.batch {
 			t.Errorf("batchAt(%d) = %d, want %d", c.height, got, c.batch)
 		}
+	}
+}
+
+func TestShouldRefreshGauges(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	if !shouldRefreshGauges(time.Time{}, now) {
+		t.Error("zero last must refresh")
+	}
+	if shouldRefreshGauges(now.Add(-29*time.Second), now) {
+		t.Error("29s is too soon")
+	}
+	if !shouldRefreshGauges(now.Add(-30*time.Second), now) {
+		t.Error("30s must refresh")
 	}
 }

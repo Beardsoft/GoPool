@@ -24,6 +24,8 @@ const (
 
 const cursorName = "last_processed_height"
 
+const chainGaugeInterval = 30 * time.Second
+
 // Manager is the pool daemon: it replays chain heights and runs payouts.
 type Manager struct {
 	chain   *chain.Chain
@@ -71,6 +73,10 @@ func batchAt(p *rpc.Policy, height uint32) uint32 {
 
 func divCeil(n, d uint32) uint32 {
 	return (n + d - 1) / d
+}
+
+func shouldRefreshGauges(last, now time.Time) bool {
+	return last.IsZero() || now.Sub(last) >= chainGaugeInterval
 }
 
 // Run is the daemon's main loop: replay every height between the last
