@@ -18,6 +18,7 @@ type Config struct {
 	PayoutMode        string  `mapstructure:"payout_mode"`
 	MinPayoutLuna     uint64  `mapstructure:"min_payout_luna"`
 	AutoReactivate    bool    `mapstructure:"auto_reactivate"`
+	MetricsAddr       string  `mapstructure:"metrics_addr"`
 }
 
 // Validate reports whether payout_mode and pool_fee_percentage are in range.
@@ -38,8 +39,9 @@ func LoadConfig() (*Config, error) {
 	viper.AddConfigPath(".")
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("POOL")
-	viper.SetDefault("payout_mode", "delegate")
-	viper.SetDefault("auto_reactivate", true)
+viper.SetDefault("payout_mode", "delegate")
+viper.SetDefault("auto_reactivate", true)
+viper.SetDefault("metrics_addr", ":9100")
 
 	if err := viper.ReadInConfig(); err != nil {
 		logger.Logger.Error("Error reading config file", zap.Error(err))
