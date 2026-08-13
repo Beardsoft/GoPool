@@ -19,6 +19,21 @@ const (
 	payoutDelegate
 )
 
+// feePayoutMultiple is how many times the tx fee the pending amount must
+// cover before we send. The pool pays the fee on top; this keeps that cost
+// from eating the payout.
+const feePayoutMultiple = 10
+
+// payoutWorthSending reports whether amount is large enough to justify
+// paying fee. A zero fee (current Nimiq default) always passes — the SQL
+// min_payout_luna gate has already run.
+func payoutWorthSending(amount, fee nimiq.Luna) bool {
+	if fee == 0 {
+		return true
+	}
+	return amount >= fee*feePayoutMultiple
+}
+
 // choosePayoutTx picks the transaction shape for a payout. "delegate" mode
 // restakes (compounding) only while the staker is still delegated to this
 // validator; if they undelegated, it falls back to a plain transfer instead
