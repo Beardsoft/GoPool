@@ -68,10 +68,6 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 		}
 		amount := nimiq.Luna(uint64(row.Total))
 
-		if err := m.queries.MarkPayslipsOutForPayment(ctx, row.Address); err != nil {
-			return err
-		}
-
 		kind := payoutTransfer
 		if m.cfg.PayoutMode == "delegate" {
 			staker, err := m.chain.RPC.GetStaker(ctx, addr)
@@ -79,8 +75,34 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 			kind = choosePayoutTx(m.cfg.PayoutMode, stillDelegated)
 		}
 
-		hash, err := m.submitPayout(ctx, addr, amount, kind, head)
+		tx, err := m.buildPayoutTx(addr, amount, 0, kind, head)
 		if err != nil {
+			logger.Logger.Error("building payout tx", zap.String("address", row.Address), zap.Error(err))
+			continue
+		}
+		fee, err := m.chain.RPC.EstimateFee(ctx, tx)
+		if err != nil {
+			logger.Logger.Error("estimating payout fee", zap.String("address", row.Address), zap.Error(err))
+			continue
+		}
+		if !payoutWorthSending(amount, fee) {
+			logger.Logger.Debug("holding payout until amount covers 10× fee",
+				zap.String("staker", row.Address),
+				zap.Uint64("amount", uint64(amount)),
+				zap.Uint64("fee", uint64(fee)))
+			continue
+		}
+		tx.Fee = fee
+
+		if err := m.queries.MarkPayslipsOutForPayment(ctx, row.Address); err != nil {
+			return err
+		}
+
+		hash, err := m.signAndSend(ctx, tx, kind)
+		if err != nil {
+			if resetErr := m.queries.ResetPayslipsOutForPayment(ctx, row.Address); resetErr != nil {
+				logger.Logger.Error("resetting payslips after failed submit", zap.String("address", row.Address), zap.Error(resetErr))
+			}
 			logger.Logger.Error("payout submission failed, will retry next tick", zap.String("address", row.Address), zap.Error(err))
 			continue
 		}
@@ -101,23 +123,20 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 	return nil
 }
 
-func (m *Manager) submitPayout(ctx context.Context, recipient nimiq.Address, amount nimiq.Luna, kind payoutKind, head uint32) (string, error) {
+func (m *Manager) buildPayoutTx(recipient nimiq.Address, amount, fee nimiq.Luna, kind payoutKind, head uint32) (*nimiq.Transaction, error) {
 	sender := m.chain.Address()
 	if kind == payoutDelegate {
-		tx, err := nimiq.NewAddStakeTransaction(sender, recipient, amount, 0, head, m.chain.Network)
-		if err != nil {
-			return "", err
-		}
+		return nimiq.NewAddStakeTransaction(sender, recipient, amount, fee, head, m.chain.Network)
+	}
+	return nimiq.NewBasicTransaction(sender, recipient, amount, fee, head, m.chain.Network)
+}
+
+func (m *Manager) signAndSend(ctx context.Context, tx *nimiq.Transaction, kind payoutKind) (string, error) {
+	if kind == payoutDelegate {
 		if err := nimiq.SignStakingTransaction(ctx, tx, m.chain.Signer, m.chain.Signer); err != nil {
 			return "", err
 		}
-		return m.chain.RPC.SendTransaction(ctx, tx)
-	}
-	tx, err := nimiq.NewBasicTransaction(sender, recipient, amount, 0, head, m.chain.Network)
-	if err != nil {
-		return "", err
-	}
-	if err := nimiq.SignTransaction(ctx, m.chain.Signer, tx); err != nil {
+	} else if err := nimiq.SignTransaction(ctx, m.chain.Signer, tx); err != nil {
 		return "", err
 	}
 	return m.chain.RPC.SendTransaction(ctx, tx)
