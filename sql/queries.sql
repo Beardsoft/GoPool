@@ -98,3 +98,16 @@ INSERT INTO validator_actions (action, tx_hash, outcome) VALUES (?, ?, ?);
 
 -- name: HasPendingValidatorAction :one
 SELECT EXISTS(SELECT 1 FROM validator_actions WHERE action = ? AND outcome = 'pending');
+
+-- name: GetPayslipStats :one
+SELECT
+    CAST(COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS INTEGER) AS pending_count,
+    CAST(COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0) AS INTEGER) AS pending_luna,
+    CAST(COALESCE(SUM(CASE WHEN status IN ('out_for_payment', 'awaiting_confirmation') THEN 1 ELSE 0 END), 0) AS INTEGER) AS stuck_count
+FROM payslips;
+
+-- name: GetCurrentEpochSnapshot :one
+SELECT num_stakers, balance FROM epochs
+WHERE status = 'in_progress'
+ORDER BY number DESC
+LIMIT 1;
