@@ -52,6 +52,18 @@ func (m *Manager) runAutoReactivate(ctx context.Context) error {
 		return nil
 	}
 
+	// Operator deactivate/retire (requested or pending) must win: both
+	// steps run in the same tick, and a reactivate would undo them.
+	for _, action := range []string{"deactivate", "retire"} {
+		outstanding, err := m.queries.HasOutstandingValidatorAction(ctx, action)
+		if err != nil {
+			return err
+		}
+		if outstanding != 0 {
+			return nil
+		}
+	}
+
 	tx, err := nimiq.NewReactivateValidatorTransaction(addr, addr, 0, head, m.chain.Network)
 	if err != nil {
 		return err
@@ -153,7 +165,14 @@ func (m *Manager) ProcessRequestedActions(ctx context.Context) error {
 			continue
 		}
 
+		// Leave the row as "requested" on shutdown/timeout so a restart retries.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		hash, err := fn(m, ctx)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		outcome := "pending"
 		if err != nil {
 			outcome = "failed"
