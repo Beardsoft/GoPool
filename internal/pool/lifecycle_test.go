@@ -21,3 +21,21 @@ func TestShouldReactivate(t *testing.T) {
 		}
 	}
 }
+
+func TestActionForRequest(t *testing.T) {
+	cases := []struct {
+		action  string
+		wantErr bool
+	}{
+		{"deactivate", false},
+		{"retire", false},
+		{"delete", true}, // delete needs a recipient/value the poll loop can't supply — operator-only via CLI
+		{"bogus", true},
+	}
+	for _, c := range cases {
+		_, err := actionForRequest(c.action)
+		if (err != nil) != c.wantErr {
+			t.Errorf("actionForRequest(%q) error = %v, wantErr %v", c.action, err, c.wantErr)
+		}
+	}
+}

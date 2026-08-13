@@ -116,6 +116,24 @@ func (q *Queries) GetEligibleForPayout(ctx context.Context, amount int64) ([]Get
 	return items, nil
 }
 
+const GetEpochByNumber = `-- name: GetEpochByNumber :one
+SELECT number, num_stakers, balance, status FROM epochs WHERE number = ?
+`
+
+type GetEpochByNumberRow struct {
+	Number     int64  `json:"number"`
+	NumStakers int64  `json:"num_stakers"`
+	Balance    int64  `json:"balance"`
+	Status     string `json:"status"`
+}
+
+func (q *Queries) GetEpochByNumber(ctx context.Context, number int64) (GetEpochByNumberRow, error) {
+	row := q.db.QueryRowContext(ctx, GetEpochByNumber, number)
+	var i GetEpochByNumberRow
+	err := row.Scan(&i.Number, &i.NumStakers, &i.Balance, &i.Status)
+	return i, err
+}
+
 const GetEpochStatus = `-- name: GetEpochStatus :one
 SELECT status, num_stakers FROM epochs WHERE number = ?
 `
@@ -129,6 +147,24 @@ func (q *Queries) GetEpochStatus(ctx context.Context, number int64) (GetEpochSta
 	row := q.db.QueryRowContext(ctx, GetEpochStatus, number)
 	var i GetEpochStatusRow
 	err := row.Scan(&i.Status, &i.NumStakers)
+	return i, err
+}
+
+const GetLatestEpoch = `-- name: GetLatestEpoch :one
+SELECT number, num_stakers, balance, status FROM epochs ORDER BY number DESC LIMIT 1
+`
+
+type GetLatestEpochRow struct {
+	Number     int64  `json:"number"`
+	NumStakers int64  `json:"num_stakers"`
+	Balance    int64  `json:"balance"`
+	Status     string `json:"status"`
+}
+
+func (q *Queries) GetLatestEpoch(ctx context.Context) (GetLatestEpochRow, error) {
+	row := q.db.QueryRowContext(ctx, GetLatestEpoch)
+	var i GetLatestEpochRow
+	err := row.Scan(&i.Number, &i.NumStakers, &i.Balance, &i.Status)
 	return i, err
 }
 
@@ -172,6 +208,40 @@ func (q *Queries) GetLatestPolicyConstants(ctx context.Context) (GetLatestPolicy
 	return i, err
 }
 
+const GetPayslipsForAddress = `-- name: GetPayslipsForAddress :many
+SELECT batch_number, amount, status, tx_hash FROM payslips WHERE address = ? ORDER BY batch_number DESC
+`
+
+type GetPayslipsForAddressRow struct {
+	BatchNumber int64          `json:"batch_number"`
+	Amount      int64          `json:"amount"`
+	Status      string         `json:"status"`
+	TxHash      sql.NullString `json:"tx_hash"`
+}
+
+func (q *Queries) GetPayslipsForAddress(ctx context.Context, address string) ([]GetPayslipsForAddressRow, error) {
+	rows, err := q.db.QueryContext(ctx, GetPayslipsForAddress, address)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetPayslipsForAddressRow{}
+	for rows.Next() {
+		var i GetPayslipsForAddressRow
+		if err := rows.Scan(&i.BatchNumber, &i.Amount, &i.Status, &i.TxHash); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const GetPendingTransactions = `-- name: GetPendingTransactions :many
 SELECT hash, address, amount FROM transactions WHERE status = 'awaiting_confirmation'
 `
@@ -205,6 +275,55 @@ func (q *Queries) GetPendingTransactions(ctx context.Context) ([]GetPendingTrans
 	return items, nil
 }
 
+const GetRequestedValidatorActions = `-- name: GetRequestedValidatorActions :many
+SELECT id, action FROM validator_actions WHERE outcome = 'requested' ORDER BY id
+`
+
+type GetRequestedValidatorActionsRow struct {
+	ID     int64  `json:"id"`
+	Action string `json:"action"`
+}
+
+func (q *Queries) GetRequestedValidatorActions(ctx context.Context) ([]GetRequestedValidatorActionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, GetRequestedValidatorActions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetRequestedValidatorActionsRow{}
+	for rows.Next() {
+		var i GetRequestedValidatorActionsRow
+		if err := rows.Scan(&i.ID, &i.Action); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const GetStakerLatest = `-- name: GetStakerLatest :one
+SELECT epoch_number, stake, percentage FROM stakers WHERE address = ? ORDER BY epoch_number DESC LIMIT 1
+`
+
+type GetStakerLatestRow struct {
+	EpochNumber int64   `json:"epoch_number"`
+	Stake       int64   `json:"stake"`
+	Percentage  float64 `json:"percentage"`
+}
+
+func (q *Queries) GetStakerLatest(ctx context.Context, address string) (GetStakerLatestRow, error) {
+	row := q.db.QueryRowContext(ctx, GetStakerLatest, address)
+	var i GetStakerLatestRow
+	err := row.Scan(&i.EpochNumber, &i.Stake, &i.Percentage)
+	return i, err
+}
+
 const GetStakersForEpoch = `-- name: GetStakersForEpoch :many
 SELECT address, stake, percentage FROM stakers WHERE epoch_number = ?
 `
@@ -236,6 +355,92 @@ func (q *Queries) GetStakersForEpoch(ctx context.Context, epochNumber int64) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const GetStuckPayslips = `-- name: GetStuckPayslips :many
+SELECT p.id, p.batch_number, p.address, p.amount, p.status, p.tx_hash, t.submitted_at
+FROM payslips p
+LEFT JOIN transactions t ON t.hash = p.tx_hash
+WHERE p.status IN ('out_for_payment', 'awaiting_confirmation')
+ORDER BY p.id
+`
+
+type GetStuckPayslipsRow struct {
+	ID          int64          `json:"id"`
+	BatchNumber int64          `json:"batch_number"`
+	Address     string         `json:"address"`
+	Amount      int64          `json:"amount"`
+	Status      string         `json:"status"`
+	TxHash      sql.NullString `json:"tx_hash"`
+	SubmittedAt sql.NullTime   `json:"submitted_at"`
+}
+
+func (q *Queries) GetStuckPayslips(ctx context.Context) ([]GetStuckPayslipsRow, error) {
+	rows, err := q.db.QueryContext(ctx, GetStuckPayslips)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetStuckPayslipsRow{}
+	for rows.Next() {
+		var i GetStuckPayslipsRow
+		if err := rows.Scan(&i.ID, &i.BatchNumber, &i.Address, &i.Amount, &i.Status, &i.TxHash, &i.SubmittedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const GetTransactionsForAddress = `-- name: GetTransactionsForAddress :many
+SELECT hash, amount, status, submitted_at FROM transactions WHERE address = ? ORDER BY submitted_at DESC
+`
+
+type GetTransactionsForAddressRow struct {
+	Hash        string       `json:"hash"`
+	Amount      int64        `json:"amount"`
+	Status      string       `json:"status"`
+	SubmittedAt sql.NullTime `json:"submitted_at"`
+}
+
+func (q *Queries) GetTransactionsForAddress(ctx context.Context, address string) ([]GetTransactionsForAddressRow, error) {
+	rows, err := q.db.QueryContext(ctx, GetTransactionsForAddress, address)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTransactionsForAddressRow{}
+	for rows.Next() {
+		var i GetTransactionsForAddressRow
+		if err := rows.Scan(&i.Hash, &i.Amount, &i.Status, &i.SubmittedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const HasOutstandingValidatorAction = `-- name: HasOutstandingValidatorAction :one
+SELECT EXISTS(SELECT 1 FROM validator_actions WHERE action = ? AND outcome IN ('requested', 'pending'))
+`
+
+func (q *Queries) HasOutstandingValidatorAction(ctx context.Context, action string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, HasOutstandingValidatorAction, action)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const HasPendingValidatorAction = `-- name: HasPendingValidatorAction :one
@@ -411,6 +616,40 @@ func (q *Queries) InsertValidatorAction(ctx context.Context, arg InsertValidator
 	return err
 }
 
+const ListEpochs = `-- name: ListEpochs :many
+SELECT number, num_stakers, balance, status FROM epochs ORDER BY number DESC
+`
+
+type ListEpochsRow struct {
+	Number     int64  `json:"number"`
+	NumStakers int64  `json:"num_stakers"`
+	Balance    int64  `json:"balance"`
+	Status     string `json:"status"`
+}
+
+func (q *Queries) ListEpochs(ctx context.Context) ([]ListEpochsRow, error) {
+	rows, err := q.db.QueryContext(ctx, ListEpochs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEpochsRow{}
+	for rows.Next() {
+		var i ListEpochsRow
+		if err := rows.Scan(&i.Number, &i.NumStakers, &i.Balance, &i.Status); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const MarkPayslipsOutForPayment = `-- name: MarkPayslipsOutForPayment :exec
 UPDATE payslips SET status = 'out_for_payment' WHERE address = ? AND status = 'pending'
 `
@@ -490,6 +729,43 @@ type SetTransactionStatusParams struct {
 func (q *Queries) SetTransactionStatus(ctx context.Context, arg SetTransactionStatusParams) error {
 	_, err := q.db.ExecContext(ctx, SetTransactionStatus, arg.Status, arg.Hash)
 	return err
+}
+
+const SetValidatorActionOutcome = `-- name: SetValidatorActionOutcome :exec
+UPDATE validator_actions SET outcome = ?, tx_hash = ? WHERE id = ?
+`
+
+type SetValidatorActionOutcomeParams struct {
+	Outcome string         `json:"outcome"`
+	TxHash  sql.NullString `json:"tx_hash"`
+	ID      int64          `json:"id"`
+}
+
+func (q *Queries) SetValidatorActionOutcome(ctx context.Context, arg SetValidatorActionOutcomeParams) error {
+	_, err := q.db.ExecContext(ctx, SetValidatorActionOutcome, arg.Outcome, arg.TxHash, arg.ID)
+	return err
+}
+
+const StakerExists = `-- name: StakerExists :one
+SELECT EXISTS(SELECT 1 FROM stakers WHERE address = ?)
+`
+
+func (q *Queries) StakerExists(ctx context.Context, address string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, StakerExists, address)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const SumRewardsAmount = `-- name: SumRewardsAmount :one
+SELECT CAST(COALESCE(SUM(amount), 0) AS INTEGER) FROM rewards
+`
+
+func (q *Queries) SumRewardsAmount(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, SumRewardsAmount)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const UpsertCursor = `-- name: UpsertCursor :exec

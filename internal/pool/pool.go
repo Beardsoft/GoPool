@@ -22,7 +22,9 @@ const (
 	blockElection
 )
 
-const cursorName = "last_processed_height"
+// CursorName is the daemon's last-processed-height cursor. Exported so the
+// API health endpoint can read the same row without duplicating the literal.
+const CursorName = "last_processed_height"
 
 // Manager is the pool daemon: it replays chain heights and runs payouts.
 type Manager struct {
@@ -103,7 +105,7 @@ func (m *Manager) Run(ctx context.Context) error {
 		// cursor+1 start) left epoch 1 with no staker snapshot on a
 		// genesis-0 devnet.
 		start := m.policy.GenesisBlockNumber
-		cursor, err := m.queries.GetCursor(ctx, cursorName)
+		cursor, err := m.queries.GetCursor(ctx, CursorName)
 		if err == nil {
 			start = uint32(cursor) + 1
 		}
@@ -113,7 +115,7 @@ func (m *Manager) Run(ctx context.Context) error {
 				logger.Logger.Error("processing height", zap.Uint32("height", h), zap.Error(err))
 				break
 			}
-			if err := m.queries.UpsertCursor(ctx, db.UpsertCursorParams{Name: cursorName, Height: int64(h)}); err != nil {
+			if err := m.queries.UpsertCursor(ctx, db.UpsertCursorParams{Name: CursorName, Height: int64(h)}); err != nil {
 				logger.Logger.Error("advancing cursor", zap.Error(err))
 				break
 			}
@@ -124,6 +126,9 @@ func (m *Manager) Run(ctx context.Context) error {
 		}
 		if err := m.runConfirmations(ctx); err != nil {
 			logger.Logger.Error("running confirmations", zap.Error(err))
+		}
+		if err := m.ProcessRequestedActions(ctx); err != nil {
+			logger.Logger.Error("processing requested validator actions", zap.Error(err))
 		}
 		if m.cfg.AutoReactivate {
 			if err := m.runAutoReactivate(ctx); err != nil {

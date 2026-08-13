@@ -6,5 +6,8 @@
     "private_key": "your_private_key_here",
     "payout_mode": "delegate",
     "min_payout_luna": 100000,
-    "auto_reactivate": true
+    "auto_reactivate": true,
+    "api_addr": ":8080",
+    "session_secret": "generate a long random string for this — used to sign login sessions",
+    "validator_address": "NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E"
 }
