@@ -50,6 +50,22 @@ func New(cfg *config.Config) (*Chain, error) {
 	return &Chain{RPC: client, Signer: key, Network: network}, nil
 }
 
+// NewRPCOnly builds an RPC client with no signer, for callers — like the API
+// — that must never hold the validator's private key. It reuses the same
+// network parsing New does, so RPC behavior (network ID, endpoint) is
+// identical either way.
+func NewRPCOnly(cfg *config.Config) (*rpc.Client, error) {
+	network, err := networkFromString(cfg.Network)
+	if err != nil {
+		return nil, err
+	}
+	client, err := rpc.New(cfg.RPCURL, rpc.WithNetwork(network))
+	if err != nil {
+		return nil, fmt.Errorf("chain: %w", err)
+	}
+	return client, nil
+}
+
 // Address is the pool's own validator/fee-paying address, derived from the
 // configured private key — no importRawKey/unlockAccount RPC dance needed,
 // the SDK signs offline.

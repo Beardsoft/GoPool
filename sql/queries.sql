@@ -95,3 +95,43 @@ INSERT INTO validator_actions (action, tx_hash, outcome) VALUES (?, ?, ?);
 
 -- name: HasPendingValidatorAction :one
 SELECT EXISTS(SELECT 1 FROM validator_actions WHERE action = ? AND outcome = 'pending');
+
+-- name: GetRequestedValidatorActions :many
+SELECT id, action FROM validator_actions WHERE outcome = 'requested' ORDER BY id;
+
+-- name: SetValidatorActionOutcome :exec
+UPDATE validator_actions SET outcome = ?, tx_hash = ? WHERE id = ?;
+
+-- name: HasOutstandingValidatorAction :one
+SELECT EXISTS(SELECT 1 FROM validator_actions WHERE action = ? AND outcome IN ('requested', 'pending'));
+
+-- name: ListEpochs :many
+SELECT number, num_stakers, balance, status FROM epochs ORDER BY number DESC;
+
+-- name: GetEpochByNumber :one
+SELECT number, num_stakers, balance, status FROM epochs WHERE number = ?;
+
+-- name: GetLatestEpoch :one
+SELECT number, num_stakers, balance, status FROM epochs ORDER BY number DESC LIMIT 1;
+
+-- name: SumRewardsAmount :one
+SELECT CAST(COALESCE(SUM(amount), 0) AS INTEGER) FROM rewards;
+
+-- name: StakerExists :one
+SELECT EXISTS(SELECT 1 FROM stakers WHERE address = ?);
+
+-- name: GetStakerLatest :one
+SELECT epoch_number, stake, percentage FROM stakers WHERE address = ? ORDER BY epoch_number DESC LIMIT 1;
+
+-- name: GetPayslipsForAddress :many
+SELECT batch_number, amount, status, tx_hash FROM payslips WHERE address = ? ORDER BY batch_number DESC;
+
+-- name: GetTransactionsForAddress :many
+SELECT hash, amount, status, submitted_at FROM transactions WHERE address = ? ORDER BY submitted_at DESC;
+
+-- name: GetStuckPayslips :many
+SELECT p.id, p.batch_number, p.address, p.amount, p.status, p.tx_hash, t.submitted_at
+FROM payslips p
+LEFT JOIN transactions t ON t.hash = p.tx_hash
+WHERE p.status IN ('out_for_payment', 'awaiting_confirmation')
+ORDER BY p.id;

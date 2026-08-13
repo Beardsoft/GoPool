@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Beardsoft/GoPool/internal/logger"
+	nimiq "github.com/NimMiniApps/nimiq-go"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
@@ -18,6 +19,11 @@ type Config struct {
 	PayoutMode        string  `mapstructure:"payout_mode"`
 	MinPayoutLuna     uint64  `mapstructure:"min_payout_luna"`
 	AutoReactivate    bool    `mapstructure:"auto_reactivate"`
+	// APIAddr, SessionSecret, and ValidatorAddress are only used by cmd/api.
+	// The daemon (cmd) ignores them.
+	APIAddr          string `mapstructure:"api_addr"`
+	SessionSecret    string `mapstructure:"session_secret"`
+	ValidatorAddress string `mapstructure:"validator_address"`
 }
 
 // Validate reports whether payout_mode and pool_fee_percentage are in range.
@@ -27,6 +33,25 @@ func (c *Config) Validate() error {
 	}
 	if c.PoolFeePercentage < 0 || c.PoolFeePercentage >= 1 {
 		return fmt.Errorf("config: pool_fee_percentage must be in [0, 1), got %v", c.PoolFeePercentage)
+	}
+	return nil
+}
+
+// ValidateAPI reports whether the API-only config fields are present and
+// well-formed. The daemon's LoadConfig/Validate does not require these —
+// only cmd/api calls this, right after loading config.
+func ValidateAPI(c *Config) error {
+	if c.APIAddr == "" {
+		return fmt.Errorf("config: api_addr is required")
+	}
+	if c.SessionSecret == "" {
+		return fmt.Errorf("config: session_secret is required")
+	}
+	if c.ValidatorAddress == "" {
+		return fmt.Errorf("config: validator_address is required")
+	}
+	if _, err := nimiq.ParseAddress(c.ValidatorAddress); err != nil {
+		return fmt.Errorf("config: validator_address: %w", err)
 	}
 	return nil
 }
