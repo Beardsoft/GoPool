@@ -57,7 +57,6 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-func (a *API) registerEpochRoutes(mux *http.ServeMux)    {}
 func (a *API) registerStakerRoutes(mux *http.ServeMux)   {}
 func (a *API) registerAuthRoutes(mux *http.ServeMux)     {}
 func (a *API) registerOperatorRoutes(mux *http.ServeMux) {}
