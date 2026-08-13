@@ -7,6 +7,7 @@ import (
 
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
+	"github.com/Beardsoft/GoPool/internal/metrics"
 
 	"go.uber.org/zap"
 )
@@ -69,6 +70,8 @@ func (m *Manager) handleCheckpoint(ctx context.Context, height uint32) error {
 	}); err != nil {
 		return err
 	}
+	metrics.RewardsTotal.Add(float64(reward))
+	metrics.PoolFeeTotal.Add(float64(fee))
 
 	if reward == 0 || len(stakers) == 0 {
 		return nil

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
+	"github.com/Beardsoft/GoPool/internal/metrics"
 
 	"go.uber.org/zap"
 )
@@ -39,8 +40,10 @@ func (m *Manager) runAutoReactivate(ctx context.Context) error {
 
 	head, err := m.chain.RPC.BlockNumber(ctx)
 	if err != nil {
+		metrics.RPCErrors.WithLabelValues("reactivate").Inc()
 		return err
 	}
+	m.observeValidator(validator, head)
 	if !shouldReactivate(validator.JailedFrom, head) {
 		return nil
 	}
@@ -73,6 +76,7 @@ func (m *Manager) runAutoReactivate(ctx context.Context) error {
 		return insertErr
 	}
 	if err != nil {
+		metrics.RPCErrors.WithLabelValues("reactivate").Inc()
 		return err
 	}
 	logger.Logger.Info("validator reactivation submitted", zap.String("tx", hash))

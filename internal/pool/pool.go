@@ -4,12 +4,14 @@ import (
 	"context"
 	"time"
 
+	nimiq "github.com/NimMiniApps/nimiq-go"
 	"github.com/NimMiniApps/nimiq-go/rpc"
 
 	"github.com/Beardsoft/GoPool/internal/chain"
 	"github.com/Beardsoft/GoPool/internal/config"
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
+	"github.com/Beardsoft/GoPool/internal/metrics"
 
 	"go.uber.org/zap"
 )
@@ -32,6 +34,8 @@ type Manager struct {
 	queries *db.Queries
 	cfg     *config.Config
 	policy  *rpc.Policy
+	lastChainGaugeRefresh time.Time
+	lastValidatorObserve  time.Time
 }
 
 // NewManager builds a Manager. Policy is loaded on Run.
@@ -79,6 +83,67 @@ func shouldRefreshGauges(last, now time.Time) bool {
 	return last.IsZero() || now.Sub(last) >= chainGaugeInterval
 }
 
+func (m *Manager) observeValidator(v *rpc.Validator, height uint32) {
+	metrics.LiveStake.Set(float64(v.Balance))
+	metrics.LiveStakers.Set(float64(v.NumStakers))
+	metrics.SetValidatorState(validatorLiveState(v, height))
+	m.lastValidatorObserve = time.Now()
+}
+
+func (m *Manager) observeTickGauges(ctx context.Context, head uint32, cursor int64, tickStart time.Time) {
+	metrics.ChainHead.Set(float64(head))
+	metrics.LastProcessedHeight.Set(float64(cursor))
+	metrics.TickDuration.Set(time.Since(tickStart).Seconds())
+
+	stats, err := m.queries.GetPayslipStats(ctx)
+	if err == nil {
+		metrics.PayslipsPending.Set(float64(stats.PendingCount))
+		metrics.PayslipsPendingLuna.Set(float64(stats.PendingLuna))
+		metrics.PayslipsStuck.Set(float64(stats.StuckCount))
+	}
+	snap, err := m.queries.GetCurrentEpochSnapshot(ctx)
+	if err == nil {
+		metrics.Stakers.Set(float64(snap.NumStakers))
+		metrics.DelegatedStake.Set(float64(snap.Balance))
+	}
+
+	now := time.Now()
+	if !shouldRefreshGauges(m.lastChainGaugeRefresh, now) {
+		return
+	}
+	m.lastChainGaugeRefresh = now
+
+	if shouldRefreshGauges(m.lastValidatorObserve, now) {
+		v, err := m.chain.RPC.GetValidator(ctx, m.chain.Address())
+		if err != nil {
+			metrics.RPCErrors.WithLabelValues("validator").Inc()
+		} else {
+			m.observeValidator(v, head)
+		}
+	}
+
+	bal, err := m.chain.RPC.GetBalance(ctx, m.chain.Address())
+	if err != nil {
+		metrics.RPCErrors.WithLabelValues("balance").Inc()
+		return
+	}
+	metrics.WalletBalance.WithLabelValues("payout").Set(float64(bal))
+
+	if m.cfg.PoolFeeWallet == "" {
+		return
+	}
+	rewardAddr, err := nimiq.ParseAddress(m.cfg.PoolFeeWallet)
+	if err != nil || rewardAddr == m.chain.Address() {
+		return
+	}
+	rbal, err := m.chain.RPC.GetBalance(ctx, rewardAddr)
+	if err != nil {
+		metrics.RPCErrors.WithLabelValues("balance").Inc()
+		return
+	}
+	metrics.WalletBalance.WithLabelValues("reward").Set(float64(rbal))
+}
+
 // Run is the daemon's main loop: replay every height between the last
 // processed cursor and the current chain head, in order, then sleep.
 func (m *Manager) Run(ctx context.Context) error {
@@ -98,9 +163,11 @@ func (m *Manager) Run(ctx context.Context) error {
 		case <-ticker.C:
 		}
 
+		tickStart := time.Now()
 		head, err := m.chain.RPC.BlockNumber(ctx)
 		if err != nil {
 			logger.Logger.Error("fetching block number", zap.Error(err))
+			metrics.RPCErrors.WithLabelValues("block_number").Inc()
 			continue
 		}
 
@@ -117,6 +184,7 @@ func (m *Manager) Run(ctx context.Context) error {
 		for h := start; h <= head; h++ {
 			if err := m.processHeight(ctx, h); err != nil {
 				logger.Logger.Error("processing height", zap.Uint32("height", h), zap.Error(err))
+				metrics.RPCErrors.WithLabelValues("height").Inc()
 				break
 			}
 			if err := m.queries.UpsertCursor(ctx, db.UpsertCursorParams{Name: cursorName, Height: int64(h)}); err != nil {
@@ -136,6 +204,14 @@ func (m *Manager) Run(ctx context.Context) error {
 				logger.Logger.Error("running auto-reactivate", zap.Error(err))
 			}
 		}
+
+		processed := int64(head)
+		if start <= head {
+			if c, err := m.queries.GetCursor(ctx, cursorName); err == nil {
+				processed = c
+			}
+		}
+		m.observeTickGauges(ctx, head, processed, tickStart)
 	}
 }
 

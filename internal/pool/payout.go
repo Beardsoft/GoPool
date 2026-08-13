@@ -8,6 +8,7 @@ import (
 
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
+	"github.com/Beardsoft/GoPool/internal/metrics"
 
 	"go.uber.org/zap"
 )
@@ -105,14 +106,15 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 			return err
 		}
 
-		hash, err := m.signAndSend(ctx, tx, kind)
-		if err != nil {
-			if resetErr := m.queries.ResetPayslipsOutForPayment(ctx, row.Address); resetErr != nil {
-				logger.Logger.Error("resetting payslips after failed submit", zap.String("address", row.Address), zap.Error(resetErr))
-			}
-			logger.Logger.Error("payout submission failed, will retry next tick", zap.String("address", row.Address), zap.Error(err))
-			continue
+	hash, err := m.signAndSend(ctx, tx, kind)
+	if err != nil {
+		if resetErr := m.queries.ResetPayslipsOutForPayment(ctx, row.Address); resetErr != nil {
+			logger.Logger.Error("resetting payslips after failed submit", zap.String("address", row.Address), zap.Error(resetErr))
 		}
+		logger.Logger.Error("payout submission failed, will retry next tick", zap.String("address", row.Address), zap.Error(err))
+		metrics.RPCErrors.WithLabelValues("payout").Inc()
+		continue
+	}
 
 		if err := m.queries.SetPayslipsTransaction(ctx, db.SetPayslipsTransactionParams{
 			TxHash:  sql.NullString{String: hash, Valid: true},
@@ -126,6 +128,7 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 			return err
 		}
 		logger.Logger.Info("payout submitted", zap.String("staker", row.Address), zap.Uint64("amount", uint64(amount)), zap.String("tx", hash))
+		metrics.PayoutsSubmitted.WithLabelValues(payoutKindLabel(kind)).Inc()
 	}
 	return nil
 }

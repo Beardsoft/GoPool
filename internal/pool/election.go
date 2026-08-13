@@ -44,6 +44,7 @@ func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 			Number: int64(nextEpoch), NumStakers: 0, Balance: 0, Status: "not_elected",
 		})
 	}
+	m.observeValidator(validator, height)
 
 	status := ""
 	switch {
