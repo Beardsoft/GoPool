@@ -63,9 +63,19 @@ func runValidatorCLI(ctx context.Context, m *pool.Manager, args []string) error 
 	}
 	switch args[0] {
 	case "deactivate":
-		return m.Deactivate(ctx)
+		hash, err := m.Deactivate(ctx)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("deactivate transaction submitted: %s\n", hash)
+		return nil
 	case "retire":
-		return m.Retire(ctx)
+		hash, err := m.Retire(ctx)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("retire transaction submitted: %s\n", hash)
+		return nil
 	case "delete":
 		if len(args) != 3 {
 			return fmt.Errorf("usage: gopool validator delete <recipient> <value-luna>")

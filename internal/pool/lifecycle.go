@@ -78,52 +78,95 @@ func (m *Manager) runAutoReactivate(ctx context.Context) error {
 	return nil
 }
 
-// Deactivate, Retire, and Delete are operator-triggered, run from the CLI in
-// cmd/main.go — never from the daemon loop. Deactivating, retiring, or
-// deleting a validator affects delegator funds and pool operation; a human
-// must choose to do it.
+// Deactivate and Retire are operator-triggered: from the CLI in cmd/main.go,
+// or queued via the API as validator_actions rows (outcome = "requested")
+// and executed by ProcessRequestedActions. Delete stays CLI-only — it needs
+// a recipient and deposit value the request row has no place for.
 
 // Deactivate submits a DeactivateValidator transaction for this pool.
-func (m *Manager) Deactivate(ctx context.Context) error {
+func (m *Manager) Deactivate(ctx context.Context) (string, error) {
 	addr := m.chain.Address()
 	head, err := m.chain.RPC.BlockNumber(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 	tx, err := nimiq.NewDeactivateValidatorTransaction(addr, addr, 0, head, m.chain.Network)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := nimiq.SignStakingTransaction(ctx, tx, m.chain.Signer, m.chain.Signer); err != nil {
-		return err
+		return "", err
 	}
-	hash, err := m.chain.RPC.SendTransaction(ctx, tx)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("deactivate transaction submitted: %s\n", hash)
-	return nil
+	return m.chain.RPC.SendTransaction(ctx, tx)
 }
 
 // Retire submits a RetireValidator transaction for this pool.
-func (m *Manager) Retire(ctx context.Context) error {
+func (m *Manager) Retire(ctx context.Context) (string, error) {
 	addr := m.chain.Address()
 	head, err := m.chain.RPC.BlockNumber(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 	tx, err := nimiq.NewRetireValidatorTransaction(addr, 0, head, m.chain.Network)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := nimiq.SignStakingTransaction(ctx, tx, m.chain.Signer, m.chain.Signer); err != nil {
-		return err
+		return "", err
 	}
-	hash, err := m.chain.RPC.SendTransaction(ctx, tx)
+	return m.chain.RPC.SendTransaction(ctx, tx)
+}
+
+// actionForRequest maps a validator_actions.action string to the Manager
+// method the poll loop should call. Only deactivate/retire are pollable —
+// delete needs an operator-supplied recipient and deposit value the request
+// row has no place for, so it stays CLI-only (see cmd/main.go).
+func actionForRequest(action string) (func(*Manager, context.Context) (string, error), error) {
+	switch action {
+	case "deactivate":
+		return (*Manager).Deactivate, nil
+	case "retire":
+		return (*Manager).Retire, nil
+	}
+	return nil, fmt.Errorf("pool: action %q is not requestable, only deactivate/retire are", action)
+}
+
+// ProcessRequestedActions submits every validator_actions row an operator
+// queued via the API (outcome = "requested"), then records the outcome.
+// This is the only bridge between the API (which never holds the validator's
+// key) and an actual signed transaction — the API writes the request, the
+// daemon (which does hold the key) executes it.
+func (m *Manager) ProcessRequestedActions(ctx context.Context) error {
+	requests, err := m.queries.GetRequestedValidatorActions(ctx)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("retire transaction submitted: %s\n", hash)
+	for _, req := range requests {
+		fn, err := actionForRequest(req.Action)
+		if err != nil {
+			logger.Logger.Error("skipping unrequestable validator action", zap.String("action", req.Action), zap.Error(err))
+			if setErr := m.queries.SetValidatorActionOutcome(ctx, db.SetValidatorActionOutcomeParams{
+				Outcome: "failed", ID: req.ID,
+			}); setErr != nil {
+				return setErr
+			}
+			continue
+		}
+
+		hash, err := fn(m, ctx)
+		outcome := "pending"
+		if err != nil {
+			outcome = "failed"
+			logger.Logger.Error("requested validator action failed", zap.String("action", req.Action), zap.Error(err))
+		} else {
+			logger.Logger.Info("requested validator action submitted", zap.String("action", req.Action), zap.String("tx", hash))
+		}
+		if setErr := m.queries.SetValidatorActionOutcome(ctx, db.SetValidatorActionOutcomeParams{
+			Outcome: outcome, TxHash: sql.NullString{String: hash, Valid: hash != ""}, ID: req.ID,
+		}); setErr != nil {
+			return setErr
+		}
+	}
 	return nil
 }
 
