@@ -3,6 +3,8 @@
 package metrics
 
 import (
+	"context"
+	"errors"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -116,4 +118,21 @@ func Handler() http.Handler {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	return mux
+}
+
+// Serve listens on addr until ctx is cancelled. Empty addr is a no-op.
+func Serve(ctx context.Context, addr string) error {
+	if addr == "" {
+		return nil
+	}
+	srv := &http.Server{Addr: addr, Handler: Handler()}
+	go func() {
+		<-ctx.Done()
+		_ = srv.Shutdown(context.Background())
+	}()
+	err := srv.ListenAndServe()
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
 }
