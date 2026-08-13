@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Beardsoft/GoPool/internal/logger"
 	nimiq "github.com/NimMiniApps/nimiq-go"
@@ -44,15 +45,17 @@ func ValidateAPI(c *Config) error {
 	if c.APIAddr == "" {
 		return fmt.Errorf("config: api_addr is required")
 	}
-	if c.SessionSecret == "" {
+	if strings.TrimSpace(c.SessionSecret) == "" {
 		return fmt.Errorf("config: session_secret is required")
 	}
 	if c.ValidatorAddress == "" {
 		return fmt.Errorf("config: validator_address is required")
 	}
-	if _, err := nimiq.ParseAddress(c.ValidatorAddress); err != nil {
+	addr, err := nimiq.ParseAddress(c.ValidatorAddress)
+	if err != nil {
 		return fmt.Errorf("config: validator_address: %w", err)
 	}
+	c.ValidatorAddress = addr.String()
 	return nil
 }
 
