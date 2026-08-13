@@ -8,6 +8,9 @@ import (
 	"net/url"
 	"testing"
 
+	nimiq "github.com/NimMiniApps/nimiq-go"
+
+	"github.com/Beardsoft/GoPool/internal/config"
 	"github.com/Beardsoft/GoPool/internal/db"
 )
 
@@ -51,5 +54,44 @@ func TestHandleGetStaker(t *testing.T) {
 	a.Mux().ServeHTTP(rec3, httptest.NewRequest(http.MethodGet, "/api/stakers/not-an-address", nil))
 	if rec3.Code != http.StatusBadRequest {
 		t.Errorf("malformed address: status = %d, want 400", rec3.Code)
+	}
+}
+
+func TestHandleMe(t *testing.T) {
+	q := newTestDB(t)
+	ctx := context.Background()
+	if err := q.InsertEpoch(ctx, db.InsertEpochParams{Number: 1, NumStakers: 1, Balance: 100, Status: "completed"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.InsertStaker(ctx, db.InsertStakerParams{EpochNumber: 1, Address: testAddr, Stake: 100, Percentage: 100}); err != nil {
+		t.Fatal(err)
+	}
+
+	a := &API{queries: q, cfg: &config.Config{SessionSecret: "test-secret"}}
+	addr, err := nimiq.ParseAddress(testAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: a.issueSession(addr)})
+	a.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var got stakerDetailResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.StakeLuna != 100 {
+		t.Errorf("got %+v", got)
+	}
+
+	rec2 := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, "/api/me", nil))
+	if rec2.Code != http.StatusUnauthorized {
+		t.Errorf("no cookie: status = %d, want 401", rec2.Code)
 	}
 }

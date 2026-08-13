@@ -78,6 +78,7 @@ func stakerDetail(ctx context.Context, q *db.Queries, addr nimiq.Address) (stake
 
 func (a *API) registerStakerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stakers/{address}", a.handleGetStaker)
+	mux.HandleFunc("GET /api/me", a.requireSession(a.handleMe))
 }
 
 func (a *API) handleGetStaker(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +91,24 @@ func (a *API) handleGetStaker(w http.ResponseWriter, r *http.Request) {
 	detail, err := stakerDetail(r.Context(), a.queries, addr)
 	if errors.Is(err, errStakerNotFound) {
 		writeError(w, http.StatusNotFound, "no staker with this address in this pool")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "loading staker")
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func (a *API) handleMe(w http.ResponseWriter, r *http.Request) {
+	addr, ok := addressFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not logged in")
+		return
+	}
+	detail, err := stakerDetail(r.Context(), a.queries, addr)
+	if errors.Is(err, errStakerNotFound) {
+		writeError(w, http.StatusNotFound, "this address has never staked with this pool")
 		return
 	}
 	if err != nil {
