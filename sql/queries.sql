@@ -81,6 +81,9 @@ UPDATE payslips SET status = 'completed' WHERE tx_hash = ?;
 -- name: ResetPayslipsToPending :exec
 UPDATE payslips SET tx_hash = NULL, status = 'pending' WHERE tx_hash = ?;
 
+-- name: ResetPayslipsOutForPayment :exec
+UPDATE payslips SET status = 'pending' WHERE address = ? AND status = 'out_for_payment';
+
 -- name: InsertTransaction :exec
 INSERT INTO transactions (hash, address, amount, status) VALUES (?, ?, ?, ?);
 

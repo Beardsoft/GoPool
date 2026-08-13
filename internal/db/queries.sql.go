@@ -420,6 +420,15 @@ func (q *Queries) MarkPayslipsOutForPayment(ctx context.Context, address string)
 	return err
 }
 
+const ResetPayslipsOutForPayment = `-- name: ResetPayslipsOutForPayment :exec
+UPDATE payslips SET status = 'pending' WHERE address = ? AND status = 'out_for_payment'
+`
+
+func (q *Queries) ResetPayslipsOutForPayment(ctx context.Context, address string) error {
+	_, err := q.db.ExecContext(ctx, ResetPayslipsOutForPayment, address)
+	return err
+}
+
 const ResetPayslipsToPending = `-- name: ResetPayslipsToPending :exec
 UPDATE payslips SET tx_hash = NULL, status = 'pending' WHERE tx_hash = ?
 `
