@@ -1,0 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Muli:wght@400;600;700&family=Fira+Mono&display=swap');
+
+:root {
+  --nimiq-blue: #1f2348;
+  --nimiq-light-blue: #0582ca;
+  --nimiq-green: #21bca5;
+  --nimiq-gold: #e9b213;
+  --nimiq-red: #d94432;
+  --text-100: rgba(31, 35, 72, 1);
+  --text-80: rgba(31, 35, 72, 0.8);
+  --text-60: rgba(31, 35, 72, 0.6);
+  --text-40: rgba(31, 35, 72, 0.4);
+  --space-16: 16px;
+}
+
+html {
+  font-size: 8px;
+}
+
+body {
+  font-family: 'Muli', sans-serif;
+  color: var(--text-100);
+  margin: 0;
+}
+
+code, .address, .hash {
+  font-family: 'Fira Mono', monospace;
+}
