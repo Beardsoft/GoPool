@@ -21,11 +21,6 @@ type API struct {
 	nonces  *nonceStore
 }
 
-// nonceStore is a stub until Task 6 implements the real store.
-type nonceStore struct{}
-
-func newNonceStore() *nonceStore { return &nonceStore{} }
-
 // New builds an API. cfg may be nil in tests that don't exercise auth or the
 // operator health endpoint; rpc may be nil in tests that don't exercise
 // operator health.
@@ -57,6 +52,5 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-func (a *API) registerAuthRoutes(mux *http.ServeMux)     {}
 func (a *API) registerOperatorRoutes(mux *http.ServeMux) {}
 func (a *API) registerStaticRoutes(mux *http.ServeMux)   {}
