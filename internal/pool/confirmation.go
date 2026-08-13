@@ -9,6 +9,7 @@ import (
 
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
+	"github.com/Beardsoft/GoPool/internal/metrics"
 
 	"go.uber.org/zap"
 )
@@ -54,6 +55,7 @@ func (m *Manager) runConfirmations(ctx context.Context) error {
 				continue
 			}
 			logger.Logger.Error("checking transaction", zap.String("hash", tx.Hash), zap.Error(err))
+			metrics.RPCErrors.WithLabelValues("confirm").Inc()
 			continue
 		}
 		switch confirmationOutcome(conf) {
@@ -67,6 +69,7 @@ func (m *Manager) runConfirmations(ctx context.Context) error {
 				return err
 			}
 			logger.Logger.Info("payout confirmed", zap.String("hash", tx.Hash))
+			metrics.PayoutsConfirmed.Inc()
 		case outcomeFailed:
 			if err := m.queries.SetTransactionStatus(ctx, db.SetTransactionStatusParams{Status: "failed", Hash: tx.Hash}); err != nil {
 				return err
@@ -75,6 +78,7 @@ func (m *Manager) runConfirmations(ctx context.Context) error {
 				return err
 			}
 			logger.Logger.Warn("payout failed, reset for retry", zap.String("hash", tx.Hash))
+			metrics.PayoutsFailed.Inc()
 		}
 	}
 

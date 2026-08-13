@@ -138,3 +138,16 @@ FROM payslips p
 LEFT JOIN transactions t ON t.hash = p.tx_hash
 WHERE p.status IN ('out_for_payment', 'awaiting_confirmation')
 ORDER BY p.id;
+
+-- name: GetPayslipStats :one
+SELECT
+    CAST(COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS INTEGER) AS pending_count,
+    CAST(COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0) AS INTEGER) AS pending_luna,
+    CAST(COALESCE(SUM(CASE WHEN status IN ('out_for_payment', 'awaiting_confirmation') THEN 1 ELSE 0 END), 0) AS INTEGER) AS stuck_count
+FROM payslips;
+
+-- name: GetCurrentEpochSnapshot :one
+SELECT num_stakers, balance FROM epochs
+WHERE status = 'in_progress'
+ORDER BY number DESC
+LIMIT 1;

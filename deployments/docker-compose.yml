@@ -4,6 +4,7 @@ services:
     container_name: gopool
     ports:
       - "8080:8080"
+      - "9100:9100"
     volumes:
       - ./data:/root/data
       - ./config.json:/root/config.json:ro  # Mount config file as read-only

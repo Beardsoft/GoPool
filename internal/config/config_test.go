@@ -37,3 +37,14 @@ func TestValidateAPICanonicalizesAddress(t *testing.T) {
 		t.Errorf("ValidatorAddress = %q, want canonical %q", cfg.ValidatorAddress, canonical)
 	}
 }
+
+func TestValidateStillIgnoresMetricsAddr(t *testing.T) {
+	cfg := Config{
+		PayoutMode:        "delegate",
+		PoolFeePercentage: 0.01,
+		MetricsAddr:       "",
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}

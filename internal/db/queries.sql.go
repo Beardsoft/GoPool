@@ -782,3 +782,44 @@ func (q *Queries) UpsertCursor(ctx context.Context, arg UpsertCursorParams) erro
 	_, err := q.db.ExecContext(ctx, UpsertCursor, arg.Name, arg.Height)
 	return err
 }
+
+const GetPayslipStats = `-- name: GetPayslipStats :one
+SELECT
+    CAST(COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS INTEGER) AS pending_count,
+    CAST(COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0) AS INTEGER) AS pending_luna,
+    CAST(COALESCE(SUM(CASE WHEN status IN ('out_for_payment', 'awaiting_confirmation') THEN 1 ELSE 0 END), 0) AS INTEGER) AS stuck_count
+FROM payslips
+`
+
+type GetPayslipStatsRow struct {
+	PendingCount int64 `json:"pending_count"`
+	PendingLuna  int64 `json:"pending_luna"`
+	StuckCount   int64 `json:"stuck_count"`
+}
+
+func (q *Queries) GetPayslipStats(ctx context.Context) (GetPayslipStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, GetPayslipStats)
+	var i GetPayslipStatsRow
+	err := row.Scan(&i.PendingCount, &i.PendingLuna, &i.StuckCount)
+	return i, err
+}
+
+const GetCurrentEpochSnapshot = `-- name: GetCurrentEpochSnapshot :one
+SELECT num_stakers, balance FROM epochs
+WHERE status = 'in_progress'
+ORDER BY number DESC
+LIMIT 1
+`
+
+type GetCurrentEpochSnapshotRow struct {
+	NumStakers int64 `json:"num_stakers"`
+	Balance    int64 `json:"balance"`
+}
+
+func (q *Queries) GetCurrentEpochSnapshot(ctx context.Context) (GetCurrentEpochSnapshotRow, error) {
+	row := q.db.QueryRowContext(ctx, GetCurrentEpochSnapshot)
+	var i GetCurrentEpochSnapshotRow
+	err := row.Scan(&i.NumStakers, &i.Balance)
+	return i, err
+}
+

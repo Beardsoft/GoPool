@@ -41,3 +41,12 @@ func TestPayoutWorthSending(t *testing.T) {
 		}
 	}
 }
+
+func TestPayoutKindLabel(t *testing.T) {
+	if got := payoutKindLabel(payoutDelegate); got != "delegate" {
+		t.Errorf("delegate label = %q", got)
+	}
+	if got := payoutKindLabel(payoutTransfer); got != "transfer" {
+		t.Errorf("transfer label = %q", got)
+	}
+}

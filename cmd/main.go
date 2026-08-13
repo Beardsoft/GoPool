@@ -13,6 +13,7 @@ import (
 	"github.com/Beardsoft/GoPool/internal/config"
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
+	"github.com/Beardsoft/GoPool/internal/metrics"
 	"github.com/Beardsoft/GoPool/internal/pool"
 
 	"go.uber.org/zap"
@@ -50,6 +51,14 @@ func main() {
 			os.Exit(1)
 		}
 		return
+	}
+
+	if cfg.MetricsAddr != "" {
+		go func() {
+			if err := metrics.Serve(ctx, cfg.MetricsAddr); err != nil {
+				logger.Logger.Error("metrics server", zap.Error(err))
+			}
+		}()
 	}
 
 	if err := manager.Run(ctx); err != nil {
