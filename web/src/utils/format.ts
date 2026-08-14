@@ -1,0 +1,10 @@
+export function formatNim(luna: number): string {
+  return (luna / 100_000).toLocaleString('en-US', { maximumFractionDigits: 5 })
+}
+export function formatPercent(fraction: number): string {
+  return `${(fraction * 100).toFixed(2)}%`
+}
+export function shortAddress(address: string): string {
+  const groups = address.trim().split(/\s+/)
+  return groups.length >= 4 ? `${groups.slice(0, 2).join(' ')}…${groups.slice(-2).join(' ')}` : address
+}
