@@ -16,7 +16,7 @@ export const router = createRouter({
         { path: 'stakers/:address?', name: 'staker-lookup', component: () => import('./pages/StakerLookup.vue'), props: true },
         { path: 'onboard', name: 'onboard', component: () => import('./pages/Onboard.vue') },
         { path: 'me', name: 'my-dashboard', component: () => import('./pages/MyDashboard.vue') },
-        { path: 'rewards', name: 'rewards', component: () => import('./pages/RewardsChart.vue') },
+        { path: 'performance', name: 'performance', component: () => import('./pages/Performance.vue') },
       ]
     },
     {
