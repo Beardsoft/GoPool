@@ -151,3 +151,65 @@ SELECT num_stakers, balance FROM epochs
 WHERE status = 'in_progress'
 ORDER BY number DESC
 LIMIT 1;
+
+-- name: ListRewardsByEpochRange :many
+SELECT epoch_number, SUM(amount) AS total_amount, SUM(pool_fee) AS total_fee, COUNT(*) AS batches
+FROM rewards
+WHERE epoch_number BETWEEN ? AND ?
+GROUP BY epoch_number
+ORDER BY epoch_number ASC;
+
+-- name: InsertAuditLog :one
+INSERT INTO audit_logs (action_type, address, amount, fee, kind, status, intent_data)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id;
+
+-- name: ListPendingAuditLogs :many
+SELECT id, action_type, address, amount, fee, kind, status, intent_data, created_at
+FROM audit_logs
+WHERE status = 'pending'
+ORDER BY created_at ASC;
+
+-- name: ListApprovedAuditLogs :many
+SELECT id, action_type, address, amount, fee, kind, status, intent_data, created_at
+FROM audit_logs
+WHERE status = 'approved'
+ORDER BY created_at ASC;
+
+-- name: UpdateAuditLogStatus :exec
+UPDATE audit_logs
+SET status = ?, approved_at = CURRENT_TIMESTAMP
+WHERE id = ?;
+
+-- name: UpsertRuntimeStatus :exec
+INSERT INTO runtime_status (id, heartbeat_at, daemon_version, config_hash, derived_validator_address, validator_state, last_processed_height, chain_head, last_tick_ms, rpc_ok, readiness_error)
+VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET heartbeat_at=excluded.heartbeat_at, daemon_version=excluded.daemon_version, config_hash=excluded.config_hash, derived_validator_address=excluded.derived_validator_address, validator_state=excluded.validator_state, last_processed_height=excluded.last_processed_height, chain_head=excluded.chain_head, last_tick_ms=excluded.last_tick_ms, rpc_ok=excluded.rpc_ok, readiness_error=excluded.readiness_error;
+
+-- name: GetRuntimeStatus :one
+SELECT id, heartbeat_at, daemon_version, config_hash, derived_validator_address, validator_state, last_processed_height, chain_head, last_tick_ms, rpc_ok, readiness_error FROM runtime_status WHERE id = 1;
+
+-- name: InsertHealthSnapshot :one
+INSERT INTO health_snapshots (recorded_at, chain_head, processed_height, tick_ms, validator_state, live_stake, staker_count, pending_payout_count, pending_payout_luna, stuck_payout_count, stuck_payout_luna, wallet_balance, rpc_ok)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id;
+
+-- name: InsertOperatorEvent :one
+INSERT INTO operator_events (severity, category, source, event_type, summary, context_json, actor_address, correlation_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id;
+
+-- name: InsertAlertDelivery :one
+INSERT INTO alert_deliveries (channel, alert_type, destination, state, response_summary, correlation_id)
+VALUES (?, ?, ?, ?, ?, ?) RETURNING id;
+
+-- name: InsertConfigRevision :one
+INSERT INTO config_revisions (actor_address, before_json, after_json, validation_state, write_state, config_hash)
+VALUES (?, ?, ?, ?, ?, ?) RETURNING id;
+
+-- name: ListConfigRevisions :many
+SELECT id, actor_address, before_json, after_json, validation_state, write_state, created_at, activated_at, config_hash FROM config_revisions ORDER BY id DESC;
+
+-- name: GetValidatorAction :one
+SELECT id, action, attempted_at, tx_hash, outcome, requested_by, requested_at, updated_at, state, error_summary, correlation_id FROM validator_actions WHERE id = ?;
+
+-- name: UpdateValidatorActionState :exec
+UPDATE validator_actions SET state = ?, updated_at = CURRENT_TIMESTAMP, error_summary = ? WHERE id = ?;

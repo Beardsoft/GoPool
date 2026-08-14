@@ -11,9 +11,6 @@ import (
 
 // InitDB initializes and returns a *sql.DB connection to an SQLite database.
 func InitDB(dataSourceName string) (*sql.DB, error) {
-
-	schemaFilePath := "schema/scheme.sql"
-
 	// Open the SQLite database file.
 	db, err := sql.Open("sqlite3", dataSourceName)
 	if err != nil {
@@ -25,8 +22,8 @@ func InitDB(dataSourceName string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	// Execute the schema SQL to create tables if they don't exist
-	if err := executeSchema(db, schemaFilePath); err != nil {
+	// Run migrations
+	if err := Migrate(db); err != nil {
 		return nil, err
 	}
 

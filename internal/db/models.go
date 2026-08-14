@@ -6,7 +6,45 @@ package db
 
 import (
 	"database/sql"
+	"time"
 )
+
+type AlertDelivery struct {
+	ID              int64          `json:"id"`
+	Channel         string         `json:"channel"`
+	AlertType       string         `json:"alert_type"`
+	Destination     string         `json:"destination"`
+	State           string         `json:"state"`
+	ResponseSummary sql.NullString `json:"response_summary"`
+	AttemptedAt     sql.NullTime   `json:"attempted_at"`
+	CorrelationID   sql.NullString `json:"correlation_id"`
+}
+
+type AuditLog struct {
+	ID         int64          `json:"id"`
+	ActionType string         `json:"action_type"`
+	Address    string         `json:"address"`
+	Amount     int64          `json:"amount"`
+	Fee        int64          `json:"fee"`
+	Kind       string         `json:"kind"`
+	Status     string         `json:"status"`
+	TxHash     sql.NullString `json:"tx_hash"`
+	IntentData sql.NullString `json:"intent_data"`
+	CreatedAt  sql.NullTime   `json:"created_at"`
+	ApprovedAt sql.NullTime   `json:"approved_at"`
+}
+
+type ConfigRevision struct {
+	ID              int64          `json:"id"`
+	ActorAddress    sql.NullString `json:"actor_address"`
+	BeforeJson      sql.NullString `json:"before_json"`
+	AfterJson       sql.NullString `json:"after_json"`
+	ValidationState sql.NullString `json:"validation_state"`
+	WriteState      sql.NullString `json:"write_state"`
+	CreatedAt       sql.NullTime   `json:"created_at"`
+	ActivatedAt     sql.NullTime   `json:"activated_at"`
+	ConfigHash      sql.NullString `json:"config_hash"`
+}
 
 type Cursor struct {
 	Name   string `json:"name"`
@@ -19,6 +57,36 @@ type Epoch struct {
 	Balance    int64        `json:"balance"`
 	Status     string       `json:"status"`
 	CreatedAt  sql.NullTime `json:"created_at"`
+}
+
+type HealthSnapshot struct {
+	ID                 int64     `json:"id"`
+	RecordedAt         time.Time `json:"recorded_at"`
+	ChainHead          int64     `json:"chain_head"`
+	ProcessedHeight    int64     `json:"processed_height"`
+	TickMs             int64     `json:"tick_ms"`
+	ValidatorState     string    `json:"validator_state"`
+	LiveStake          int64     `json:"live_stake"`
+	StakerCount        int64     `json:"staker_count"`
+	PendingPayoutCount int64     `json:"pending_payout_count"`
+	PendingPayoutLuna  int64     `json:"pending_payout_luna"`
+	StuckPayoutCount   int64     `json:"stuck_payout_count"`
+	StuckPayoutLuna    int64     `json:"stuck_payout_luna"`
+	WalletBalance      int64     `json:"wallet_balance"`
+	RpcOk              int64     `json:"rpc_ok"`
+}
+
+type OperatorEvent struct {
+	ID            int64          `json:"id"`
+	Severity      string         `json:"severity"`
+	Category      string         `json:"category"`
+	Source        string         `json:"source"`
+	EventType     string         `json:"event_type"`
+	Summary       string         `json:"summary"`
+	ContextJson   sql.NullString `json:"context_json"`
+	ActorAddress  sql.NullString `json:"actor_address"`
+	CorrelationID sql.NullString `json:"correlation_id"`
+	CreatedAt     sql.NullTime   `json:"created_at"`
 }
 
 type Payslip struct {
@@ -55,6 +123,25 @@ type Reward struct {
 	CreatedAt   sql.NullTime `json:"created_at"`
 }
 
+type RuntimeStatus struct {
+	ID                      int64          `json:"id"`
+	HeartbeatAt             time.Time      `json:"heartbeat_at"`
+	DaemonVersion           string         `json:"daemon_version"`
+	ConfigHash              string         `json:"config_hash"`
+	DerivedValidatorAddress string         `json:"derived_validator_address"`
+	ValidatorState          string         `json:"validator_state"`
+	LastProcessedHeight     int64          `json:"last_processed_height"`
+	ChainHead               int64          `json:"chain_head"`
+	LastTickMs              int64          `json:"last_tick_ms"`
+	RpcOk                   int64          `json:"rpc_ok"`
+	ReadinessError          sql.NullString `json:"readiness_error"`
+}
+
+type SchemaMigration struct {
+	Version   string    `json:"version"`
+	AppliedAt time.Time `json:"applied_at"`
+}
+
 type Staker struct {
 	EpochNumber int64   `json:"epoch_number"`
 	Address     string  `json:"address"`
@@ -71,9 +158,15 @@ type Transaction struct {
 }
 
 type ValidatorAction struct {
-	ID          int64          `json:"id"`
-	Action      string         `json:"action"`
-	AttemptedAt sql.NullTime   `json:"attempted_at"`
-	TxHash      sql.NullString `json:"tx_hash"`
-	Outcome     string         `json:"outcome"`
+	ID            int64          `json:"id"`
+	Action        string         `json:"action"`
+	AttemptedAt   sql.NullTime   `json:"attempted_at"`
+	TxHash        sql.NullString `json:"tx_hash"`
+	Outcome       string         `json:"outcome"`
+	RequestedBy   sql.NullString `json:"requested_by"`
+	RequestedAt   sql.NullTime   `json:"requested_at"`
+	UpdatedAt     sql.NullTime   `json:"updated_at"`
+	State         sql.NullString `json:"state"`
+	ErrorSummary  sql.NullString `json:"error_summary"`
+	CorrelationID sql.NullString `json:"correlation_id"`
 }

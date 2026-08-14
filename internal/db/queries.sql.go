@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 const EpochExists = `-- name: EpochExists :one
@@ -67,6 +68,25 @@ UPDATE payslips SET status = 'completed' WHERE tx_hash = ?
 func (q *Queries) FinalizePayslips(ctx context.Context, txHash sql.NullString) error {
 	_, err := q.db.ExecContext(ctx, FinalizePayslips, txHash)
 	return err
+}
+
+const GetCurrentEpochSnapshot = `-- name: GetCurrentEpochSnapshot :one
+SELECT num_stakers, balance FROM epochs
+WHERE status = 'in_progress'
+ORDER BY number DESC
+LIMIT 1
+`
+
+type GetCurrentEpochSnapshotRow struct {
+	NumStakers int64 `json:"num_stakers"`
+	Balance    int64 `json:"balance"`
+}
+
+func (q *Queries) GetCurrentEpochSnapshot(ctx context.Context) (GetCurrentEpochSnapshotRow, error) {
+	row := q.db.QueryRowContext(ctx, GetCurrentEpochSnapshot)
+	var i GetCurrentEpochSnapshotRow
+	err := row.Scan(&i.NumStakers, &i.Balance)
+	return i, err
 }
 
 const GetCursor = `-- name: GetCursor :one
@@ -130,7 +150,12 @@ type GetEpochByNumberRow struct {
 func (q *Queries) GetEpochByNumber(ctx context.Context, number int64) (GetEpochByNumberRow, error) {
 	row := q.db.QueryRowContext(ctx, GetEpochByNumber, number)
 	var i GetEpochByNumberRow
-	err := row.Scan(&i.Number, &i.NumStakers, &i.Balance, &i.Status)
+	err := row.Scan(
+		&i.Number,
+		&i.NumStakers,
+		&i.Balance,
+		&i.Status,
+	)
 	return i, err
 }
 
@@ -164,7 +189,12 @@ type GetLatestEpochRow struct {
 func (q *Queries) GetLatestEpoch(ctx context.Context) (GetLatestEpochRow, error) {
 	row := q.db.QueryRowContext(ctx, GetLatestEpoch)
 	var i GetLatestEpochRow
-	err := row.Scan(&i.Number, &i.NumStakers, &i.Balance, &i.Status)
+	err := row.Scan(
+		&i.Number,
+		&i.NumStakers,
+		&i.Balance,
+		&i.Status,
+	)
 	return i, err
 }
 
@@ -208,6 +238,27 @@ func (q *Queries) GetLatestPolicyConstants(ctx context.Context) (GetLatestPolicy
 	return i, err
 }
 
+const GetPayslipStats = `-- name: GetPayslipStats :one
+SELECT
+    CAST(COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS INTEGER) AS pending_count,
+    CAST(COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0) AS INTEGER) AS pending_luna,
+    CAST(COALESCE(SUM(CASE WHEN status IN ('out_for_payment', 'awaiting_confirmation') THEN 1 ELSE 0 END), 0) AS INTEGER) AS stuck_count
+FROM payslips
+`
+
+type GetPayslipStatsRow struct {
+	PendingCount int64 `json:"pending_count"`
+	PendingLuna  int64 `json:"pending_luna"`
+	StuckCount   int64 `json:"stuck_count"`
+}
+
+func (q *Queries) GetPayslipStats(ctx context.Context) (GetPayslipStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, GetPayslipStats)
+	var i GetPayslipStatsRow
+	err := row.Scan(&i.PendingCount, &i.PendingLuna, &i.StuckCount)
+	return i, err
+}
+
 const GetPayslipsForAddress = `-- name: GetPayslipsForAddress :many
 SELECT batch_number, amount, status, tx_hash FROM payslips WHERE address = ? ORDER BY batch_number DESC
 `
@@ -228,7 +279,12 @@ func (q *Queries) GetPayslipsForAddress(ctx context.Context, address string) ([]
 	items := []GetPayslipsForAddressRow{}
 	for rows.Next() {
 		var i GetPayslipsForAddressRow
-		if err := rows.Scan(&i.BatchNumber, &i.Amount, &i.Status, &i.TxHash); err != nil {
+		if err := rows.Scan(
+			&i.BatchNumber,
+			&i.Amount,
+			&i.Status,
+			&i.TxHash,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -305,6 +361,29 @@ func (q *Queries) GetRequestedValidatorActions(ctx context.Context) ([]GetReques
 		return nil, err
 	}
 	return items, nil
+}
+
+const GetRuntimeStatus = `-- name: GetRuntimeStatus :one
+SELECT id, heartbeat_at, daemon_version, config_hash, derived_validator_address, validator_state, last_processed_height, chain_head, last_tick_ms, rpc_ok, readiness_error FROM runtime_status WHERE id = 1
+`
+
+func (q *Queries) GetRuntimeStatus(ctx context.Context) (RuntimeStatus, error) {
+	row := q.db.QueryRowContext(ctx, GetRuntimeStatus)
+	var i RuntimeStatus
+	err := row.Scan(
+		&i.ID,
+		&i.HeartbeatAt,
+		&i.DaemonVersion,
+		&i.ConfigHash,
+		&i.DerivedValidatorAddress,
+		&i.ValidatorState,
+		&i.LastProcessedHeight,
+		&i.ChainHead,
+		&i.LastTickMs,
+		&i.RpcOk,
+		&i.ReadinessError,
+	)
+	return i, err
 }
 
 const GetStakerLatest = `-- name: GetStakerLatest :one
@@ -384,7 +463,15 @@ func (q *Queries) GetStuckPayslips(ctx context.Context) ([]GetStuckPayslipsRow, 
 	items := []GetStuckPayslipsRow{}
 	for rows.Next() {
 		var i GetStuckPayslipsRow
-		if err := rows.Scan(&i.ID, &i.BatchNumber, &i.Address, &i.Amount, &i.Status, &i.TxHash, &i.SubmittedAt); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.BatchNumber,
+			&i.Address,
+			&i.Amount,
+			&i.Status,
+			&i.TxHash,
+			&i.SubmittedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -418,7 +505,12 @@ func (q *Queries) GetTransactionsForAddress(ctx context.Context, address string)
 	items := []GetTransactionsForAddressRow{}
 	for rows.Next() {
 		var i GetTransactionsForAddressRow
-		if err := rows.Scan(&i.Hash, &i.Amount, &i.Status, &i.SubmittedAt); err != nil {
+		if err := rows.Scan(
+			&i.Hash,
+			&i.Amount,
+			&i.Status,
+			&i.SubmittedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -430,6 +522,29 @@ func (q *Queries) GetTransactionsForAddress(ctx context.Context, address string)
 		return nil, err
 	}
 	return items, nil
+}
+
+const GetValidatorAction = `-- name: GetValidatorAction :one
+SELECT id, action, attempted_at, tx_hash, outcome, requested_by, requested_at, updated_at, state, error_summary, correlation_id FROM validator_actions WHERE id = ?
+`
+
+func (q *Queries) GetValidatorAction(ctx context.Context, id int64) (ValidatorAction, error) {
+	row := q.db.QueryRowContext(ctx, GetValidatorAction, id)
+	var i ValidatorAction
+	err := row.Scan(
+		&i.ID,
+		&i.Action,
+		&i.AttemptedAt,
+		&i.TxHash,
+		&i.Outcome,
+		&i.RequestedBy,
+		&i.RequestedAt,
+		&i.UpdatedAt,
+		&i.State,
+		&i.ErrorSummary,
+		&i.CorrelationID,
+	)
+	return i, err
 }
 
 const HasOutstandingValidatorAction = `-- name: HasOutstandingValidatorAction :one
@@ -454,6 +569,93 @@ func (q *Queries) HasPendingValidatorAction(ctx context.Context, action string) 
 	return column_1, err
 }
 
+const InsertAlertDelivery = `-- name: InsertAlertDelivery :one
+INSERT INTO alert_deliveries (channel, alert_type, destination, state, response_summary, correlation_id)
+VALUES (?, ?, ?, ?, ?, ?) RETURNING id
+`
+
+type InsertAlertDeliveryParams struct {
+	Channel         string         `json:"channel"`
+	AlertType       string         `json:"alert_type"`
+	Destination     string         `json:"destination"`
+	State           string         `json:"state"`
+	ResponseSummary sql.NullString `json:"response_summary"`
+	CorrelationID   sql.NullString `json:"correlation_id"`
+}
+
+func (q *Queries) InsertAlertDelivery(ctx context.Context, arg InsertAlertDeliveryParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, InsertAlertDelivery,
+		arg.Channel,
+		arg.AlertType,
+		arg.Destination,
+		arg.State,
+		arg.ResponseSummary,
+		arg.CorrelationID,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const InsertAuditLog = `-- name: InsertAuditLog :one
+INSERT INTO audit_logs (action_type, address, amount, fee, kind, status, intent_data)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id
+`
+
+type InsertAuditLogParams struct {
+	ActionType string         `json:"action_type"`
+	Address    string         `json:"address"`
+	Amount     int64          `json:"amount"`
+	Fee        int64          `json:"fee"`
+	Kind       string         `json:"kind"`
+	Status     string         `json:"status"`
+	IntentData sql.NullString `json:"intent_data"`
+}
+
+func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, InsertAuditLog,
+		arg.ActionType,
+		arg.Address,
+		arg.Amount,
+		arg.Fee,
+		arg.Kind,
+		arg.Status,
+		arg.IntentData,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const InsertConfigRevision = `-- name: InsertConfigRevision :one
+INSERT INTO config_revisions (actor_address, before_json, after_json, validation_state, write_state, config_hash)
+VALUES (?, ?, ?, ?, ?, ?) RETURNING id
+`
+
+type InsertConfigRevisionParams struct {
+	ActorAddress    sql.NullString `json:"actor_address"`
+	BeforeJson      sql.NullString `json:"before_json"`
+	AfterJson       sql.NullString `json:"after_json"`
+	ValidationState sql.NullString `json:"validation_state"`
+	WriteState      sql.NullString `json:"write_state"`
+	ConfigHash      sql.NullString `json:"config_hash"`
+}
+
+func (q *Queries) InsertConfigRevision(ctx context.Context, arg InsertConfigRevisionParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, InsertConfigRevision,
+		arg.ActorAddress,
+		arg.BeforeJson,
+		arg.AfterJson,
+		arg.ValidationState,
+		arg.WriteState,
+		arg.ConfigHash,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const InsertEpoch = `-- name: InsertEpoch :exec
 INSERT INTO epochs (number, num_stakers, balance, status) VALUES (?, ?, ?, ?)
 `
@@ -473,6 +675,80 @@ func (q *Queries) InsertEpoch(ctx context.Context, arg InsertEpochParams) error 
 		arg.Status,
 	)
 	return err
+}
+
+const InsertHealthSnapshot = `-- name: InsertHealthSnapshot :one
+INSERT INTO health_snapshots (recorded_at, chain_head, processed_height, tick_ms, validator_state, live_stake, staker_count, pending_payout_count, pending_payout_luna, stuck_payout_count, stuck_payout_luna, wallet_balance, rpc_ok)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+`
+
+type InsertHealthSnapshotParams struct {
+	RecordedAt         time.Time `json:"recorded_at"`
+	ChainHead          int64     `json:"chain_head"`
+	ProcessedHeight    int64     `json:"processed_height"`
+	TickMs             int64     `json:"tick_ms"`
+	ValidatorState     string    `json:"validator_state"`
+	LiveStake          int64     `json:"live_stake"`
+	StakerCount        int64     `json:"staker_count"`
+	PendingPayoutCount int64     `json:"pending_payout_count"`
+	PendingPayoutLuna  int64     `json:"pending_payout_luna"`
+	StuckPayoutCount   int64     `json:"stuck_payout_count"`
+	StuckPayoutLuna    int64     `json:"stuck_payout_luna"`
+	WalletBalance      int64     `json:"wallet_balance"`
+	RpcOk              int64     `json:"rpc_ok"`
+}
+
+func (q *Queries) InsertHealthSnapshot(ctx context.Context, arg InsertHealthSnapshotParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, InsertHealthSnapshot,
+		arg.RecordedAt,
+		arg.ChainHead,
+		arg.ProcessedHeight,
+		arg.TickMs,
+		arg.ValidatorState,
+		arg.LiveStake,
+		arg.StakerCount,
+		arg.PendingPayoutCount,
+		arg.PendingPayoutLuna,
+		arg.StuckPayoutCount,
+		arg.StuckPayoutLuna,
+		arg.WalletBalance,
+		arg.RpcOk,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const InsertOperatorEvent = `-- name: InsertOperatorEvent :one
+INSERT INTO operator_events (severity, category, source, event_type, summary, context_json, actor_address, correlation_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+`
+
+type InsertOperatorEventParams struct {
+	Severity      string         `json:"severity"`
+	Category      string         `json:"category"`
+	Source        string         `json:"source"`
+	EventType     string         `json:"event_type"`
+	Summary       string         `json:"summary"`
+	ContextJson   sql.NullString `json:"context_json"`
+	ActorAddress  sql.NullString `json:"actor_address"`
+	CorrelationID sql.NullString `json:"correlation_id"`
+}
+
+func (q *Queries) InsertOperatorEvent(ctx context.Context, arg InsertOperatorEventParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, InsertOperatorEvent,
+		arg.Severity,
+		arg.Category,
+		arg.Source,
+		arg.EventType,
+		arg.Summary,
+		arg.ContextJson,
+		arg.ActorAddress,
+		arg.CorrelationID,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const InsertPayslip = `-- name: InsertPayslip :exec
@@ -616,6 +892,95 @@ func (q *Queries) InsertValidatorAction(ctx context.Context, arg InsertValidator
 	return err
 }
 
+const ListApprovedAuditLogs = `-- name: ListApprovedAuditLogs :many
+SELECT id, action_type, address, amount, fee, kind, status, intent_data, created_at
+FROM audit_logs
+WHERE status = 'approved'
+ORDER BY created_at ASC
+`
+
+type ListApprovedAuditLogsRow struct {
+	ID         int64          `json:"id"`
+	ActionType string         `json:"action_type"`
+	Address    string         `json:"address"`
+	Amount     int64          `json:"amount"`
+	Fee        int64          `json:"fee"`
+	Kind       string         `json:"kind"`
+	Status     string         `json:"status"`
+	IntentData sql.NullString `json:"intent_data"`
+	CreatedAt  sql.NullTime   `json:"created_at"`
+}
+
+func (q *Queries) ListApprovedAuditLogs(ctx context.Context) ([]ListApprovedAuditLogsRow, error) {
+	rows, err := q.db.QueryContext(ctx, ListApprovedAuditLogs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListApprovedAuditLogsRow{}
+	for rows.Next() {
+		var i ListApprovedAuditLogsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ActionType,
+			&i.Address,
+			&i.Amount,
+			&i.Fee,
+			&i.Kind,
+			&i.Status,
+			&i.IntentData,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const ListConfigRevisions = `-- name: ListConfigRevisions :many
+SELECT id, actor_address, before_json, after_json, validation_state, write_state, created_at, activated_at, config_hash FROM config_revisions ORDER BY id DESC
+`
+
+func (q *Queries) ListConfigRevisions(ctx context.Context) ([]ConfigRevision, error) {
+	rows, err := q.db.QueryContext(ctx, ListConfigRevisions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ConfigRevision{}
+	for rows.Next() {
+		var i ConfigRevision
+		if err := rows.Scan(
+			&i.ID,
+			&i.ActorAddress,
+			&i.BeforeJson,
+			&i.AfterJson,
+			&i.ValidationState,
+			&i.WriteState,
+			&i.CreatedAt,
+			&i.ActivatedAt,
+			&i.ConfigHash,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ListEpochs = `-- name: ListEpochs :many
 SELECT number, num_stakers, balance, status FROM epochs ORDER BY number DESC
 `
@@ -636,7 +1001,112 @@ func (q *Queries) ListEpochs(ctx context.Context) ([]ListEpochsRow, error) {
 	items := []ListEpochsRow{}
 	for rows.Next() {
 		var i ListEpochsRow
-		if err := rows.Scan(&i.Number, &i.NumStakers, &i.Balance, &i.Status); err != nil {
+		if err := rows.Scan(
+			&i.Number,
+			&i.NumStakers,
+			&i.Balance,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const ListPendingAuditLogs = `-- name: ListPendingAuditLogs :many
+SELECT id, action_type, address, amount, fee, kind, status, intent_data, created_at
+FROM audit_logs
+WHERE status = 'pending'
+ORDER BY created_at ASC
+`
+
+type ListPendingAuditLogsRow struct {
+	ID         int64          `json:"id"`
+	ActionType string         `json:"action_type"`
+	Address    string         `json:"address"`
+	Amount     int64          `json:"amount"`
+	Fee        int64          `json:"fee"`
+	Kind       string         `json:"kind"`
+	Status     string         `json:"status"`
+	IntentData sql.NullString `json:"intent_data"`
+	CreatedAt  sql.NullTime   `json:"created_at"`
+}
+
+func (q *Queries) ListPendingAuditLogs(ctx context.Context) ([]ListPendingAuditLogsRow, error) {
+	rows, err := q.db.QueryContext(ctx, ListPendingAuditLogs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPendingAuditLogsRow{}
+	for rows.Next() {
+		var i ListPendingAuditLogsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ActionType,
+			&i.Address,
+			&i.Amount,
+			&i.Fee,
+			&i.Kind,
+			&i.Status,
+			&i.IntentData,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const ListRewardsByEpochRange = `-- name: ListRewardsByEpochRange :many
+SELECT epoch_number, SUM(amount) AS total_amount, SUM(pool_fee) AS total_fee, COUNT(*) AS batches
+FROM rewards
+WHERE epoch_number BETWEEN ? AND ?
+GROUP BY epoch_number
+ORDER BY epoch_number ASC
+`
+
+type ListRewardsByEpochRangeParams struct {
+	FromEpochNumber int64 `json:"from_epoch_number"`
+	ToEpochNumber   int64 `json:"to_epoch_number"`
+}
+
+type ListRewardsByEpochRangeRow struct {
+	EpochNumber int64           `json:"epoch_number"`
+	TotalAmount sql.NullFloat64 `json:"total_amount"`
+	TotalFee    sql.NullFloat64 `json:"total_fee"`
+	Batches     int64           `json:"batches"`
+}
+
+func (q *Queries) ListRewardsByEpochRange(ctx context.Context, arg ListRewardsByEpochRangeParams) ([]ListRewardsByEpochRangeRow, error) {
+	rows, err := q.db.QueryContext(ctx, ListRewardsByEpochRange, arg.FromEpochNumber, arg.ToEpochNumber)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRewardsByEpochRangeRow{}
+	for rows.Next() {
+		var i ListRewardsByEpochRangeRow
+		if err := rows.Scan(
+			&i.EpochNumber,
+			&i.TotalAmount,
+			&i.TotalFee,
+			&i.Batches,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -768,6 +1238,37 @@ func (q *Queries) SumRewardsAmount(ctx context.Context) (int64, error) {
 	return column_1, err
 }
 
+const UpdateAuditLogStatus = `-- name: UpdateAuditLogStatus :exec
+UPDATE audit_logs
+SET status = ?, approved_at = CURRENT_TIMESTAMP
+WHERE id = ?
+`
+
+type UpdateAuditLogStatusParams struct {
+	Status string `json:"status"`
+	ID     int64  `json:"id"`
+}
+
+func (q *Queries) UpdateAuditLogStatus(ctx context.Context, arg UpdateAuditLogStatusParams) error {
+	_, err := q.db.ExecContext(ctx, UpdateAuditLogStatus, arg.Status, arg.ID)
+	return err
+}
+
+const UpdateValidatorActionState = `-- name: UpdateValidatorActionState :exec
+UPDATE validator_actions SET state = ?, updated_at = CURRENT_TIMESTAMP, error_summary = ? WHERE id = ?
+`
+
+type UpdateValidatorActionStateParams struct {
+	State        sql.NullString `json:"state"`
+	ErrorSummary sql.NullString `json:"error_summary"`
+	ID           int64          `json:"id"`
+}
+
+func (q *Queries) UpdateValidatorActionState(ctx context.Context, arg UpdateValidatorActionStateParams) error {
+	_, err := q.db.ExecContext(ctx, UpdateValidatorActionState, arg.State, arg.ErrorSummary, arg.ID)
+	return err
+}
+
 const UpsertCursor = `-- name: UpsertCursor :exec
 INSERT INTO cursor (name, height) VALUES (?, ?)
 ON CONFLICT (name) DO UPDATE SET height = excluded.height
@@ -783,43 +1284,37 @@ func (q *Queries) UpsertCursor(ctx context.Context, arg UpsertCursorParams) erro
 	return err
 }
 
-const GetPayslipStats = `-- name: GetPayslipStats :one
-SELECT
-    CAST(COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS INTEGER) AS pending_count,
-    CAST(COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0) AS INTEGER) AS pending_luna,
-    CAST(COALESCE(SUM(CASE WHEN status IN ('out_for_payment', 'awaiting_confirmation') THEN 1 ELSE 0 END), 0) AS INTEGER) AS stuck_count
-FROM payslips
+const UpsertRuntimeStatus = `-- name: UpsertRuntimeStatus :exec
+INSERT INTO runtime_status (id, heartbeat_at, daemon_version, config_hash, derived_validator_address, validator_state, last_processed_height, chain_head, last_tick_ms, rpc_ok, readiness_error)
+VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET heartbeat_at=excluded.heartbeat_at, daemon_version=excluded.daemon_version, config_hash=excluded.config_hash, derived_validator_address=excluded.derived_validator_address, validator_state=excluded.validator_state, last_processed_height=excluded.last_processed_height, chain_head=excluded.chain_head, last_tick_ms=excluded.last_tick_ms, rpc_ok=excluded.rpc_ok, readiness_error=excluded.readiness_error
 `
 
-type GetPayslipStatsRow struct {
-	PendingCount int64 `json:"pending_count"`
-	PendingLuna  int64 `json:"pending_luna"`
-	StuckCount   int64 `json:"stuck_count"`
+type UpsertRuntimeStatusParams struct {
+	HeartbeatAt             time.Time      `json:"heartbeat_at"`
+	DaemonVersion           string         `json:"daemon_version"`
+	ConfigHash              string         `json:"config_hash"`
+	DerivedValidatorAddress string         `json:"derived_validator_address"`
+	ValidatorState          string         `json:"validator_state"`
+	LastProcessedHeight     int64          `json:"last_processed_height"`
+	ChainHead               int64          `json:"chain_head"`
+	LastTickMs              int64          `json:"last_tick_ms"`
+	RpcOk                   int64          `json:"rpc_ok"`
+	ReadinessError          sql.NullString `json:"readiness_error"`
 }
 
-func (q *Queries) GetPayslipStats(ctx context.Context) (GetPayslipStatsRow, error) {
-	row := q.db.QueryRowContext(ctx, GetPayslipStats)
-	var i GetPayslipStatsRow
-	err := row.Scan(&i.PendingCount, &i.PendingLuna, &i.StuckCount)
-	return i, err
+func (q *Queries) UpsertRuntimeStatus(ctx context.Context, arg UpsertRuntimeStatusParams) error {
+	_, err := q.db.ExecContext(ctx, UpsertRuntimeStatus,
+		arg.HeartbeatAt,
+		arg.DaemonVersion,
+		arg.ConfigHash,
+		arg.DerivedValidatorAddress,
+		arg.ValidatorState,
+		arg.LastProcessedHeight,
+		arg.ChainHead,
+		arg.LastTickMs,
+		arg.RpcOk,
+		arg.ReadinessError,
+	)
+	return err
 }
-
-const GetCurrentEpochSnapshot = `-- name: GetCurrentEpochSnapshot :one
-SELECT num_stakers, balance FROM epochs
-WHERE status = 'in_progress'
-ORDER BY number DESC
-LIMIT 1
-`
-
-type GetCurrentEpochSnapshotRow struct {
-	NumStakers int64 `json:"num_stakers"`
-	Balance    int64 `json:"balance"`
-}
-
-func (q *Queries) GetCurrentEpochSnapshot(ctx context.Context) (GetCurrentEpochSnapshotRow, error) {
-	row := q.db.QueryRowContext(ctx, GetCurrentEpochSnapshot)
-	var i GetCurrentEpochSnapshotRow
-	err := row.Scan(&i.NumStakers, &i.Balance)
-	return i, err
-}
-
