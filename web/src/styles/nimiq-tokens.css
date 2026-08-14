@@ -1,0 +1,130 @@
+/* =============================================================================
+ * Nimiq Design Tokens — consolidated, copyable reference
+ * -----------------------------------------------------------------------------
+ * Source of truth:
+ *   • @nimiq/style v0.8.5  → nimiq-style/src/theme.css, typography.css, layout.css, main.css
+ *   • Nimiq Wallet theme   → wallet/src/scss/themes.scss, variables.scss, App.vue
+ * The 8px grid is the foundational unit: 1rem = 8px (html { font-size: 8px }).
+ * This file is self-contained — drop it into any project to get the full token set.
+ * ========================================================================== */
+
+:root {
+  /* --- Brand palette (@nimiq/style) ------------------------------------- */
+  --nimiq-blue:        #1F2348; /* rgb(31, 35, 72)    */
+  --nimiq-light-blue:  #0582CA; /* rgb(5, 130, 202)   */
+  --nimiq-gold:        #E9B213; /* rgb(233, 178, 19)  */
+  --nimiq-green:       #21BCA5; /* rgb(33, 188, 165)  */
+  --nimiq-orange:      #FC8702; /* rgb(252, 135, 2)   */
+  --nimiq-red:         #D94432; /* rgb(216, 65, 51)   */
+  --nimiq-purple:      #5F4B8B; /* rgb(95, 75, 139)   */
+  --nimiq-pink:        #FA7268; /* rgb(250, 114, 104) */
+  --nimiq-light-green: #88B04B; /* rgb(136, 176, 75)  */
+  --nimiq-brown:       #795548; /* rgb(121, 85, 72)   */
+  --nimiq-gray:        #F4F4F4;
+  --nimiq-light-gray:  #FAFAFA;
+  --nimiq-white:       #FFFFFF;
+
+  /* --- Palette adaptions on dark backgrounds --------------------------- */
+  --nimiq-light-blue-on-dark: #0CA6FE; /* rgb(12, 166, 254) */
+  --nimiq-red-on-dark:        #FF5C48; /* rgb(255, 92, 72)  */
+
+  /* --- Darkened variants (hover states) -------------------------------- */
+  --nimiq-blue-darkened:       #151833;
+  --nimiq-light-blue-darkened: #0071C3;
+  --nimiq-gold-darkened:       #E5A212;
+  --nimiq-green-darkened:      #20B29E;
+  --nimiq-orange-darkened:     #FC7500;
+  --nimiq-red-darkened:        #D13030;
+
+  /* --- Signature radial gradients -------------------------------------- */
+  /* Formula: radial-gradient(100% 100% at bottom right, <accent>, <base>) */
+  --nimiq-blue-bg:        radial-gradient(100% 100% at bottom right, #260133, var(--nimiq-blue));
+  --nimiq-light-blue-bg:  radial-gradient(100% 100% at bottom right, #265DD7, var(--nimiq-light-blue));
+  --nimiq-gold-bg:        radial-gradient(100% 100% at bottom right, #EC991C, var(--nimiq-gold));
+  --nimiq-green-bg:       radial-gradient(100% 100% at bottom right, #41A38E, var(--nimiq-green));
+  --nimiq-orange-bg:      radial-gradient(100% 100% at bottom right, #FD6216, var(--nimiq-orange));
+  --nimiq-red-bg:         radial-gradient(100% 100% at bottom right, #CC3047, var(--nimiq-red));
+  --nimiq-purple-bg:      radial-gradient(100% 100% at bottom right, #4D4C96, var(--nimiq-purple));
+  --nimiq-pink-bg:        radial-gradient(100% 100% at bottom right, #E0516B, var(--nimiq-pink));
+  --nimiq-light-green-bg: radial-gradient(100% 100% at bottom right, #70B069, var(--nimiq-light-green));
+  --nimiq-brown-bg:       radial-gradient(100% 100% at bottom right, #724147, var(--nimiq-brown));
+
+  /* --- Gradients darkened (hover states) ------------------------------- */
+  --nimiq-blue-bg-darkened:       radial-gradient(100% 100% at bottom right, #180021, var(--nimiq-blue-darkened));
+  --nimiq-light-blue-bg-darkened: radial-gradient(100% 100% at bottom right, #2355C4, var(--nimiq-light-blue-darkened));
+  --nimiq-gold-bg-darkened:       radial-gradient(100% 100% at bottom right, #E58A1B, var(--nimiq-gold-darkened));
+  --nimiq-green-bg-darkened:      radial-gradient(100% 100% at bottom right, #3D9988, var(--nimiq-green-darkened));
+  --nimiq-orange-bg-darkened:     radial-gradient(100% 100% at bottom right, #EA5200, var(--nimiq-orange-darkened));
+  --nimiq-red-bg-darkened:        radial-gradient(100% 100% at bottom right, #BF2D46, var(--nimiq-red-darkened));
+
+  /* --- Special / semantic colors --------------------------------------- */
+  --nimiq-highlight-bg: rgba(31, 35, 72, 0.06); /* Nimiq Blue @ 6% */
+  --nimiq-card-bg: white;
+
+  /* --- Light-on-blue opacity ladder (Nimiq Wallet) --------------------- */
+  /* Text tints derived from Nimiq Blue — the wallet's greyscale system.   */
+  --text-100: rgba(31, 35, 72, 1);
+  --text-80:  rgba(31, 35, 72, 0.8);
+  --text-70:  rgba(31, 35, 72, 0.7);
+  --text-60:  rgba(31, 35, 72, 0.6);
+  --text-50:  rgba(31, 35, 72, 0.5);
+  --text-40:  rgba(31, 35, 72, 0.4);
+  --text-35:  rgba(31, 35, 72, 0.35);
+  --text-30:  rgba(31, 35, 72, 0.3);
+  --text-25:  rgba(31, 35, 72, 0.25);
+  --text-22:  rgba(31, 35, 72, 0.22);
+  --text-20:  rgba(31, 35, 72, 0.2);
+  --text-16:  rgba(31, 35, 72, 0.16);
+  --text-14:  rgba(31, 35, 72, 0.14);
+  --text-12:  rgba(31, 35, 72, 0.12);
+  --text-10:  rgba(31, 35, 72, 0.1);
+  --text-6:   rgba(31, 35, 72, 0.06);
+
+  /* --- Crypto brand colors (Nimiq Wallet) ------------------------------ */
+  --bitcoin-orange: #F7931A;
+  --usdc-blue:      #2775CA;
+  --usdt-green:     #009393;
+
+  /* --- Typography ------------------------------------------------------ */
+  --nimiq-font-family: 'Muli', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                       Oxygen-Sans, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
+  --nimiq-font-family-mono: 'Fira Mono', monospace; /* addresses / hex, subset alphabet */
+  /* Type scale (1rem = 8px). Sizes shown as rem → px.                     */
+  --nimiq-size:   8px;   /* the rem base — the whole system is an 8px grid */
+  --body-size:    2.25rem; /* 18px — @nimiq/style body (wallet uses 2rem)  */
+  --h1-size:      3rem;    /* 24px, bold  */
+  --h2-size:      2.5rem;  /* 20px, bold  */
+  --h3-size:      2rem;    /* 16px, bold  */
+  --text-size:    2rem;    /* 16px        */
+  --small-size:   1.75rem; /* 14px, 600   */
+  --label-size:   1.75rem; /* 14px, 600, uppercase, letter-spacing .107em */
+
+  /* --- Radius ---------------------------------------------------------- */
+  --nimiq-radius-input:  0.5rem;   /* 4px   — .nq-input        */
+  --nimiq-radius-card:   1.25rem;  /* 10px  — .nq-card         */
+  --nimiq-radius-small:  1.6875rem;/* 13.5px— small/pill buttons */
+  --nimiq-radius-pill:   500px;    /* full pill — .nq-button   */
+
+  /* --- Elevation / shadows --------------------------------------------- */
+  --nimiq-shadow:   0 0.5rem 1.5rem rgba(0, 0, 0, 0.15);       /* .nq-shadow   */
+  --nimiq-shadow-l: 0 0.5rem 2.5rem rgba(0, 0, 0, 0.15);       /* .nq-shadow-l */
+  --nimiq-shadow-card: 0 0.5rem 3.5rem rgba(0, 0, 0, 0.111158);/* .nq-card     */
+
+  /* --- Motion ---------------------------------------------------------- */
+  --nimiq-ease: cubic-bezier(0.25, 0, 0, 1); /* the standard Nimiq easing */
+  --attr-duration: 0.2s;
+  --movement-duration: 0.4s;
+
+  /* --- Layout widths (Nimiq Wallet app shell) -------------------------- */
+  --sidebar-width: 24rem;
+  --settings-width: 131rem;
+  --address-column-width: 150rem;
+}
+
+/* --- Responsive breakpoints (Nimiq Wallet, px) ---------------------------
+ * mobile 768 · tablet 960 · halfMobile 1160 · smallDesktop 1199 ·
+ * mediumDesktop 1319 · largeDesktop 1409 · extraLargeDesktop 1499 ·
+ * veryLargeDesktop 1800 · ultraLargeDesktop 2000
+ * (SCSS vars in the wallet; listed here for reference — CSS can't tokenize
+ * media-query breakpoints as custom properties.)
+ * ---------------------------------------------------------------------- */

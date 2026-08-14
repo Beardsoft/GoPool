@@ -1,3 +1,4 @@
+@import './styles/nimiq-tokens.css';
 @import url('https://fonts.googleapis.com/css2?family=Muli:wght@400;600;700&family=Fira+Mono&display=swap');
 
 :root {
@@ -6,23 +7,156 @@
   --nimiq-green: #21bca5;
   --nimiq-gold: #e9b213;
   --nimiq-red: #d94432;
-  --text-100: rgba(31, 35, 72, 1);
+
+  --bg: #f7f8fb;
+  --bg-elev: #ffffff;
+  --bg-muted: #eef1f7;
+  --border: #d9e0ec;
+
+  --text-100: #1f2348;
   --text-80: rgba(31, 35, 72, 0.8);
   --text-60: rgba(31, 35, 72, 0.6);
   --text-40: rgba(31, 35, 72, 0.4);
+
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px;
   --space-16: 16px;
+  --space-24: 24px;
+  --space-32: 32px;
+  --space-48: 48px;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+
+  --shadow-sm: 0 1px 2px rgba(31,35,72,0.06), 0 4px 12px rgba(31,35,72,0.04);
+  --shadow-md: 0 4px 16px rgba(31,35,72,0.08);
+
+  --font-sans: 'Muli', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font-mono: 'Fira Mono', ui-monospace, monospace;
 }
 
+:root[data-theme='dark'] {
+  --bg: #0b0e1a;
+  --bg-elev: #12162a;
+  --bg-muted: #1a2040;
+  --border: #2a335a;
+
+  --text-100: #e6e9f5;
+  --text-80: rgba(230,233,245,0.8);
+  --text-60: rgba(230,233,245,0.6);
+  --text-40: rgba(230,233,245,0.4);
+}
+
+* { box-sizing: border-box; }
+
 html {
-  font-size: 8px;
+  font-size: 16px;
 }
 
 body {
-  font-family: 'Muli', sans-serif;
+  font-family: var(--font-sans);
   color: var(--text-100);
   margin: 0;
+  background: var(--bg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
+a { color: var(--nimiq-light-blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+h1, h2, h3 {
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0 0 var(--space-16) 0;
+  letter-spacing: -0.01em;
+}
+h1 { font-size: 1.75rem; }
+h2 { font-size: 1.25rem; }
+h3 { font-size: 1.125rem; }
+
+p { margin: 0 0 var(--space-16) 0; }
+
 code, .address, .hash {
-  font-family: 'Fira Mono', monospace;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 var(--space-24);
+}
+
+.card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-24);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: var(--nimiq-blue);
+  color: white;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: transform .08s ease, background .2s ease, box-shadow .2s ease;
+}
+.btn:hover { background: #262e66; transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn[disabled] { opacity: .6; cursor: not-allowed; }
+
+.input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: white;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+.input:focus { outline: 2px solid var(--nimiq-light-blue); outline-offset: 2px; border-color: transparent; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+th, td { padding: var(--space-12) var(--space-16); text-align: left; border-bottom: 1px solid var(--border); }
+th { background: var(--bg-muted); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-80); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #fcfdff; }
+
+.error {
+  color: var(--nimiq-red);
+  background: #fff1f0;
+  border: 1px solid #ffd0cd;
+  padding: var(--space-12) var(--space-16);
+  border-radius: var(--radius-sm);
+  margin: var(--space-16) 0;
+}
+
+.muted { color: var(--text-60); }
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--bg-muted);
+  color: var(--text-80);
 }
