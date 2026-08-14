@@ -14,7 +14,7 @@ export const router = createRouter({
         { path: 'epochs', name: 'epochs', component: () => import('./pages/Epochs.vue') },
         { path: 'epochs/:number', name: 'epoch-detail', component: () => import('./pages/EpochDetail.vue'), props: true },
         { path: 'stakers/:address?', name: 'staker-lookup', component: () => import('./pages/StakerLookup.vue'), props: true },
-        { path: 'onboard', name: 'onboard', component: () => import('./pages/Onboard.vue') },
+        { path: 'onboard', redirect: '/stakers' },
         { path: 'me', name: 'my-dashboard', component: () => import('./pages/MyDashboard.vue') },
         { path: 'performance', name: 'performance', component: () => import('./pages/Performance.vue') },
       ]

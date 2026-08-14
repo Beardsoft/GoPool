@@ -18,7 +18,6 @@ export const positionFixture: StakerPosition = {
   percentage: 2.5
 }
 
-export const historyFixture = [
-  { epoch_number: 7, reward_luna: 250_000 },
-  { epoch_number: 8, reward_luna: 260_000 }
-]
+export const historyFixture = {
+  cumulative_reward_luna: 250_000
+}
