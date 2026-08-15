@@ -19,6 +19,7 @@ describe('useLiveStatus', () => {
 
   it('initial state is connecting', () => {
     const wrapper = mount({
+      template: '<div />',
       setup() { return { ...useLiveStatus() } }
     })
     // state starts connecting before mount triggers start
@@ -27,7 +28,15 @@ describe('useLiveStatus', () => {
   })
 
   it('reconnect resets backoff', () => {
-    const { reconnect } = useLiveStatus()
+    let reconnect!: ReturnType<typeof useLiveStatus>['reconnect']
+    const wrapper = mount({
+      template: '<div />',
+      setup() {
+        reconnect = useLiveStatus().reconnect
+        return {}
+      },
+    })
     expect(typeof reconnect).toBe('function')
+    wrapper.unmount()
   })
 })

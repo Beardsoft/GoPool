@@ -29,6 +29,9 @@ onMounted(load)
 
 <template>
   <div class="operator-overview">
+    <p v-if="overview" role="status" class="overall-status">
+      Pool {{ overview.status === 'ok' ? 'healthy' : overview.status === 'attention' ? 'needs attention' : 'offline or degraded' }}
+    </p>
     <div class="global-status">
       <span>State: {{ state }}</span>
       <span v-if="state === 'paused'">Stale data</span>
