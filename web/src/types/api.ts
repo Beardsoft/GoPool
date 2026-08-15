@@ -46,3 +46,57 @@ export interface RewardBatch {
   pool_fee_luna: number;
   num_stakers: number;
 }
+
+export interface OperatorOverview {
+  status: 'ok' | 'attention' | 'degraded';
+  daemon_version?: string;
+  config_hash?: string;
+  chain_lag: number;
+  metrics: {
+    total_stake_luna: number;
+    total_rewards_luna: number;
+    num_stakers: number;
+    wallet_runway_days: number | null;
+  };
+  attention: OperatorEvent[];
+  validator: {
+    address: string;
+    state: string;
+    last_processed_height: number;
+  };
+  telemetry_points: TelemetryPoint[];
+  recent_activity: OperatorEvent[];
+}
+
+export interface OperatorEvent {
+  id: number;
+  severity: 'info' | 'warning' | 'error';
+  category: string;
+  source: string;
+  event_type: string;
+  summary: string;
+  context_json?: string;
+  actor_address?: string;
+  correlation_id?: string;
+  created_at: string;
+}
+
+export interface TelemetryPoint {
+  ts: string;
+  value: number;
+}
+
+export interface OperatorActivityFilters {
+  severity?: string;
+  category?: string;
+  from?: string;
+  to?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface OperatorActivityResponse {
+  items: OperatorEvent[];
+  next_cursor: string | null;
+  has_more: boolean;
+}

@@ -23,7 +23,8 @@ export const router = createRouter({
       path: '/operator',
       component: OperatorLayout,
       children: [
-        { path: '', name: 'operator', component: () => import('./pages/Operator.vue') },
+        { path: '', name: 'operator-overview', component: () => import('./pages/operator/Overview.vue') },
+        { path: 'activity', name: 'operator-activity', component: () => import('./pages/operator/Activity.vue') },
       ]
     },
     {

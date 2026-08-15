@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { apiGet } from '../api'
-import { useEvents } from '../composables/useEvents'
 import NimAmount from '../components/ui/NimAmount.vue'
 import type { PoolStatus } from '../types/api'
 
 const pool = ref<PoolStatus | null>(null)
 const error = ref('')
-const lastEvent = ref<string>('')
 
 onMounted(async () => {
   try {
@@ -16,26 +14,11 @@ onMounted(async () => {
     error.value = (e as Error).message
   }
 })
-
-const { events } = useEvents()
-events.value.forEach(e => {
-  if (e.type === 'epoch_started') {
-    lastEvent.value = `Epoch ${e.data?.epoch} started`
-    if (pool.value) {
-      pool.value.current_epoch = e.data?.epoch
-      pool.value.num_stakers = e.data?.numStakers ?? pool.value.num_stakers
-    }
-  }
-  if (e.type === 'checkpoint_reward') {
-    lastEvent.value = `Reward batch ${e.data?.batch}`
-  }
-})
 </script>
 
 <template>
   <section v-if="pool || error" class="card">
     <h1>Pool status</h1>
-    <p v-if="lastEvent" class="muted">Live: {{ lastEvent }}</p>
     <div class="grid" v-if="pool">
 
       <div class="stat">

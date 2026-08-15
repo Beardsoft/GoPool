@@ -1,5 +1,6 @@
 import { vi } from 'vitest'
-import type { StakerPosition } from '../types/api'
+import type { StakerPosition, OperatorOverview } from '../types/api'
+import { createRouter, createMemoryHistory } from 'vue-router'
 
 const responses = new Map<string, { body: unknown; status: number }>()
 export function mockFetch(path: string, body: unknown, status = 200) {
@@ -20,4 +21,30 @@ export const positionFixture: StakerPosition = {
 
 export const historyFixture = {
   cumulative_reward_luna: 250_000
+}
+
+export function overviewFixture(overrides: Partial<OperatorOverview> = {}): OperatorOverview {
+  return {
+    status: 'ok',
+    chain_lag: 0,
+    metrics: {
+      total_stake_luna: 1_000_000_000,
+      total_rewards_luna: 500_000_000,
+      num_stakers: 42,
+      wallet_runway_days: 30
+    },
+    attention: [],
+    validator: {
+      address: 'NQ12 8D4K AAAA BBBB CCCC DDDD EEEE FFFF GGGG',
+      state: 'active',
+      last_processed_height: 123456
+    },
+    telemetry_points: [],
+    recent_activity: [],
+    ...overrides
+  }
+}
+
+export const operatorTestGlobals = {
+  router: createRouter({ history: createMemoryHistory(), routes: [] })
 }

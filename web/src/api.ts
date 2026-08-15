@@ -1,8 +1,16 @@
+export interface ApiError {
+  status: number
+  code: string
+  message: string
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { credentials: 'include', ...init })
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }))
-    throw new Error(body.error ?? `request to ${path} failed with ${res.status}`)
+    const code = (body as any).code ?? 'error'
+    const message = (body as any).error ?? (body as any).message ?? `request to ${path} failed with ${res.status}`
+    throw { status: res.status, code, message } as ApiError
   }
   return res.json() as Promise<T>
 }
