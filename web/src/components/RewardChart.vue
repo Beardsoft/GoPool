@@ -10,7 +10,6 @@ const props = defineProps<{
 }>()
 
 const chartRef = ref<HTMLCanvasElement | null>(null)
-const tableRef = ref<HTMLTableElement | null>(null)
 let chart: Chart | null = null
 let themeObserver: MutationObserver | null = null
 
@@ -36,11 +35,9 @@ function render() {
     rewards: dark ? '#0CA6FE' : '#0582CA',
     cumulative: '#21BCA5',
     cumulativeFill: dark ? 'rgba(33, 188, 165, 0.14)' : 'rgba(33, 188, 165, 0.10)',
-    fees: 'rgba(233, 178, 19, 0.55)',
   }
   const labels = filteredPoints.value.map(p => `Epoch ${p.epoch_number}`)
   const data = filteredPoints.value.map(p => p.total_amount)
-  const fees = filteredPoints.value.map(p => p.total_fee)
   let running = 0
   const cumulative = filteredPoints.value.map(p => (running += p.total_amount))
 
@@ -70,13 +67,6 @@ function render() {
           fill: 'origin',
           borderDash: [4, 4],
           yAxisID: 'y'
-        },
-        {
-          label: 'Pool fee',
-          data: fees,
-          type: 'bar',
-          backgroundColor: palette.fees,
-          yAxisID: 'y1'
         }
       ]
     },
@@ -92,12 +82,6 @@ function render() {
           beginAtZero: true,
           title: { display: true, text: 'NIM', color: palette.text },
           grid: { color: palette.grid },
-          ticks: { color: palette.text, callback: (v) => formatNim(Number(v)) }
-        },
-        y1: {
-          beginAtZero: true,
-          position: 'right',
-          grid: { drawOnChartArea: false },
           ticks: { color: palette.text, callback: (v) => formatNim(Number(v)) }
         }
       },
@@ -131,18 +115,5 @@ watch(() => props.points, render, { deep: true })
 <template>
   <div>
     <canvas ref="chartRef" :aria-label="ariaLabel"></canvas>
-    <table ref="tableRef" aria-label="Reward data table">
-      <thead>
-        <tr><th>Epoch</th><th>Total</th><th>Fee</th><th>Batches</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="p in filteredPoints" :key="p.epoch_number">
-          <td>{{ p.epoch_number }}</td>
-          <td>{{ formatNim(p.total_amount) }} NIM</td>
-          <td>{{ formatNim(p.total_fee) }} NIM</td>
-          <td>{{ p.batches }}</td>
-        </tr>
-      </tbody>
-    </table>
   </div>
 </template>
