@@ -130,7 +130,7 @@ func ValidateEditable(e Editable) error {
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
 		return fmt.Errorf("rpc_url must be an HTTP(S) URL")
 	}
-	if e.Network != "main" && e.Network != "test-albatross" && e.Network != "dev-albatross" {
+	if e.Network != "main" && e.Network != "main-albatross" && e.Network != "test-albatross" && e.Network != "dev-albatross" {
 		return fmt.Errorf("unsupported network")
 	}
 	if e.PoolFeePercentage < 0 || e.PoolFeePercentage >= 1 {

@@ -1,8 +1,6 @@
-version: "3.5"
-
 networks:
   devnet:
-    name: ${NETWORK_NAME:?err}
+    name: ${NETWORK_NAME:-nimiq.local}
     driver: bridge
     ipam:
       driver: default
@@ -17,8 +15,8 @@ services:
       - --entrypoints.rpc.address=:8648
       - --providers.docker=true
     ports:
-      - "8443:8443"
-      - "8648:8648"
+      - "8444:8443"
+      - "8649:8648"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     networks:
@@ -32,19 +30,19 @@ services:
       dockerfile: build_ubuntu.Dockerfile
     labels:
       # Accept outside Nimiq protocol connections
-      - traefik.http.routers.seed1.rule=Host(`seed1.${NETWORK_NAME:?err}`)
+      - traefik.http.routers.seed1.rule=Host(`seed1.${NETWORK_NAME:-nimiq.local}`)
       - traefik.http.routers.seed1.entrypoints=nimiq
       - traefik.http.routers.seed1.service=seed1
       - traefik.http.services.seed1.loadbalancer.server.port=8443
 
       # Accept outside RPC connections
-      - traefik.http.routers.seed1-rpc.rule=Host(`seed1.${NETWORK_NAME:?err}`)
+      - traefik.http.routers.seed1-rpc.rule=Host(`seed1.${NETWORK_NAME:-nimiq.local}`)
       - traefik.http.routers.seed1-rpc.entrypoints=rpc
       - traefik.http.routers.seed1-rpc.service=seed1-rpc
       - traefik.http.services.seed1-rpc.loadbalancer.server.port=8648
     environment:
       - LISTEN_ADDRESSES=/ip4/7.0.0.2/tcp/8443/ws
-      - NIMIQ_HOST=seed1.${NETWORK_NAME:?err}
+      - NIMIQ_HOST=seed1.${NETWORK_NAME:-nimiq.local}
       - NIMIQ_NETWORK=dev-albatross
       - NIMIQ_PEER_KEY_FILE=/home/nimiq/.nimiq/peer_key.dat
       - NIMIQ_INSTANT_INBOUND=true
@@ -75,9 +73,9 @@ services:
       dockerfile: build_ubuntu.Dockerfile
     labels:
       # Accept outside Nimiq protocol connections
-      - traefik.http.routers.seed2.rule=Host(`seed2.${NETWORK_NAME:?err}`)
+      - traefik.http.routers.seed2.rule=Host(`seed2.${NETWORK_NAME:-nimiq.local}`)
       # Accept outside RPC connections
-      - traefik.http.routers.seed2-rpc.rule=Host(`seed2.${NETWORK_NAME:?err}`)
+      - traefik.http.routers.seed2-rpc.rule=Host(`seed2.${NETWORK_NAME:-nimiq.local}`)
       - traefik.http.routers.seed2-rpc.entrypoints=rpc
       - traefik.http.routers.seed2-rpc.service=seed2-rpc
       - traefik.http.services.seed2-rpc.loadbalancer.server.port=8648
@@ -85,10 +83,10 @@ services:
       - seed1
     environment:
       - LISTEN_ADDRESSES=/ip4/7.0.0.3/tcp/8443/ws
-      - NIMIQ_HOST=seed2.${NETWORK_NAME:?err}
+      - NIMIQ_HOST=seed2.${NETWORK_NAME:-nimiq.local}
       - NIMIQ_NETWORK=dev-albatross
       - NIMIQ_SEED_NODES=/ip4/7.0.0.2/tcp/8443/ws
-      # - NIMIQ_SEED_NODES=ws://seed1.${NETWORK_NAME:?err}:8443/5af4c3f30998573e8d3476cd0e0543bf7adba576ef321342e41c2bccc246c377
+      # - NIMIQ_SEED_NODES=ws://seed1.${NETWORK_NAME:-nimiq.local}:8443/5af4c3f30998573e8d3476cd0e0543bf7adba576ef321342e41c2bccc246c377
       - NIMIQ_PEER_KEY_FILE=/home/nimiq/.nimiq/peer_key.dat
       - NIMIQ_INSTANT_INBOUND=true
       - NIMIQ_VALIDATOR=validator
@@ -114,9 +112,9 @@ services:
       dockerfile: build_ubuntu.Dockerfile
     labels:
       # Accept outside Nimiq protocol connections
-      - traefik.http.routers.seed3.rule=Host(`seed3.${NETWORK_NAME:?err}`)
+      - traefik.http.routers.seed3.rule=Host(`seed3.${NETWORK_NAME:-nimiq.local}`)
       # Accept outside RPC connections
-      - traefik.http.routers.seed3-rpc.rule=Host(`seed3.${NETWORK_NAME:?err}`)
+      - traefik.http.routers.seed3-rpc.rule=Host(`seed3.${NETWORK_NAME:-nimiq.local}`)
       - traefik.http.routers.seed3rpc.entrypoints=rpc
       - traefik.http.routers.seed3-rpc.service=seed3-rpc
       - traefik.http.services.seed3-rpc.loadbalancer.server.port=8648
@@ -124,10 +122,10 @@ services:
       - seed2
     environment:
       - LISTEN_ADDRESSES=/ip4/7.0.0.4/tcp/8443/ws
-      - NIMIQ_HOST=seed3.${NETWORK_NAME:?err}
+      - NIMIQ_HOST=seed3.${NETWORK_NAME:-nimiq.local}
       - NIMIQ_NETWORK=dev-albatross
       - NIMIQ_SEED_NODES=/ip4/7.0.0.2/tcp/8443/ws
-      # - NIMIQ_SEED_NODES=ws://seed1.${NETWORK_NAME:?err}:8443/5af4c3f30998573e8d3476cd0e0543bf7adba576ef321342e41c2bccc246c377
+      # - NIMIQ_SEED_NODES=ws://seed1.${NETWORK_NAME:-nimiq.local}:8443/5af4c3f30998573e8d3476cd0e0543bf7adba576ef321342e41c2bccc246c377
       - NIMIQ_PEER_KEY_FILE=/home/nimiq/.nimiq/peer_key.dat
       - NIMIQ_INSTANT_INBOUND=true
       - NIMIQ_VALIDATOR=validator
@@ -153,9 +151,9 @@ services:
       dockerfile: build_ubuntu.Dockerfile
     labels:
       # Accept outside Nimiq protocol connections
-      - traefik.http.routers.seed4.rule=Host(`seed4.${NETWORK_NAME:?err}`)
+      - traefik.http.routers.seed4.rule=Host(`seed4.${NETWORK_NAME:-nimiq.local}`)
       # Accept outside RPC connections
-      - traefik.http.routers.seed4-rpc.rule=Host(`seed4.${NETWORK_NAME:?err}`)
+      - traefik.http.routers.seed4-rpc.rule=Host(`seed4.${NETWORK_NAME:-nimiq.local}`)
       - traefik.http.routers.seed4-rpc.entrypoints=rpc
       - traefik.http.routers.seed4-rpc.service=seed4-rpc
       - traefik.http.services.seed4-rpc.loadbalancer.server.port=8648
@@ -163,10 +161,10 @@ services:
       - seed3
     environment:
       - LISTEN_ADDRESSES=/ip4/7.0.0.5/tcp/8443/ws
-      - NIMIQ_HOST=seed4.${NETWORK_NAME:?err}
+      - NIMIQ_HOST=seed4.${NETWORK_NAME:-nimiq.local}
       - NIMIQ_NETWORK=dev-albatross
       - NIMIQ_SEED_NODES=/ip4/7.0.0.2/tcp/8443/ws
-      # - NIMIQ_SEED_NODES=ws://seed1.${NETWORK_NAME:?err}:8443/5af4c3f30998573e8d3476cd0e0543bf7adba576ef321342e41c2bccc246c377
+      # - NIMIQ_SEED_NODES=ws://seed1.${NETWORK_NAME:-nimiq.local}:8443/5af4c3f30998573e8d3476cd0e0543bf7adba576ef321342e41c2bccc246c377
       - NIMIQ_PEER_KEY_FILE=/home/nimiq/.nimiq/peer_key.dat
       - NIMIQ_INSTANT_INBOUND=true
       - NIMIQ_VALIDATOR=validator

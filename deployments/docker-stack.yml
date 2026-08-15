@@ -1,0 +1,58 @@
+version: "3.8"
+services:
+  gopool:
+    image: ${GOPOOL_IMAGE:-gopool:latest}
+    environment:
+      SERVICE: daemon
+      SQLITE_DB: /root/data/pool.db
+      CONFIG_FILE: /root/config/config.json
+      POOL_PRIVATE_KEY_FILE: /run/secrets/gopool_validator_key
+    volumes:
+      - gopool_data:/root/data
+      - gopool_config:/root/config:ro
+    secrets: [gopool_validator_key]
+    healthcheck:
+      test: ["CMD-SHELL", "test -r /run/secrets/gopool_validator_key"]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: on-failure }
+      placement: { constraints: [node.role == manager] }
+    networks: [gopool_net]
+
+  gopool-api:
+    image: ${GOPOOL_IMAGE:-gopool:latest}
+    environment:
+      SERVICE: api
+      SQLITE_DB: /root/data/pool.db
+      CONFIG_FILE: /root/config/config.json
+      POOL_API_ADDR: :8080
+      POOL_SETUP_TOKEN_FILE: /run/secrets/gopool_setup_token
+      POOL_SESSION_SECRET_FILE: /run/secrets/gopool_session_secret
+    volumes:
+      - gopool_data:/root/data
+      - gopool_config:/root/config:rw
+    secrets: [gopool_setup_token, gopool_session_secret]
+    healthcheck:
+      test: ["CMD-SHELL", "test -r /run/secrets/gopool_setup_token && test -r /run/secrets/gopool_session_secret"]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: on-failure }
+      placement: { constraints: [node.role == manager] }
+      labels:
+        - traefik.enable=true
+        - traefik.swarm.network=gopool_net
+        - traefik.http.routers.gopool-api.entrypoints=websecure
+        - traefik.http.routers.gopool-api.rule=Host(`gopool.example.com`)
+        - traefik.http.routers.gopool-api.tls=true
+        - traefik.http.services.gopool-api.loadbalancer.server.port=8080
+    networks: [gopool_net]
+
+networks:
+  gopool_net: { driver: overlay, attachable: true }
+volumes:
+  gopool_data: { driver: local }
+  gopool_config: { driver: local }
+secrets:
+  gopool_validator_key: { external: true }
+  gopool_setup_token: { external: true }
+  gopool_session_secret: { external: true }

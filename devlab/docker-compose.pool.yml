@@ -1,9 +1,7 @@
 services:
   gopool:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-    container_name: gopool
+    build: { context: .., dockerfile: Dockerfile }
+    container_name: gopool-dev
     ports: ["9100:9100"]
     volumes:
       - ../data:/root/data
@@ -14,19 +12,14 @@ services:
       CONFIG_FILE: /root/config/config.json
       POOL_PRIVATE_KEY_FILE: /run/secrets/gopool_validator_key
     secrets: [gopool_validator_key]
-    healthcheck:
-      test: ["CMD-SHELL", "test -r /run/secrets/gopool_validator_key"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+    networks: { devnet: { ipv4_address: 7.0.0.10 } }
+    depends_on: [seed1]
     restart: unless-stopped
 
   gopool-api:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-    container_name: gopool-api
-    ports: ["52412:8080"]
+    build: { context: .., dockerfile: Dockerfile }
+    container_name: gopool-api-dev
+    ports: ["52413:8080"]
     volumes:
       - ../data:/root/data
       - ../data/config:/root/config:rw
@@ -38,18 +31,11 @@ services:
       POOL_SETUP_TOKEN_FILE: /run/secrets/gopool_setup_token
       POOL_SESSION_SECRET_FILE: /run/secrets/gopool_session_secret
     secrets: [gopool_setup_token, gopool_session_secret]
-    healthcheck:
-      test: ["CMD-SHELL", "test -r /run/secrets/gopool_setup_token && test -r /run/secrets/gopool_session_secret"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    depends_on: [gopool]
+    networks: { devnet: { ipv4_address: 7.0.0.11 } }
+    depends_on: [gopool, seed1]
     restart: unless-stopped
 
 secrets:
-  gopool_validator_key:
-    file: ../.secrets/validator-key
-  gopool_setup_token:
-    file: ../.secrets/setup-token
-  gopool_session_secret:
-    file: ../.secrets/session-secret
+  gopool_validator_key: { file: ../.secrets/validator-key }
+  gopool_setup_token: { file: ../.secrets/setup-token }
+  gopool_session_secret: { file: ../.secrets/session-secret }
