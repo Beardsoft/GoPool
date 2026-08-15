@@ -13,24 +13,44 @@ import (
 	"github.com/NimMiniApps/nimiq-go/rpc"
 
 	"github.com/Beardsoft/GoPool/internal/config"
+	"github.com/Beardsoft/GoPool/internal/configstore"
 	"github.com/Beardsoft/GoPool/internal/db"
 )
 
 // API holds the dependencies every handler needs.
 type API struct {
-	queries     *db.Queries
-	cfg         *config.Config
-	rpc         *rpc.Client
-	nonces      *nonceStore
-	alertTestMu sync.Mutex
-	alertTestAt map[string]time.Time
+	queries        *db.Queries
+	cfg            *config.Config
+	rpc            *rpc.Client
+	nonces         *nonceStore
+	alertTestMu    sync.Mutex
+	alertTestAt    map[string]time.Time
+	configStore    *configstore.Store
+	setupOnly      bool
+	setupComplete  bool
+	setupTokenHash string
+	setupMu        sync.Mutex
+	setupSessions  map[string]time.Time
+	setupFailures  map[string][]time.Time
 }
+
+type Option func(*API)
+
+func WithConfigStore(store *configstore.Store) Option { return func(a *API) { a.configStore = store } }
+func WithSetup(tokenHash string, store *configstore.Store) Option {
+	return func(a *API) { a.setupOnly = true; a.setupTokenHash = tokenHash; a.configStore = store }
+}
+func WithSetupComplete(complete bool) Option { return func(a *API) { a.setupComplete = complete } }
 
 // New builds an API. cfg may be nil in tests that don't exercise auth or the
 // operator health endpoint; rpc may be nil in tests that don't exercise
 // operator health.
-func New(cfg *config.Config, q *db.Queries, rpcClient *rpc.Client) *API {
-	return &API{queries: q, cfg: cfg, rpc: rpcClient, nonces: newNonceStore(), alertTestAt: make(map[string]time.Time)}
+func New(cfg *config.Config, q *db.Queries, rpcClient *rpc.Client, options ...Option) *API {
+	a := &API{queries: q, cfg: cfg, rpc: rpcClient, nonces: newNonceStore(), alertTestAt: make(map[string]time.Time), setupSessions: make(map[string]time.Time), setupFailures: make(map[string][]time.Time)}
+	for _, option := range options {
+		option(a)
+	}
+	return a
 }
 
 // Mux builds the HTTP routes. Route registration for auth/operator handlers
@@ -38,11 +58,17 @@ func New(cfg *config.Config, q *db.Queries, rpcClient *rpc.Client) *API {
 // only the routes it adds, not a shared switch statement.
 func (a *API) Mux() http.Handler {
 	mux := http.NewServeMux()
+	if a.setupOnly {
+		a.registerSetupRoutes(mux)
+		a.registerStaticRoutes(mux)
+		return mux
+	}
 	mux.HandleFunc("GET /api/pool", a.handlePool)
 	a.registerEpochRoutes(mux)
 	a.registerStakerRoutes(mux)
 	a.registerAuthRoutes(mux)
 	a.registerOperatorRoutes(mux)
+	a.registerOperatorSettingsRoutes(mux)
 	a.registerStaticRoutes(mux)
 	return mux
 }
