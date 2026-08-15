@@ -9,6 +9,7 @@ import (
 
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
+	"github.com/Beardsoft/GoPool/internal/notifier"
 	"github.com/Beardsoft/GoPool/internal/ops"
 
 	"go.uber.org/zap"
@@ -47,8 +48,8 @@ func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 			Number: int64(nextEpoch), NumStakers: 0, Balance: 0, Status: "not_elected",
 		})
 		if m.notifier != nil {
-			m.notifier.Send("warning", "Missed election",
-				fmt.Sprintf("Could not confirm validator election for epoch %d: %v", nextEpoch, err))
+			m.notifier.Send(ctx, notifier.Alert{Level: "warning", Type: "missed_election", Title: "Missed election",
+				Message: fmt.Sprintf("Could not confirm validator election for epoch %d: %v", nextEpoch, err)})
 		}
 		return insertErr
 	}
@@ -72,7 +73,7 @@ func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 			return err
 		}
 		if m.notifier != nil {
-			m.notifier.Send("warning", "Validator state", "Validator is "+status+" for epoch "+fmt.Sprintf("%d", nextEpoch))
+			m.notifier.Send(ctx, notifier.Alert{Level: "warning", Type: "validator_state", Title: "Validator state", Message: "Validator is " + status + " for epoch " + fmt.Sprintf("%d", nextEpoch)})
 		}
 		if m.broadcaster != nil {
 			m.broadcaster.Publish(PoolEvent{

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/NimMiniApps/nimiq-go/rpc"
 
@@ -16,17 +18,19 @@ import (
 
 // API holds the dependencies every handler needs.
 type API struct {
-	queries *db.Queries
-	cfg     *config.Config
-	rpc     *rpc.Client
-	nonces  *nonceStore
+	queries     *db.Queries
+	cfg         *config.Config
+	rpc         *rpc.Client
+	nonces      *nonceStore
+	alertTestMu sync.Mutex
+	alertTestAt map[string]time.Time
 }
 
 // New builds an API. cfg may be nil in tests that don't exercise auth or the
 // operator health endpoint; rpc may be nil in tests that don't exercise
 // operator health.
 func New(cfg *config.Config, q *db.Queries, rpcClient *rpc.Client) *API {
-	return &API{queries: q, cfg: cfg, rpc: rpcClient, nonces: newNonceStore()}
+	return &API{queries: q, cfg: cfg, rpc: rpcClient, nonces: newNonceStore(), alertTestAt: make(map[string]time.Time)}
 }
 
 // Mux builds the HTTP routes. Route registration for auth/operator handlers

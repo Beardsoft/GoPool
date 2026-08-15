@@ -1029,6 +1029,51 @@ func (q *Queries) InsertValidatorActionWithState(ctx context.Context, arg Insert
 	return id, err
 }
 
+const ListAlertDeliveries = `-- name: ListAlertDeliveries :many
+SELECT id, channel, alert_type, destination, state, response_summary, attempted_at, correlation_id
+FROM alert_deliveries
+WHERE id < ?
+ORDER BY id DESC
+LIMIT ?
+`
+
+type ListAlertDeliveriesParams struct {
+	ID    int64 `json:"id"`
+	Limit int64 `json:"limit"`
+}
+
+func (q *Queries) ListAlertDeliveries(ctx context.Context, arg ListAlertDeliveriesParams) ([]AlertDelivery, error) {
+	rows, err := q.db.QueryContext(ctx, ListAlertDeliveries, arg.ID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AlertDelivery{}
+	for rows.Next() {
+		var i AlertDelivery
+		if err := rows.Scan(
+			&i.ID,
+			&i.Channel,
+			&i.AlertType,
+			&i.Destination,
+			&i.State,
+			&i.ResponseSummary,
+			&i.AttemptedAt,
+			&i.CorrelationID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ListApprovedAuditLogs = `-- name: ListApprovedAuditLogs :many
 SELECT id, action_type, address, amount, fee, kind, status, intent_data, created_at
 FROM audit_logs

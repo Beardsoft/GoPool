@@ -12,6 +12,7 @@ import (
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
 	"github.com/Beardsoft/GoPool/internal/metrics"
+	"github.com/Beardsoft/GoPool/internal/notifier"
 	"github.com/Beardsoft/GoPool/internal/ops"
 
 	"go.uber.org/zap"
@@ -125,8 +126,8 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 		if !payoutWorthSending(amount, fee) {
 			held[row.Address] = true
 			if markFeeFloorHold(m.feeFloorAlerted, row.Address) && m.notifier != nil {
-				m.notifier.Send("warning", "Fee floor breach",
-					fmt.Sprintf("Payout to %s held: %d luna pending is below 10x the %d luna tx fee", row.Address, amount, fee))
+				m.notifier.Send(ctx, notifier.Alert{Level: "warning", Type: "fee_floor", Title: "Fee floor breach",
+					Message: fmt.Sprintf("Payout to %s held: %d luna pending is below 10x the %d luna tx fee", row.Address, amount, fee)})
 			}
 			logger.Logger.Debug("holding payout until amount covers 10× fee",
 				zap.String("staker", row.Address),

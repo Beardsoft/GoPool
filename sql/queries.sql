@@ -212,6 +212,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id;
 INSERT INTO alert_deliveries (channel, alert_type, destination, state, response_summary, correlation_id)
 VALUES (?, ?, ?, ?, ?, ?) RETURNING id;
 
+-- name: ListAlertDeliveries :many
+SELECT id, channel, alert_type, destination, state, response_summary, attempted_at, correlation_id
+FROM alert_deliveries
+WHERE id < ?
+ORDER BY id DESC
+LIMIT ?;
+
 -- name: InsertConfigRevision :one
 INSERT INTO config_revisions (actor_address, before_json, after_json, validation_state, write_state, config_hash)
 VALUES (?, ?, ?, ?, ?, ?) RETURNING id;

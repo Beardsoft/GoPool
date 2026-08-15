@@ -64,6 +64,7 @@ func (a *API) registerOperatorRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/operator/validator/retire", a.requireOperator(a.handleOperatorAction("retire")))
 	a.registerOperatorOverviewRoutes(mux)
 	a.registerOperatorOperationsRoutes(mux)
+	a.registerOperatorAlertRoutes(mux)
 }
 
 type auditLogResponse struct {
