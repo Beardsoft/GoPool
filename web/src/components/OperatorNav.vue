@@ -3,7 +3,7 @@ import { RouterLink } from 'vue-router'
 </script>
 
 <template>
-  <nav class="operator-nav">
+  <nav class="operator-nav" data-operator-nav aria-label="Operator console">
     <RouterLink to="/operator">Overview</RouterLink>
     <RouterLink to="/operator/activity">Activity</RouterLink>
     <RouterLink to="/operator/operations">Operations</RouterLink>
@@ -15,19 +15,35 @@ import { RouterLink } from 'vue-router'
 <style scoped>
 .operator-nav {
   display: flex;
-  gap: var(--space-16);
-  padding: var(--space-12) 0;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: var(--space-24);
+  gap: 6px;
+  padding: 8px;
+  margin: 24px 0 32px;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-subtle);
+  overflow-x: auto;
 }
 .operator-nav a {
-  color: var(--text-80);
+  flex: 1;
+  min-width: max-content;
+  padding: 10px 18px;
+  border-radius: 9px;
+  color: var(--app-muted);
   text-decoration: none;
   font-weight: 600;
+  text-align: center;
+  transition: background .2s var(--nimiq-ease), color .2s var(--nimiq-ease);
 }
+.operator-nav a:hover { color: var(--app-text); background: var(--surface-2); }
 .operator-nav a.router-link-active {
-  color: var(--nimiq-blue);
-  border-bottom: 2px solid var(--nimiq-blue);
-  padding-bottom: 4px;
+  color: white;
+  background: var(--nimiq-light-blue-bg);
+  box-shadow: 0 8px 20px rgba(5, 130, 202, .2);
+}
+
+@media (max-width: 640px) {
+  .operator-nav { margin: 16px -8px 24px; border-radius: 12px; }
+  .operator-nav a { padding: 9px 13px; font-size: .86rem; }
 }
 </style>

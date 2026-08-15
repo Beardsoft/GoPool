@@ -8,8 +8,14 @@ import (
 )
 
 type operatorOverviewResponseTest struct {
-	Status   string `json:"status"`
-	ChainLag int64  `json:"chain_lag"`
+	Status           string `json:"status"`
+	ChainLag         int64  `json:"chain_lag"`
+	ValidatorSummary struct {
+		Address             string `json:"address"`
+		State               string `json:"state"`
+		LastProcessedHeight int64  `json:"last_processed_height"`
+		LastTickMs          int64  `json:"last_tick_ms"`
+	} `json:"validator_summary"`
 	Attention []struct {
 		ID int64 `json:"id"`
 	} `json:"attention"`
@@ -32,6 +38,9 @@ func TestOperatorOverviewReturnsHealthAndAttention(t *testing.T) {
 	}
 	if got.Status != "attention" || got.ChainLag != 2 || len(got.Attention) != 1 {
 		t.Fatalf("%+v", got)
+	}
+	if got.ValidatorSummary.Address == "" || got.ValidatorSummary.State != "active" || got.ValidatorSummary.LastProcessedHeight != 120 {
+		t.Fatalf("validator summary is incomplete: %+v", got.ValidatorSummary)
 	}
 }
 

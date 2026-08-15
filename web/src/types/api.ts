@@ -48,37 +48,32 @@ export interface RewardBatch {
 }
 
 export interface OperatorOverview {
-  status: 'ok' | 'attention' | 'degraded';
-  daemon_version?: string;
-  config_hash?: string;
+  status: 'healthy' | 'attention';
   chain_lag: number;
-  metrics: {
-    total_stake_luna: number;
-    total_rewards_luna: number;
-    num_stakers: number;
-    wallet_runway_days: number | null;
-  };
-  attention: OperatorEvent[];
-  validator: {
+  wallet_runway_days?: number | null;
+  readiness: 'ok' | 'degraded' | 'error';
+  payout_summary: Record<string, unknown>;
+  validator_summary: {
     address: string;
     state: string;
     last_processed_height: number;
+    last_tick_ms: number;
   };
-  telemetry_points: TelemetryPoint[];
-  recent_activity: OperatorEvent[];
+  attention: OperatorEvent[];
+  events: OperatorEvent[];
 }
 
 export interface OperatorEvent {
   id: number;
   severity: 'info' | 'warning' | 'error';
   category: string;
-  source: string;
-  event_type: string;
+  source?: string;
+  event_type?: string;
   summary: string;
   context_json?: string;
   actor_address?: string;
   correlation_id?: string;
-  created_at: string;
+  created_at?: string;
 }
 
 export interface TelemetryPoint {

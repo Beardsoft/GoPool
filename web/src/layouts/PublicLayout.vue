@@ -21,6 +21,9 @@ import AppHeader from '../components/AppHeader.vue'
 }
 .main {
   flex: 1;
-  padding: var(--space-32) 0;
+  padding: 0 0 72px;
+}
+.main > .container {
+  max-width: 1184px;
 }
 </style>

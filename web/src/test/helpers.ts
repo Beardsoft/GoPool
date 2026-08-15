@@ -26,22 +26,19 @@ export const historyFixture = {
 
 export function overviewFixture(overrides: Partial<OperatorOverview> = {}): OperatorOverview {
   return {
-    status: 'ok',
+    status: 'healthy',
     chain_lag: 0,
-    metrics: {
-      total_stake_luna: 1_000_000_000,
-      total_rewards_luna: 500_000_000,
-      num_stakers: 42,
-      wallet_runway_days: 30
-    },
+    wallet_runway_days: 30,
+    readiness: 'ok',
+    payout_summary: {},
     attention: [],
-    validator: {
+    validator_summary: {
       address: 'NQ12 8D4K AAAA BBBB CCCC DDDD EEEE FFFF GGGG',
       state: 'active',
-      last_processed_height: 123456
+      last_processed_height: 123456,
+      last_tick_ms: 42
     },
-    telemetry_points: [],
-    recent_activity: [],
+    events: [],
     ...overrides
   }
 }

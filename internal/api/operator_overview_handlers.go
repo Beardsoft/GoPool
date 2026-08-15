@@ -15,6 +15,7 @@ func writeAPIError(w http.ResponseWriter, status int, code, message string) {
 }
 
 func (a *API) registerOperatorOverviewRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/operator/events", a.requireOperator(a.handleOperatorEvents))
 	mux.HandleFunc("GET /api/operator/overview", a.requireOperator(a.handleOperatorOverview))
 	mux.HandleFunc("GET /api/operator/readiness", a.requireOperator(a.handleOperatorReadiness))
 	mux.HandleFunc("GET /api/operator/telemetry", a.requireOperator(a.handleOperatorTelemetry))
@@ -23,14 +24,21 @@ func (a *API) registerOperatorOverviewRoutes(mux *http.ServeMux) {
 }
 
 type operatorOverviewResponse struct {
-	Status           string          `json:"status"`
-	ChainLag         int64           `json:"chain_lag"`
-	WalletRunwayDays *int            `json:"wallet_runway_days,omitempty"`
-	Readiness        string          `json:"readiness"`
-	PayoutSummary    json.RawMessage `json:"payout_summary"`
-	ValidatorSummary json.RawMessage `json:"validator_summary"`
-	Attention        []attentionItem `json:"attention"`
-	Events           []eventSummary  `json:"events"`
+	Status           string           `json:"status"`
+	ChainLag         int64            `json:"chain_lag"`
+	WalletRunwayDays *int             `json:"wallet_runway_days,omitempty"`
+	Readiness        string           `json:"readiness"`
+	PayoutSummary    json.RawMessage  `json:"payout_summary"`
+	ValidatorSummary validatorSummary `json:"validator_summary"`
+	Attention        []attentionItem  `json:"attention"`
+	Events           []eventSummary   `json:"events"`
+}
+
+type validatorSummary struct {
+	Address             string `json:"address"`
+	State               string `json:"state"`
+	LastProcessedHeight int64  `json:"last_processed_height"`
+	LastTickMs          int64  `json:"last_tick_ms"`
 }
 
 type attentionItem struct {
@@ -99,9 +107,14 @@ func (a *API) handleOperatorOverview(w http.ResponseWriter, r *http.Request) {
 		WalletRunwayDays: walletRunway,
 		Readiness:        readiness,
 		PayoutSummary:    json.RawMessage(`{}`),
-		ValidatorSummary: json.RawMessage(`{}`),
-		Attention:        attention,
-		Events:           events,
+		ValidatorSummary: validatorSummary{
+			Address:             statusRow.DerivedValidatorAddress,
+			State:               statusRow.ValidatorState,
+			LastProcessedHeight: statusRow.LastProcessedHeight,
+			LastTickMs:          statusRow.LastTickMs,
+		},
+		Attention: attention,
+		Events:    events,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
