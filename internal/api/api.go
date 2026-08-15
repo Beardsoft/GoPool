@@ -64,6 +64,7 @@ func (a *API) Mux() http.Handler {
 		return mux
 	}
 	mux.HandleFunc("GET /api/pool", a.handlePool)
+	mux.HandleFunc("GET /api/pool/rewards", a.handlePoolRewards)
 	a.registerEpochRoutes(mux)
 	a.registerStakerRoutes(mux)
 	a.registerAuthRoutes(mux)

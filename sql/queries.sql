@@ -360,3 +360,9 @@ RETURNING id;
 
 -- name: UpdatePayslipStatusFailed :exec
 UPDATE payslips SET status='failed' WHERE tx_hash=?;
+
+-- name: ListRewardBatchesByEpoch :many
+SELECT batch_number, epoch_number, amount, pool_fee, num_stakers
+FROM rewards
+WHERE epoch_number = ?
+ORDER BY batch_number ASC;

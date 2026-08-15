@@ -1364,6 +1364,50 @@ func (q *Queries) ListPendingAuditLogs(ctx context.Context) ([]ListPendingAuditL
 	return items, nil
 }
 
+const ListRewardBatchesByEpoch = `-- name: ListRewardBatchesByEpoch :many
+SELECT batch_number, epoch_number, amount, pool_fee, num_stakers
+FROM rewards
+WHERE epoch_number = ?
+ORDER BY batch_number ASC
+`
+
+type ListRewardBatchesByEpochRow struct {
+	BatchNumber int64 `json:"batch_number"`
+	EpochNumber int64 `json:"epoch_number"`
+	Amount      int64 `json:"amount"`
+	PoolFee     int64 `json:"pool_fee"`
+	NumStakers  int64 `json:"num_stakers"`
+}
+
+func (q *Queries) ListRewardBatchesByEpoch(ctx context.Context, epochNumber int64) ([]ListRewardBatchesByEpochRow, error) {
+	rows, err := q.db.QueryContext(ctx, ListRewardBatchesByEpoch, epochNumber)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRewardBatchesByEpochRow{}
+	for rows.Next() {
+		var i ListRewardBatchesByEpochRow
+		if err := rows.Scan(
+			&i.BatchNumber,
+			&i.EpochNumber,
+			&i.Amount,
+			&i.PoolFee,
+			&i.NumStakers,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ListRewardsByEpochRange = `-- name: ListRewardsByEpochRange :many
 SELECT epoch_number, SUM(amount) AS total_amount, SUM(pool_fee) AS total_fee, COUNT(*) AS batches
 FROM rewards

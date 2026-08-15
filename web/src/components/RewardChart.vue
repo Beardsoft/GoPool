@@ -12,6 +12,7 @@ const props = defineProps<{
 const chartRef = ref<HTMLCanvasElement | null>(null)
 const tableRef = ref<HTMLTableElement | null>(null)
 let chart: Chart | null = null
+let themeObserver: MutationObserver | null = null
 
 const filteredPoints = computed(() => {
   // Simple range handling; for now just return points
@@ -28,6 +29,15 @@ const ariaLabel = computed(() => {
 function render() {
   if (!chartRef.value) return
   if (chart) chart.destroy()
+  const dark = document.documentElement.dataset.theme === 'dark'
+  const palette = {
+    text: dark ? 'rgba(255, 255, 255, 0.68)' : 'rgba(31, 35, 72, 0.68)',
+    grid: dark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(31, 35, 72, 0.10)',
+    rewards: dark ? '#0CA6FE' : '#0582CA',
+    cumulative: '#21BCA5',
+    cumulativeFill: dark ? 'rgba(33, 188, 165, 0.14)' : 'rgba(33, 188, 165, 0.10)',
+    fees: 'rgba(233, 178, 19, 0.55)',
+  }
   const labels = filteredPoints.value.map(p => `Epoch ${p.epoch_number}`)
   const data = filteredPoints.value.map(p => p.total_amount)
   const fees = filteredPoints.value.map(p => p.total_fee)
@@ -40,16 +50,21 @@ function render() {
       labels,
       datasets: [
         {
-          label: 'Total rewards (luna)',
+          label: 'Epoch rewards',
           data,
           tension: 0.3,
+          borderColor: palette.rewards,
+          backgroundColor: palette.rewards,
+          pointBackgroundColor: palette.rewards,
           borderWidth: 2,
           yAxisID: 'y'
         },
         {
-          label: 'Cumulative rewards (luna)',
+          label: 'Cumulative rewards',
           data: cumulative,
           tension: 0.3,
+          borderColor: palette.cumulative,
+          backgroundColor: palette.cumulativeFill,
           borderWidth: 2,
           pointRadius: 0,
           fill: 'origin',
@@ -57,10 +72,10 @@ function render() {
           yAxisID: 'y'
         },
         {
-          label: 'Pool fee (luna)',
+          label: 'Pool fee',
           data: fees,
           type: 'bar',
-          backgroundColor: 'rgba(100,100,100,0.3)',
+          backgroundColor: palette.fees,
           yAxisID: 'y1'
         }
       ]
@@ -69,19 +84,25 @@ function render() {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
       scales: {
+        x: {
+          ticks: { color: palette.text },
+          grid: { color: palette.grid }
+        },
         y: {
           beginAtZero: true,
-          title: { display: true, text: 'Luna' },
-          ticks: { callback: (v) => formatNim(Number(v)) }
+          title: { display: true, text: 'NIM', color: palette.text },
+          grid: { color: palette.grid },
+          ticks: { color: palette.text, callback: (v) => formatNim(Number(v)) }
         },
         y1: {
           beginAtZero: true,
           position: 'right',
           grid: { drawOnChartArea: false },
-          ticks: { callback: (v) => formatNim(Number(v)) }
+          ticks: { color: palette.text, callback: (v) => formatNim(Number(v)) }
         }
       },
       plugins: {
+        legend: { labels: { color: palette.text, usePointStyle: true } },
         tooltip: {
           callbacks: {
             label: (ctx) => {
@@ -95,8 +116,15 @@ function render() {
   })
 }
 
-onMounted(render)
-onUnmounted(() => { if (chart) chart.destroy() })
+onMounted(() => {
+  render()
+  themeObserver = new MutationObserver(render)
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+})
+onUnmounted(() => {
+  themeObserver?.disconnect()
+  if (chart) chart.destroy()
+})
 watch(() => props.points, render, { deep: true })
 </script>
 

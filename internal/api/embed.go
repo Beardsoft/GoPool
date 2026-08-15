@@ -29,6 +29,10 @@ func mustSub(f embed.FS, dir string) fs.FS {
 func (a *API) registerStaticRoutes(mux *http.ServeMux) {
 	fileServer := http.FileServerFS(webDist)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+			writeError(w, http.StatusNotFound, "API endpoint not found")
+			return
+		}
 		if _, err := fs.Stat(webDist, strings.TrimPrefix(r.URL.Path, "/")); err != nil {
 			r.URL.Path = "/"
 		}
