@@ -143,6 +143,28 @@ func (q *Queries) FinalizePayslips(ctx context.Context, txHash sql.NullString) e
 	return err
 }
 
+const GetConfigRevision = `-- name: GetConfigRevision :one
+SELECT id, actor_address, before_json, after_json, validation_state, write_state, created_at, activated_at, config_hash
+FROM config_revisions WHERE id = ?
+`
+
+func (q *Queries) GetConfigRevision(ctx context.Context, id int64) (ConfigRevision, error) {
+	row := q.db.QueryRowContext(ctx, GetConfigRevision, id)
+	var i ConfigRevision
+	err := row.Scan(
+		&i.ID,
+		&i.ActorAddress,
+		&i.BeforeJson,
+		&i.AfterJson,
+		&i.ValidationState,
+		&i.WriteState,
+		&i.CreatedAt,
+		&i.ActivatedAt,
+		&i.ConfigHash,
+	)
+	return i, err
+}
+
 const GetCurrentEpochSnapshot = `-- name: GetCurrentEpochSnapshot :one
 SELECT num_stakers, balance FROM epochs
 WHERE status = 'in_progress'

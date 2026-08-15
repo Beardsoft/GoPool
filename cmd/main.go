@@ -24,7 +24,7 @@ func main() {
 	logger.InitLogger()
 	defer logger.Sync()
 
-	cfg, err := config.LoadConfig()
+	cfg, err := config.LoadDaemon("")
 	if err != nil {
 		logger.Logger.Fatal("failed to load config", zap.Error(err))
 	}
@@ -45,7 +45,7 @@ func main() {
 	defer sqlDB.Close()
 	queries := db.New(sqlDB)
 
-	recorder := ops.NewRecorder(queries)
+	recorder := ops.NewRecorder(queries, ops.WithConfigHash(config.EditableHash(cfg.Editable())))
 	manager := pool.NewManager(c, queries, cfg, pool.WithRecorder(recorder))
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

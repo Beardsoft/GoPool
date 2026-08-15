@@ -1,6 +1,12 @@
 package config
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestValidateAPI(t *testing.T) {
 	cases := []struct {
@@ -19,6 +25,30 @@ func TestValidateAPI(t *testing.T) {
 		err := ValidateAPI(&c.cfg)
 		if (err != nil) != c.wantErr {
 			t.Errorf("%s: ValidateAPI() error = %v, wantErr %v", c.name, err, c.wantErr)
+		}
+	}
+}
+
+func TestLoadOptionalDoesNotMaterializeSecrets(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"rpc_url":"https://rpc.example","network":"main","private_key":"private-value","session_secret":"session-value"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, configured, err := LoadOptional(path)
+	if err != nil || !configured {
+		t.Fatalf("configured=%v err=%v", configured, err)
+	}
+	if cfg.PrivateKey != "" || cfg.SessionSecret != "" {
+		t.Fatalf("API load materialized a secret: %+v", cfg)
+	}
+}
+
+func TestRedactedConfigNeverContainsSecrets(t *testing.T) {
+	cfg := Config{PrivateKey: "private-value-7f8c", SessionSecret: "session-value-5a2d", AlertTelegramToken: "telegram-value-9b1e"}
+	got, _ := json.Marshal(Redact(&cfg))
+	for _, secret := range []string{cfg.PrivateKey, cfg.SessionSecret, cfg.AlertTelegramToken} {
+		if strings.Contains(string(got), secret) {
+			t.Fatal(string(got))
 		}
 	}
 }

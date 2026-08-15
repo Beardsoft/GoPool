@@ -226,6 +226,10 @@ VALUES (?, ?, ?, ?, ?, ?) RETURNING id;
 -- name: ListConfigRevisions :many
 SELECT id, actor_address, before_json, after_json, validation_state, write_state, created_at, activated_at, config_hash FROM config_revisions ORDER BY id DESC;
 
+-- name: GetConfigRevision :one
+SELECT id, actor_address, before_json, after_json, validation_state, write_state, created_at, activated_at, config_hash
+FROM config_revisions WHERE id = ?;
+
 -- name: GetValidatorAction :one
 SELECT id, action, attempted_at, tx_hash, outcome, requested_by, requested_at, updated_at, state, error_summary, correlation_id FROM validator_actions WHERE id = ?;
 

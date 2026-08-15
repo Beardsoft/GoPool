@@ -13,10 +13,19 @@ import (
 type Recorder struct {
 	q            *db.Queries
 	lastSnapshot time.Time
+	configHash   string
 }
 
-func NewRecorder(q *db.Queries) *Recorder {
-	return &Recorder{q: q}
+type RecorderOption func(*Recorder)
+
+func WithConfigHash(hash string) RecorderOption { return func(r *Recorder) { r.configHash = hash } }
+
+func NewRecorder(q *db.Queries, options ...RecorderOption) *Recorder {
+	r := &Recorder{q: q}
+	for _, option := range options {
+		option(r)
+	}
+	return r
 }
 
 func (r *Recorder) RecordEvent(ctx context.Context, in EventInput) error {
@@ -39,6 +48,9 @@ func (r *Recorder) RecordEvent(ctx context.Context, in EventInput) error {
 }
 
 func (r *Recorder) RecordHeartbeat(ctx context.Context, hb Heartbeat) error {
+	if hb.ConfigHash == "" {
+		hb.ConfigHash = r.configHash
+	}
 	rpcOk := int64(0)
 	if hb.RPCOk {
 		rpcOk = 1
@@ -68,19 +80,19 @@ func (r *Recorder) RecordSnapshot(ctx context.Context, s Snapshot) error {
 		rpcOk = 1
 	}
 	params := db.InsertHealthSnapshotParams{
-		RecordedAt:          s.RecordedAt,
-		ChainHead:           s.ChainHead,
-		ProcessedHeight:     s.ProcessedHeight,
-		TickMs:              s.TickMs,
-		ValidatorState:      s.ValidatorState,
-		LiveStake:           s.LiveStake,
-		StakerCount:         s.StakerCount,
-		PendingPayoutCount:  s.PendingPayoutCount,
-		PendingPayoutLuna:   s.PendingPayoutLuna,
-		StuckPayoutCount:    s.StuckPayoutCount,
-		StuckPayoutLuna:     s.StuckPayoutLuna,
-		WalletBalance:       s.WalletBalance,
-		RpcOk:               rpcOk,
+		RecordedAt:         s.RecordedAt,
+		ChainHead:          s.ChainHead,
+		ProcessedHeight:    s.ProcessedHeight,
+		TickMs:             s.TickMs,
+		ValidatorState:     s.ValidatorState,
+		LiveStake:          s.LiveStake,
+		StakerCount:        s.StakerCount,
+		PendingPayoutCount: s.PendingPayoutCount,
+		PendingPayoutLuna:  s.PendingPayoutLuna,
+		StuckPayoutCount:   s.StuckPayoutCount,
+		StuckPayoutLuna:    s.StuckPayoutLuna,
+		WalletBalance:      s.WalletBalance,
+		RpcOk:              rpcOk,
 	}
 	_, err := r.q.InsertHealthSnapshot(ctx, params)
 	if err == nil {
