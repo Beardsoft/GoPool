@@ -58,7 +58,9 @@ func actionResponseFromRow(row db.ListValidatorActionsRow) operatorActionRespons
 		ErrorSummary:  nullableString(row.ErrorSummary),
 		CorrelationID: nullableString(row.CorrelationID),
 	}
-	response.State = row.State
+	if row.State.Valid {
+		response.State = row.State.String
+	}
 	if row.RequestedAt.Valid {
 		response.RequestedAt = row.RequestedAt.Time.UTC().Format(time.RFC3339)
 	}
@@ -158,15 +160,10 @@ func (a *API) handleOperatorActions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	ctx := r.Context()
-	column1 := interface{}(nil)
-	if status != "" {
-		column1 = 1
-	}
 	rows, err := a.queries.ListValidatorActions(ctx, db.ListValidatorActionsParams{
-		Column1: column1,
-		State:   sql.NullString{String: status, Valid: status != ""},
-		Limit:   int64(limit),
-		Offset:  int64(cursor),
+		Status: sql.NullString{String: status, Valid: status != ""},
+		Limit:  int64(limit),
+		Offset: int64(cursor),
 	})
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "db_error", "loading actions")

@@ -228,7 +228,14 @@ UPDATE validator_actions SET state = ?, updated_at = CURRENT_TIMESTAMP, error_su
 -- name: MarkValidatorActionProcessing :one
 UPDATE validator_actions
 SET state = 'processing', updated_at = CURRENT_TIMESTAMP, error_summary = NULL
-WHERE id = ? AND state = 'requested'
+WHERE id = ?
+  AND (state = 'requested' OR (state IS NULL AND outcome = 'requested'))
+RETURNING id;
+
+-- name: ReleaseValidatorActionProcessing :one
+UPDATE validator_actions
+SET state = 'requested', updated_at = CURRENT_TIMESTAMP, error_summary = NULL
+WHERE id = ? AND state = 'processing'
 RETURNING id;
 
 -- name: SubmitValidatorAction :one
@@ -240,7 +247,8 @@ RETURNING id;
 -- name: CompleteSubmittedValidatorAction :one
 UPDATE validator_actions
 SET state = ?, updated_at = CURRENT_TIMESTAMP, error_summary = ?
-WHERE id = ? AND state = 'submitted'
+WHERE id = ?
+  AND (state = 'submitted' OR (state IS NULL AND outcome = 'pending'))
 RETURNING id;
 
 -- name: ListOperatorEvents :many
@@ -249,18 +257,50 @@ SELECT id, severity, category, source, event_type, summary, context_json, actor_
 -- name: CancelRequestedValidatorAction :one
 UPDATE validator_actions
 SET state = 'cancelled', outcome = 'cancelled', updated_at = CURRENT_TIMESTAMP
-WHERE id = ? AND state = 'requested'
+WHERE id = ?
+  AND (state = 'requested' OR (state IS NULL AND outcome = 'requested'))
 RETURNING id;
 
 -- name: ListValidatorActions :many
-SELECT id, action, COALESCE(state, outcome) AS state, requested_at, updated_at, tx_hash, error_summary, correlation_id
+SELECT
+    id,
+    action,
+    COALESCE(state, CASE outcome
+        WHEN 'requested' THEN 'requested'
+        WHEN 'pending' THEN 'submitted'
+        WHEN 'failed' THEN 'failed'
+        ELSE 'failed'
+    END) AS state,
+    requested_at,
+    updated_at,
+    tx_hash,
+    error_summary,
+    correlation_id
 FROM validator_actions
-WHERE (? IS NULL OR COALESCE(state, outcome) = ?)
+WHERE (
+    sqlc.narg(status) IS NULL
+    OR COALESCE(state, CASE outcome
+        WHEN 'requested' THEN 'requested'
+        WHEN 'pending' THEN 'submitted'
+        WHEN 'failed' THEN 'failed'
+        ELSE 'failed'
+    END) = sqlc.narg(status)
+)
 ORDER BY id DESC
-LIMIT ? OFFSET ?;
+LIMIT sqlc.arg(limit) OFFSET sqlc.arg(offset);
 
 -- name: CountValidatorActions :one
-SELECT COUNT(*) FROM validator_actions WHERE (? IS NULL OR COALESCE(state, outcome) = ?);
+SELECT COUNT(*)
+FROM validator_actions
+WHERE (
+    sqlc.narg(status) IS NULL
+    OR COALESCE(state, CASE outcome
+        WHEN 'requested' THEN 'requested'
+        WHEN 'pending' THEN 'submitted'
+        WHEN 'failed' THEN 'failed'
+        ELSE 'failed'
+    END) = sqlc.narg(status)
+);
 
 -- name: InsertValidatorActionWithState :one
 INSERT INTO validator_actions (action, outcome, state, requested_by, requested_at, updated_at, correlation_id)

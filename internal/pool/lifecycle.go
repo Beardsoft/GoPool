@@ -196,6 +196,9 @@ func (m *Manager) ProcessRequestedActions(ctx context.Context) error {
 
 		// Once claimed, the row is in-flight and cannot be cancelled.
 		if err := ctx.Err(); err != nil {
+			if recoveryErr := m.recoverClaimedValidatorAction(ctx, req.ID); recoveryErr != nil {
+				return recoveryErr
+			}
 			return err
 		}
 		hash, err := fn(m, ctx)
@@ -241,6 +244,18 @@ func (m *Manager) ProcessRequestedActions(ctx context.Context) error {
 	return nil
 }
 
+// recoverClaimedValidatorAction returns a claimed action to requested only
+// before signing starts. It deliberately uses a context without cancellation:
+// the caller's shutdown context is already cancelled, but the recovery write
+// must still reach the database so the next daemon tick can retry safely.
+func (m *Manager) recoverClaimedValidatorAction(ctx context.Context, id int64) error {
+	_, err := m.queries.ReleaseValidatorActionProcessing(context.WithoutCancel(ctx), id)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	return err
+}
+
 // Delete submits a DeleteValidator transaction, sending the deposit to recipient.
 func (m *Manager) Delete(ctx context.Context, recipient nimiq.Address, value nimiq.Luna) error {
 	head, err := m.chain.RPC.BlockNumber(ctx)
@@ -265,7 +280,7 @@ func (m *Manager) Delete(ctx context.Context, recipient nimiq.Address, value nim
 // checkSubmittedValidatorActions checks submitted actions and moves them to confirmed/failed
 func (m *Manager) checkSubmittedValidatorActions(ctx context.Context) error {
 	actions, err := m.queries.ListValidatorActions(ctx, db.ListValidatorActionsParams{
-		State:  sql.NullString{String: "submitted", Valid: true},
+		Status: sql.NullString{String: "submitted", Valid: true},
 		Limit:  100,
 		Offset: 0,
 	})

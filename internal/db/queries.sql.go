@@ -14,7 +14,8 @@ import (
 const CancelRequestedValidatorAction = `-- name: CancelRequestedValidatorAction :one
 UPDATE validator_actions
 SET state = 'cancelled', outcome = 'cancelled', updated_at = CURRENT_TIMESTAMP
-WHERE id = ? AND state = 'requested'
+WHERE id = ?
+  AND (state = 'requested' OR (state IS NULL AND outcome = 'requested'))
 RETURNING id
 `
 
@@ -28,7 +29,8 @@ func (q *Queries) CancelRequestedValidatorAction(ctx context.Context, id int64) 
 const CompleteSubmittedValidatorAction = `-- name: CompleteSubmittedValidatorAction :one
 UPDATE validator_actions
 SET state = ?, updated_at = CURRENT_TIMESTAMP, error_summary = ?
-WHERE id = ? AND state = 'submitted'
+WHERE id = ?
+  AND (state = 'submitted' OR (state IS NULL AND outcome = 'pending'))
 RETURNING id
 `
 
@@ -62,16 +64,21 @@ func (q *Queries) CountPayoutTransactions(ctx context.Context, arg CountPayoutTr
 }
 
 const CountValidatorActions = `-- name: CountValidatorActions :one
-SELECT COUNT(*) FROM validator_actions WHERE (? IS NULL OR COALESCE(state, outcome) = ?)
+SELECT COUNT(*)
+FROM validator_actions
+WHERE (
+    ?1 IS NULL
+    OR COALESCE(state, CASE outcome
+        WHEN 'requested' THEN 'requested'
+        WHEN 'pending' THEN 'submitted'
+        WHEN 'failed' THEN 'failed'
+        ELSE 'failed'
+    END) = ?1
+)
 `
 
-type CountValidatorActionsParams struct {
-	Column1 interface{}    `json:"column_1"`
-	State   sql.NullString `json:"state"`
-}
-
-func (q *Queries) CountValidatorActions(ctx context.Context, arg CountValidatorActionsParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, CountValidatorActions, arg.Column1, arg.State)
+func (q *Queries) CountValidatorActions(ctx context.Context, status interface{}) (int64, error) {
+	row := q.db.QueryRowContext(ctx, CountValidatorActions, status)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -1339,24 +1346,44 @@ func (q *Queries) ListRewardsByEpochRange(ctx context.Context, arg ListRewardsBy
 }
 
 const ListValidatorActions = `-- name: ListValidatorActions :many
-SELECT id, action, COALESCE(state, outcome) AS state, requested_at, updated_at, tx_hash, error_summary, correlation_id
+SELECT
+    id,
+    action,
+    COALESCE(state, CASE outcome
+        WHEN 'requested' THEN 'requested'
+        WHEN 'pending' THEN 'submitted'
+        WHEN 'failed' THEN 'failed'
+        ELSE 'failed'
+    END) AS state,
+    requested_at,
+    updated_at,
+    tx_hash,
+    error_summary,
+    correlation_id
 FROM validator_actions
-WHERE (? IS NULL OR COALESCE(state, outcome) = ?)
+WHERE (
+    ?1 IS NULL
+    OR COALESCE(state, CASE outcome
+        WHEN 'requested' THEN 'requested'
+        WHEN 'pending' THEN 'submitted'
+        WHEN 'failed' THEN 'failed'
+        ELSE 'failed'
+    END) = ?1
+)
 ORDER BY id DESC
-LIMIT ? OFFSET ?
+LIMIT ?3 OFFSET ?2
 `
 
 type ListValidatorActionsParams struct {
-	Column1 interface{}    `json:"column_1"`
-	State   sql.NullString `json:"state"`
-	Limit   int64          `json:"limit"`
-	Offset  int64          `json:"offset"`
+	Status interface{} `json:"status"`
+	Offset int64       `json:"offset"`
+	Limit  int64       `json:"limit"`
 }
 
 type ListValidatorActionsRow struct {
 	ID            int64          `json:"id"`
 	Action        string         `json:"action"`
-	State         string         `json:"state"`
+	State         sql.NullString `json:"state"`
 	RequestedAt   sql.NullTime   `json:"requested_at"`
 	UpdatedAt     sql.NullTime   `json:"updated_at"`
 	TxHash        sql.NullString `json:"tx_hash"`
@@ -1365,12 +1392,7 @@ type ListValidatorActionsRow struct {
 }
 
 func (q *Queries) ListValidatorActions(ctx context.Context, arg ListValidatorActionsParams) ([]ListValidatorActionsRow, error) {
-	rows, err := q.db.QueryContext(ctx, ListValidatorActions,
-		arg.Column1,
-		arg.State,
-		arg.Limit,
-		arg.Offset,
-	)
+	rows, err := q.db.QueryContext(ctx, ListValidatorActions, arg.Status, arg.Offset, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1413,12 +1435,27 @@ func (q *Queries) MarkPayslipsOutForPayment(ctx context.Context, address string)
 const MarkValidatorActionProcessing = `-- name: MarkValidatorActionProcessing :one
 UPDATE validator_actions
 SET state = 'processing', updated_at = CURRENT_TIMESTAMP, error_summary = NULL
-WHERE id = ? AND state = 'requested'
+WHERE id = ?
+  AND (state = 'requested' OR (state IS NULL AND outcome = 'requested'))
 RETURNING id
 `
 
 func (q *Queries) MarkValidatorActionProcessing(ctx context.Context, id int64) (int64, error) {
 	row := q.db.QueryRowContext(ctx, MarkValidatorActionProcessing, id)
+	var id_2 int64
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
+const ReleaseValidatorActionProcessing = `-- name: ReleaseValidatorActionProcessing :one
+UPDATE validator_actions
+SET state = 'requested', updated_at = CURRENT_TIMESTAMP, error_summary = NULL
+WHERE id = ? AND state = 'processing'
+RETURNING id
+`
+
+func (q *Queries) ReleaseValidatorActionProcessing(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, ReleaseValidatorActionProcessing, id)
 	var id_2 int64
 	err := row.Scan(&id_2)
 	return id_2, err

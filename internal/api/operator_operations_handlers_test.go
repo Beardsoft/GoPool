@@ -15,6 +15,14 @@ func TestCancelValidatorActionOnlyWhileRequested(t *testing.T) {
 	a, cookie, _ := operatorTestAPI(t)
 	requestedID := seedAction(t, a.queries, "retire", "requested")
 	assertPostStatus(t, a, cookie, fmt.Sprintf("/api/operator/actions/%d/cancel", requestedID), http.StatusOK)
+	if err := a.queries.InsertValidatorAction(t.Context(), db.InsertValidatorActionParams{Action: "retire", Outcome: "requested"}); err != nil {
+		t.Fatal(err)
+	}
+	legacyRequested, err := a.queries.GetRequestedValidatorActions(t.Context())
+	if err != nil || len(legacyRequested) != 1 {
+		t.Fatalf("legacy requested = %+v, err = %v", legacyRequested, err)
+	}
+	assertPostStatus(t, a, cookie, fmt.Sprintf("/api/operator/actions/%d/cancel", legacyRequested[0].ID), http.StatusOK)
 	processingID := seedAction(t, a.queries, "deactivate", "processing")
 	assertPostStatus(t, a, cookie, fmt.Sprintf("/api/operator/actions/%d/cancel", processingID), http.StatusConflict)
 }
@@ -52,6 +60,36 @@ func TestCreateValidatorActionReturnsServerTruthAndAudits(t *testing.T) {
 	duplicate := postJSON(t, a.Mux(), "/api/operator/actions", map[string]string{"action": "retire"}, cookie)
 	if duplicate.Code != http.StatusConflict {
 		t.Fatalf("duplicate status = %d, body: %s", duplicate.Code, duplicate.Body.String())
+	}
+}
+
+func TestOperatorActionListMapsLegacyPendingToSubmitted(t *testing.T) {
+	a, cookie, _ := operatorTestAPI(t)
+	if err := a.queries.InsertValidatorAction(t.Context(), db.InsertValidatorActionParams{
+		Action: "retire", TxHash: sql.NullString{String: "legacy-submitted", Valid: true}, Outcome: "pending",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.InsertValidatorAction(t.Context(), db.InsertValidatorActionParams{
+		Action: "deactivate", Outcome: "requested",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/operator/actions?status=submitted", nil)
+	req.AddCookie(cookie)
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Items []operatorActionResponse `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Items) != 1 || got.Items[0].State != "submitted" || got.Items[0].Action != "retire" {
+		t.Fatalf("actions = %+v", got.Items)
 	}
 }
 
