@@ -109,7 +109,7 @@ func (m *Manager) runAutoReactivate(ctx context.Context) error {
 }
 
 // Deactivate and Retire are operator-triggered: from the CLI in cmd/main.go,
-// or queued via the API as validator_actions rows (outcome = "requested")
+// or queued via the API as validator_actions rows (state = "requested")
 // and executed by ProcessRequestedActions. Delete stays CLI-only — it needs
 // a recipient and deposit value the request row has no place for.
 
@@ -162,7 +162,8 @@ func actionForRequest(action string) (func(*Manager, context.Context) (string, e
 }
 
 // ProcessRequestedActions submits every validator_actions row an operator
-// queued via the API (outcome = "requested"), then records the outcome.
+// queued via the API (state = "requested"), then records the server-side
+// lifecycle state.
 // This is the only bridge between the API (which never holds the validator's
 // key) and an actual signed transaction — the API writes the request, the
 // daemon (which does hold the key) executes it.
@@ -172,18 +173,28 @@ func (m *Manager) ProcessRequestedActions(ctx context.Context) error {
 		return err
 	}
 	for _, req := range requests {
+		resultState := "failed"
 		fn, err := actionForRequest(req.Action)
 		if err != nil {
 			logger.Logger.Error("skipping unrequestable validator action", zap.String("action", req.Action), zap.Error(err))
-			if setErr := m.queries.SetValidatorActionOutcome(ctx, db.SetValidatorActionOutcomeParams{
-				Outcome: "failed", ID: req.ID,
+			if setErr := m.queries.UpdateValidatorActionState(ctx, db.UpdateValidatorActionStateParams{
+				State: sql.NullString{String: "failed", Valid: true}, ID: req.ID, ErrorSummary: sql.NullString{String: err.Error(), Valid: true},
 			}); setErr != nil {
 				return setErr
 			}
 			continue
 		}
 
-		// Leave the row as "requested" on shutdown/timeout so a restart retries.
+		// Claim the request before signing. A concurrent cancellation wins if
+		// it changes the row before this conditional transition.
+		if _, err := m.queries.MarkValidatorActionProcessing(ctx, req.ID); err != nil {
+			if err == sql.ErrNoRows {
+				continue
+			}
+			return err
+		}
+
+		// Once claimed, the row is in-flight and cannot be cancelled.
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -191,33 +202,41 @@ func (m *Manager) ProcessRequestedActions(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		outcome := "pending"
 		if err != nil {
-			outcome = "failed"
 			logger.Logger.Error("requested validator action failed", zap.String("action", req.Action), zap.Error(err))
+			if setErr := m.queries.UpdateValidatorActionState(ctx, db.UpdateValidatorActionStateParams{
+				State: sql.NullString{String: "failed", Valid: true}, ID: req.ID, ErrorSummary: sql.NullString{String: err.Error(), Valid: true},
+			}); setErr != nil {
+				return setErr
+			}
 		} else {
+			resultState = "submitted"
 			logger.Logger.Info("requested validator action submitted", zap.String("action", req.Action), zap.String("tx", hash))
-		}
-		if setErr := m.queries.SetValidatorActionOutcome(ctx, db.SetValidatorActionOutcomeParams{
-			Outcome: outcome, TxHash: sql.NullString{String: hash, Valid: hash != ""}, ID: req.ID,
-		}); setErr != nil {
-			return setErr
+			if _, setErr := m.queries.SubmitValidatorAction(ctx, db.SubmitValidatorActionParams{
+				TxHash: sql.NullString{String: hash, Valid: hash != ""}, ID: req.ID,
+			}); setErr != nil {
+				return setErr
+			}
 		}
 		if m.recorder != nil {
 			_ = m.recorder.RecordEvent(ctx, ops.EventInput{
-				Severity:  "info",
-				Category:  "validator",
-				Source:    "daemon",
-				Type:      "validator_action",
-				Summary:   "Validator action processed",
+				Severity: "info",
+				Category: "validator",
+				Source:   "daemon",
+				Type:     "validator_action",
+				Summary:  "Validator action processed",
 				Context: map[string]any{
 					"action": req.Action,
-					"outcome": outcome,
+					"state":  resultState,
 					"txHash": hash,
 				},
 				CorrelationID: fmt.Sprintf("validator-action-%d", req.ID),
 			})
 		}
+	}
+	// Check submitted actions for confirmation
+	if err := m.checkSubmittedValidatorActions(ctx); err != nil {
+		return err
 	}
 	return nil
 }
@@ -240,6 +259,44 @@ func (m *Manager) Delete(ctx context.Context, recipient nimiq.Address, value nim
 		return err
 	}
 	fmt.Printf("delete transaction submitted: %s\n", hash)
+	return nil
+}
+
+// checkSubmittedValidatorActions checks submitted actions and moves them to confirmed/failed
+func (m *Manager) checkSubmittedValidatorActions(ctx context.Context) error {
+	actions, err := m.queries.ListValidatorActions(ctx, db.ListValidatorActionsParams{
+		State:  sql.NullString{String: "submitted", Valid: true},
+		Limit:  100,
+		Offset: 0,
+	})
+	if err != nil {
+		return err
+	}
+	for _, a := range actions {
+		if !a.TxHash.Valid || a.TxHash.String == "" {
+			continue
+		}
+		conf, err := m.chain.RPC.CheckTransaction(ctx, a.TxHash.String)
+		if err != nil {
+			// Not found yet, keep submitted
+			continue
+		}
+		if !conf.Final {
+			continue
+		}
+		newState := "confirmed"
+		if !conf.Succeeded {
+			newState = "failed"
+		}
+		if _, err := m.queries.CompleteSubmittedValidatorAction(ctx, db.CompleteSubmittedValidatorActionParams{
+			State: sql.NullString{String: newState, Valid: true}, ID: a.ID, ErrorSummary: sql.NullString{},
+		}); err != nil {
+			if err == sql.ErrNoRows {
+				continue
+			}
+			return err
+		}
+	}
 	return nil
 }
 

@@ -100,13 +100,24 @@ INSERT INTO validator_actions (action, tx_hash, outcome) VALUES (?, ?, ?);
 SELECT EXISTS(SELECT 1 FROM validator_actions WHERE action = ? AND outcome = 'pending');
 
 -- name: GetRequestedValidatorActions :many
-SELECT id, action FROM validator_actions WHERE outcome = 'requested' ORDER BY id;
+SELECT id, action
+FROM validator_actions
+WHERE state = 'requested' OR (state IS NULL AND outcome = 'requested')
+ORDER BY id;
 
 -- name: SetValidatorActionOutcome :exec
 UPDATE validator_actions SET outcome = ?, tx_hash = ? WHERE id = ?;
 
 -- name: HasOutstandingValidatorAction :one
-SELECT EXISTS(SELECT 1 FROM validator_actions WHERE action = ? AND outcome IN ('requested', 'pending'));
+SELECT EXISTS(
+    SELECT 1
+    FROM validator_actions
+    WHERE action = ?
+      AND (
+        state IN ('requested', 'processing', 'submitted')
+        OR (state IS NULL AND outcome IN ('requested', 'pending'))
+      )
+);
 
 -- name: ListEpochs :many
 SELECT number, num_stakers, balance, status FROM epochs ORDER BY number DESC;
@@ -213,3 +224,88 @@ SELECT id, action, attempted_at, tx_hash, outcome, requested_by, requested_at, u
 
 -- name: UpdateValidatorActionState :exec
 UPDATE validator_actions SET state = ?, updated_at = CURRENT_TIMESTAMP, error_summary = ? WHERE id = ?;
+
+-- name: MarkValidatorActionProcessing :one
+UPDATE validator_actions
+SET state = 'processing', updated_at = CURRENT_TIMESTAMP, error_summary = NULL
+WHERE id = ? AND state = 'requested'
+RETURNING id;
+
+-- name: SubmitValidatorAction :one
+UPDATE validator_actions
+SET state = 'submitted', outcome = 'pending', tx_hash = ?, updated_at = CURRENT_TIMESTAMP, error_summary = NULL
+WHERE id = ? AND state = 'processing'
+RETURNING id;
+
+-- name: CompleteSubmittedValidatorAction :one
+UPDATE validator_actions
+SET state = ?, updated_at = CURRENT_TIMESTAMP, error_summary = ?
+WHERE id = ? AND state = 'submitted'
+RETURNING id;
+
+-- name: ListOperatorEvents :many
+SELECT id, severity, category, source, event_type, summary, context_json, actor_address, correlation_id, created_at FROM operator_events ORDER BY id DESC LIMIT ? OFFSET ?;
+
+-- name: CancelRequestedValidatorAction :one
+UPDATE validator_actions
+SET state = 'cancelled', outcome = 'cancelled', updated_at = CURRENT_TIMESTAMP
+WHERE id = ? AND state = 'requested'
+RETURNING id;
+
+-- name: ListValidatorActions :many
+SELECT id, action, COALESCE(state, outcome) AS state, requested_at, updated_at, tx_hash, error_summary, correlation_id
+FROM validator_actions
+WHERE (? IS NULL OR COALESCE(state, outcome) = ?)
+ORDER BY id DESC
+LIMIT ? OFFSET ?;
+
+-- name: CountValidatorActions :one
+SELECT COUNT(*) FROM validator_actions WHERE (? IS NULL OR COALESCE(state, outcome) = ?);
+
+-- name: InsertValidatorActionWithState :one
+INSERT INTO validator_actions (action, outcome, state, requested_by, requested_at, updated_at, correlation_id)
+VALUES (?, 'requested', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)
+RETURNING id;
+
+-- name: InsertRequestedValidatorAction :one
+INSERT INTO validator_actions (action, outcome, state, requested_by, requested_at, updated_at, correlation_id)
+SELECT sqlc.arg(action), 'requested', 'requested', sqlc.arg(requested_by), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, sqlc.arg(correlation_id)
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM validator_actions
+    WHERE action = sqlc.arg(action)
+      AND (
+        state IN ('requested', 'processing', 'submitted')
+        OR (state IS NULL AND outcome IN ('requested', 'pending'))
+      )
+)
+RETURNING id;
+
+-- name: ListPayoutTransactions :many
+SELECT hash, address, amount, status, submitted_at FROM transactions WHERE (? IS NULL OR status = ?) ORDER BY submitted_at DESC LIMIT ? OFFSET ?;
+
+-- name: CountPayoutTransactions :one
+SELECT COUNT(*) FROM transactions WHERE (? IS NULL OR status = ?);
+
+-- name: RetryFailedPayoutPayslips :many
+UPDATE payslips
+SET status = 'pending', tx_hash = NULL
+WHERE tx_hash = sqlc.arg(tx_hash)
+  AND status = 'failed'
+  AND EXISTS (
+      SELECT 1
+      FROM transactions AS failed_tx
+      WHERE failed_tx.hash = sqlc.arg(tx_hash)
+        AND failed_tx.status = 'failed'
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM transactions AS active_tx
+      WHERE active_tx.address = payslips.address
+        AND active_tx.hash != payslips.tx_hash
+        AND active_tx.status = 'awaiting_confirmation'
+  )
+RETURNING id;
+
+-- name: UpdatePayslipStatusFailed :exec
+UPDATE payslips SET status='failed' WHERE tx_hash=?;

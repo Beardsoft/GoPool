@@ -52,12 +52,12 @@ func seedRuntimeStatus(t *testing.T, q *db.Queries, validatorState string, lastP
 func seedFailedPayout(t *testing.T, q *db.Queries) {
 	t.Helper()
 	_, err := q.InsertOperatorEvent(t.Context(), db.InsertOperatorEventParams{
-		Severity:  "error",
-		Category:  "payout",
-		Source:    "daemon",
-		EventType: "payout_failed",
-		Summary:   "Payout submission failed",
-		ContextJson: sql.NullString{String: `{"address":"NQ..."}` , Valid:true},
+		Severity:    "error",
+		Category:    "payout",
+		Source:      "daemon",
+		EventType:   "payout_failed",
+		Summary:     "Payout submission failed",
+		ContextJson: sql.NullString{String: `{"address":"NQ..."}`, Valid: true},
 	})
 	if err != nil {
 		t.Fatalf("seedFailedPayout: %v", err)
@@ -66,22 +66,15 @@ func seedFailedPayout(t *testing.T, q *db.Queries) {
 
 func seedAction(t *testing.T, q *db.Queries, action, state string) int64 {
 	t.Helper()
-	err := q.InsertValidatorAction(t.Context(), db.InsertValidatorActionParams{
-		Action: action,
-		TxHash: sql.NullString{},
-		Outcome: state,
+	id, err := q.InsertValidatorActionWithState(t.Context(), db.InsertValidatorActionWithStateParams{
+		Action:      action,
+		State:       sql.NullString{String: state, Valid: true},
+		RequestedBy: sql.NullString{String: "test", Valid: true},
 	})
 	if err != nil {
 		t.Fatalf("seedAction: %v", err)
 	}
-	actions, err := q.GetRequestedValidatorActions(t.Context())
-	if err != nil {
-		t.Fatalf("seedAction get: %v", err)
-	}
-	if len(actions) == 0 {
-		t.Fatalf("seedAction: no actions")
-	}
-	return actions[0].ID
+	return id
 }
 
 func assertPostStatus(t *testing.T, a *API, cookie *http.Cookie, path string, want int) {

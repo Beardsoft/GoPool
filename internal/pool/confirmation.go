@@ -38,9 +38,9 @@ func confirmationOutcome(conf *rpc.Confirmation) confirmOutcome {
 }
 
 // runConfirmations settles every pending payout transaction: succeeded ones
-// finalize their payslips, failed ones reset their payslips to pending for
-// retry next payout pass. It then rolls any epoch whose every payslip is
-// settled into "completed".
+// finalize their payslips, while failed ones remain visibly failed until an
+// operator explicitly retries the payout group. It then rolls any epoch whose
+// every payslip is settled into "completed".
 func (m *Manager) runConfirmations(ctx context.Context) error {
 	pending, err := m.queries.GetPendingTransactions(ctx)
 	if err != nil {
@@ -79,7 +79,7 @@ func (m *Manager) runConfirmations(ctx context.Context) error {
 					Type:     "payout_confirmed",
 					Summary:  "Payout confirmed",
 					Context: map[string]any{
-						"txHash": tx.Hash,
+						"txHash":  tx.Hash,
 						"address": tx.Address,
 					},
 				})
@@ -88,10 +88,10 @@ func (m *Manager) runConfirmations(ctx context.Context) error {
 			if err := m.queries.SetTransactionStatus(ctx, db.SetTransactionStatusParams{Status: "failed", Hash: tx.Hash}); err != nil {
 				return err
 			}
-			if err := m.queries.ResetPayslipsToPending(ctx, sql.NullString{String: tx.Hash, Valid: true}); err != nil {
+			if err := m.queries.UpdatePayslipStatusFailed(ctx, sql.NullString{String: tx.Hash, Valid: true}); err != nil {
 				return err
 			}
-			logger.Logger.Warn("payout failed, reset for retry", zap.String("hash", tx.Hash))
+			logger.Logger.Warn("payout failed, marked payslips failed", zap.String("hash", tx.Hash))
 			metrics.PayoutsFailed.Inc()
 			if m.recorder != nil {
 				_ = m.recorder.RecordEvent(ctx, ops.EventInput{
@@ -101,7 +101,7 @@ func (m *Manager) runConfirmations(ctx context.Context) error {
 					Type:     "payout_failed",
 					Summary:  "Payout failed",
 					Context: map[string]any{
-						"txHash": tx.Hash,
+						"txHash":  tx.Hash,
 						"address": tx.Address,
 					},
 				})

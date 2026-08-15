@@ -1,7 +1,7 @@
 package api
 
 import (
-	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -63,6 +63,7 @@ func (a *API) registerOperatorRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/operator/validator/deactivate", a.requireOperator(a.handleOperatorAction("deactivate")))
 	mux.HandleFunc("POST /api/operator/validator/retire", a.requireOperator(a.handleOperatorAction("retire")))
 	a.registerOperatorOverviewRoutes(mux)
+	a.registerOperatorOperationsRoutes(mux)
 }
 
 type auditLogResponse struct {
@@ -175,21 +176,25 @@ func (a *API) handleOperatorHealth(w http.ResponseWriter, r *http.Request) {
 // API itself never touches the validator's private key.
 func (a *API) handleOperatorAction(action string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-	outstanding, err := a.queries.HasOutstandingValidatorAction(r.Context(), action)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "checking outstanding actions")
-		return
-	}
-	if outstanding {
+		ctx := r.Context()
+		addr, ok := addressFromContext(ctx)
+		if !ok {
+			writeError(w, http.StatusForbidden, "operator only")
+			return
+		}
+		correlationID := operationCorrelationID(r, "validator-action")
+		queued, err := a.queueAndAuditValidatorAction(ctx, action, addr.String(), correlationID)
+		if errors.Is(err, errDuplicateValidatorAction) {
 			writeError(w, http.StatusConflict, action+" is already requested or in flight")
 			return
 		}
-		if err := a.queries.InsertValidatorAction(r.Context(), db.InsertValidatorActionParams{
-			Action: action, TxHash: sql.NullString{}, Outcome: "requested",
-		}); err != nil {
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, "queuing "+action)
 			return
 		}
-		writeJSON(w, http.StatusAccepted, map[string]string{"status": "requested"})
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"id":     queued.ID,
+			"status": queued.State.String,
+		})
 	}
 }
