@@ -27,12 +27,13 @@ export const router = createRouter({
         { path: 'activity', name: 'operator-activity', component: () => import('./pages/operator/Activity.vue') },
         { path: 'operations', name: 'operator-operations', component: () => import('./pages/operator/Operations.vue') },
         { path: 'alerts', name: 'operator-alerts', component: () => import('./pages/operator/Alerts.vue') },
+        { path: 'settings', name: 'operator-settings', component: () => import('./pages/operator/Settings.vue') },
       ]
     },
     {
       path: '/setup',
       component: SetupLayout,
-      children: []
+      children: [{ path: '', name: 'setup', component: () => import('./pages/setup/Setup.vue') }]
     }
   ],
 })

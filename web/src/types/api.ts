@@ -142,3 +142,37 @@ export interface AlertDelivery {
   attempted_at: string;
   correlation_id?: string;
 }
+
+export interface EditableConfig {
+  rpc_url: string;
+  network: string;
+  pool_fee_wallet: string;
+  pool_fee_percentage: number;
+  payout_mode: 'delegate' | 'transfer';
+  min_payout_luna: number;
+  auto_reactivate: boolean;
+  api_addr: string;
+  validator_address: string;
+  operator_addresses: string;
+  metrics_addr: string;
+  alert_telegram_enabled: boolean;
+  alert_telegram_destination?: string;
+  alert_webhook_enabled: boolean;
+  alert_webhook_url?: string;
+  alert_email_enabled: boolean;
+  alert_email_to?: string;
+  pool_name: string;
+  pool_description?: string;
+  contact_url?: string;
+  disclosure?: string;
+}
+
+export type SetupDraft = EditableConfig
+
+export interface SettingsResponse {
+  active_hash: string;
+  daemon_hash: string;
+  restart_required: boolean;
+  settings: EditableConfig;
+  secrets: Record<string, 'configured' | 'missing' | 'pending verification'>;
+}

@@ -1,0 +1,5 @@
+<script setup lang="ts">
+import type { SetupDraft } from '../../../types/api'
+const draft = defineModel<SetupDraft>('draft', { required: true })
+</script>
+<template><section><h2>Access and alerts</h2><label>Operator addresses<input v-model="draft.operator_addresses" class="input address" placeholder="Comma-separated Nimiq addresses" /></label><label><input v-model="draft.alert_telegram_enabled" type="checkbox" /> Telegram alerts</label><label>Telegram destination<input v-model="draft.alert_telegram_destination" class="input" /></label><label><input v-model="draft.alert_webhook_enabled" type="checkbox" /> Webhook alerts</label><label>Webhook URL<input v-model="draft.alert_webhook_url" class="input" type="url" /></label><label><input v-model="draft.alert_email_enabled" type="checkbox" /> Email alerts</label><label>Email destination<input v-model="draft.alert_email_to" class="input" type="email" /></label><p class="muted">Tokens and passwords remain deployment-managed.</p></section></template>
