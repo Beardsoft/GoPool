@@ -14,6 +14,7 @@ import (
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
 	"github.com/Beardsoft/GoPool/internal/metrics"
+	"github.com/Beardsoft/GoPool/internal/ops"
 	"github.com/Beardsoft/GoPool/internal/pool"
 
 	"go.uber.org/zap"
@@ -33,14 +34,19 @@ func main() {
 		logger.Logger.Fatal("failed to set up chain client", zap.Error(err))
 	}
 
-	sqlDB, err := db.InitDB("pool.db")
+	dbPath := os.Getenv("SQLITE_DB")
+	if dbPath == "" {
+		dbPath = "pool.db"
+	}
+	sqlDB, err := db.InitDB(dbPath)
 	if err != nil {
 		logger.Logger.Fatal("failed to initialize the database", zap.Error(err))
 	}
 	defer sqlDB.Close()
 	queries := db.New(sqlDB)
 
-	manager := pool.NewManager(c, queries, cfg)
+	recorder := ops.NewRecorder(queries)
+	manager := pool.NewManager(c, queries, cfg, pool.WithRecorder(recorder))
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

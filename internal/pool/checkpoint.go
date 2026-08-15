@@ -2,12 +2,14 @@ package pool
 
 import (
 	"context"
+	"time"
 
 	nimiq "github.com/NimMiniApps/nimiq-go"
 
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
 	"github.com/Beardsoft/GoPool/internal/metrics"
+	"github.com/Beardsoft/GoPool/internal/ops"
 
 	"go.uber.org/zap"
 )
@@ -38,7 +40,7 @@ func (m *Manager) handleCheckpoint(ctx context.Context, height uint32) error {
 	if err != nil {
 		return err
 	}
-	if exists != 0 {
+	if exists {
 		return nil
 	}
 
@@ -69,6 +71,21 @@ func (m *Manager) handleCheckpoint(ctx context.Context, height uint32) error {
 		Amount: int64(afterFee), PoolFee: int64(fee), NumStakers: int64(len(stakers)),
 	}); err != nil {
 		return err
+	}
+	if m.broadcaster != nil {
+		m.broadcaster.Publish(PoolEvent{
+			Type:      "checkpoint_reward",
+			Timestamp: time.Now().UnixMilli(),
+			Data: mustMarshal(map[string]any{
+				"batch":      rewardBatch,
+				"epoch":      epoch,
+				"height":     height,
+				"rewardLuna": int64(reward),
+				"afterFee":   int64(afterFee),
+				"poolFee":    int64(fee),
+				"numStakers": len(stakers),
+			}),
+		})
 	}
 	metrics.RewardsTotal.Add(float64(reward))
 	metrics.PoolFeeTotal.Add(float64(fee))
@@ -101,5 +118,23 @@ func (m *Manager) handleCheckpoint(ctx context.Context, height uint32) error {
 
 	logger.Logger.Info("reward collected",
 		zap.Int64("batch", int64(rewardBatch)), zap.Uint64("reward", uint64(reward)), zap.Uint64("fee", uint64(fee)))
+	if m.recorder != nil {
+		_ = m.recorder.RecordEvent(ctx, ops.EventInput{
+			Severity: "info",
+			Category: "checkpoint",
+			Source:   "daemon",
+			Type:     "checkpoint_processed",
+			Summary:  "Reward collected for batch",
+			Context: map[string]any{
+				"batch":      rewardBatch,
+				"epoch":      epoch,
+				"height":     height,
+				"rewardLuna": int64(reward),
+				"afterFee":   int64(afterFee),
+				"poolFee":    int64(fee),
+				"numStakers": len(stakers),
+			},
+		})
+	}
 	return nil
 }

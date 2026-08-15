@@ -3,12 +3,16 @@ package pool
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
+	"time"
 
 	nimiq "github.com/NimMiniApps/nimiq-go"
 
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
 	"github.com/Beardsoft/GoPool/internal/metrics"
+	"github.com/Beardsoft/GoPool/internal/ops"
 
 	"go.uber.org/zap"
 )
@@ -42,6 +46,27 @@ func payoutWorthSending(amount, fee nimiq.Luna) bool {
 	return amount >= fee*feePayoutMultiple
 }
 
+// markFeeFloorHold records that a staker is in a fee-floor hold, returning
+// true on the first tick of the hold so the caller sends a single alert
+// instead of one per ~2s tick.
+func markFeeFloorHold(alerted map[string]bool, staker string) bool {
+	if alerted[staker] {
+		return false
+	}
+	alerted[staker] = true
+	return true
+}
+
+// pruneFeeFloorHolds drops stakers that are no longer held this tick, so a
+// future hold re-alerts instead of staying silent.
+func pruneFeeFloorHolds(held, alerted map[string]bool) {
+	for s := range alerted {
+		if !held[s] {
+			delete(alerted, s)
+		}
+	}
+}
+
 // choosePayoutTx picks the transaction shape for a payout. "delegate" mode
 // restakes (compounding) only while the staker is still delegated to this
 // validator; if they undelegated, it falls back to a plain transfer instead
@@ -55,8 +80,7 @@ func choosePayoutTx(mode string, stillDelegated bool) payoutKind {
 }
 
 // runPayouts sums pending payslips per staker, and for every staker whose
-// total has crossed the configured minimum, builds and submits one payout
-// transaction covering the whole total.
+// total has crossed the configured minimum, builds audit intent before signing.
 func (m *Manager) runPayouts(ctx context.Context) error {
 	eligible, err := m.queries.GetEligibleForPayout(ctx, int64(m.cfg.MinPayoutLuna))
 	if err != nil {
@@ -67,6 +91,11 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	if m.feeFloorAlerted == nil {
+		m.feeFloorAlerted = make(map[string]bool)
+	}
+	held := make(map[string]bool)
 
 	for _, row := range eligible {
 		addr, err := nimiq.ParseAddress(row.Address)
@@ -94,41 +123,184 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 			continue
 		}
 		if !payoutWorthSending(amount, fee) {
+			held[row.Address] = true
+			if markFeeFloorHold(m.feeFloorAlerted, row.Address) && m.notifier != nil {
+				m.notifier.Send("warning", "Fee floor breach",
+					fmt.Sprintf("Payout to %s held: %d luna pending is below 10x the %d luna tx fee", row.Address, amount, fee))
+			}
 			logger.Logger.Debug("holding payout until amount covers 10× fee",
 				zap.String("staker", row.Address),
 				zap.Uint64("amount", uint64(amount)),
 				zap.Uint64("fee", uint64(fee)))
 			continue
 		}
-		tx.Fee = fee
 
-		if err := m.queries.MarkPayslipsOutForPayment(ctx, row.Address); err != nil {
-			return err
+		// Build intent for audit log
+		intent := map[string]any{
+			"address": row.Address,
+			"amount":  int64(amount),
+			"fee":     int64(fee),
+			"kind":    payoutKindLabel(kind),
+			"head":    head,
+		}
+		intentBytes, _ := json.Marshal(intent)
+		status := "pending"
+		if m.cfg.DryRun {
+			status = "dry_run"
 		}
 
-	hash, err := m.signAndSend(ctx, tx, kind)
-	if err != nil {
-		if resetErr := m.queries.ResetPayslipsOutForPayment(ctx, row.Address); resetErr != nil {
-			logger.Logger.Error("resetting payslips after failed submit", zap.String("address", row.Address), zap.Error(resetErr))
+		_, err = m.queries.InsertAuditLog(ctx, db.InsertAuditLogParams{
+			ActionType: "payout",
+			Address:    row.Address,
+			Amount:     int64(amount),
+			Fee:        int64(fee),
+			Kind:       payoutKindLabel(kind),
+			Status:     status,
+			IntentData: sql.NullString{String: string(intentBytes), Valid: true},
+		})
+		if err != nil {
+			logger.Logger.Error("inserting audit log", zap.String("address", row.Address), zap.Error(err))
+			continue
 		}
-		logger.Logger.Error("payout submission failed, will retry next tick", zap.String("address", row.Address), zap.Error(err))
-		metrics.RPCErrors.WithLabelValues("payout").Inc()
-		continue
+
+		if m.cfg.DryRun {
+			logger.Logger.Info("dry-run payout logged", zap.String("staker", row.Address), zap.Uint64("amount", uint64(amount)))
+			continue
+		}
+
+		if m.broadcaster != nil {
+			m.broadcaster.Publish(PoolEvent{
+				Type:      "payout_scheduled",
+				Timestamp: time.Now().UnixMilli(),
+				Data: mustMarshal(map[string]any{
+					"address": row.Address,
+					"amount":  int64(amount),
+					"fee":     int64(fee),
+					"kind":    payoutKindLabel(kind),
+				}),
+			})
+		}
 	}
 
-		if err := m.queries.SetPayslipsTransaction(ctx, db.SetPayslipsTransactionParams{
+	pruneFeeFloorHolds(held, m.feeFloorAlerted)
+	return nil
+}
+
+// processApprovedPayouts signs and sends payouts whose audit log is approved.
+func (m *Manager) processApprovedPayouts(ctx context.Context) error {
+	if m.cfg.DryRun {
+		return nil
+	}
+
+	logs, err := m.queries.ListApprovedAuditLogs(ctx)
+	if err != nil {
+		return err
+	}
+
+	head, err := m.chain.RPC.BlockNumber(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, log := range logs {
+		addr, err := nimiq.ParseAddress(log.Address)
+		if err != nil {
+			logger.Logger.Error("unparseable address in audit log", zap.Int64("id", log.ID), zap.Error(err))
+			continue
+		}
+		amount := nimiq.Luna(uint64(log.Amount))
+		fee := nimiq.Luna(uint64(log.Fee))
+
+		kind := payoutTransfer
+		if log.Kind == "delegate" {
+			kind = payoutDelegate
+		}
+
+		tx, err := m.buildPayoutTx(addr, amount, fee, kind, head)
+		if err != nil {
+			logger.Logger.Error("building payout tx from audit log", zap.Int64("id", log.ID), zap.Error(err))
+			continue
+		}
+
+		// Mark payslips out for payment before signing
+		if err := m.queries.MarkPayslipsOutForPayment(ctx, log.Address); err != nil {
+			logger.Logger.Error("mark payslips out", zap.Int64("id", log.ID), zap.Error(err))
+			continue
+		}
+
+		hash, err := m.signAndSend(ctx, tx, kind)
+		if err != nil {
+			logger.Logger.Error("sign and send approved payout", zap.Int64("id", log.ID), zap.Error(err))
+			_ = m.queries.ResetPayslipsOutForPayment(ctx, log.Address)
+			if m.recorder != nil {
+				_ = m.recorder.RecordEvent(ctx, ops.EventInput{
+					Severity: "error",
+					Category: "payout",
+					Source:   "daemon",
+					Type:     "payout_failed",
+					Summary:  "Payout submission failed",
+					Context: map[string]any{
+						"address": log.Address,
+						"amount":  log.Amount,
+						"error":   err.Error(),
+					},
+				})
+			}
+			continue
+		}
+
+		// Update audit log
+		if err := m.queries.UpdateAuditLogStatus(ctx, db.UpdateAuditLogStatusParams{
+			Status: "executed",
+			ID:     log.ID,
+		}); err != nil {
+			logger.Logger.Error("update audit log status", zap.Int64("id", log.ID), zap.Error(err))
+		}
+
+		// Update payslips and transactions
+		_ = m.queries.SetPayslipsTransaction(ctx, db.SetPayslipsTransactionParams{
 			TxHash:  sql.NullString{String: hash, Valid: true},
-			Address: row.Address,
-		}); err != nil {
-			return err
+			Address: log.Address,
+		})
+		_ = m.queries.InsertTransaction(ctx, db.InsertTransactionParams{
+			Hash:    hash,
+			Address: log.Address,
+			Amount:  log.Amount,
+			Status:  "awaiting_confirmation",
+		})
+
+		logger.Logger.Info("approved payout executed", zap.Int64("audit_id", log.ID), zap.String("address", log.Address), zap.String("tx", hash))
+		metrics.PayoutsSubmitted.WithLabelValues(log.Kind).Inc()
+
+		if m.broadcaster != nil {
+			m.broadcaster.Publish(PoolEvent{
+				Type:      "payout_sent",
+				Timestamp: time.Now().UnixMilli(),
+				Data: mustMarshal(map[string]any{
+					"address": log.Address,
+					"amount":  log.Amount,
+					"fee":     log.Fee,
+					"txHash":  hash,
+					"kind":    log.Kind,
+				}),
+			})
 		}
-		if err := m.queries.InsertTransaction(ctx, db.InsertTransactionParams{
-			Hash: hash, Address: row.Address, Amount: int64(amount), Status: "awaiting_confirmation",
-		}); err != nil {
-			return err
+		if m.recorder != nil {
+			_ = m.recorder.RecordEvent(ctx, ops.EventInput{
+				Severity: "info",
+				Category: "payout",
+				Source:   "daemon",
+				Type:     "payout_submitted",
+				Summary:  "Payout submitted",
+				Context: map[string]any{
+					"address": log.Address,
+					"amount":  log.Amount,
+					"fee":     log.Fee,
+					"txHash":  hash,
+					"kind":    log.Kind,
+				},
+			})
 		}
-		logger.Logger.Info("payout submitted", zap.String("staker", row.Address), zap.Uint64("amount", uint64(amount)), zap.String("tx", hash))
-		metrics.PayoutsSubmitted.WithLabelValues(payoutKindLabel(kind)).Inc()
 	}
 	return nil
 }

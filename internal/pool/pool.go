@@ -12,6 +12,8 @@ import (
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
 	"github.com/Beardsoft/GoPool/internal/metrics"
+	"github.com/Beardsoft/GoPool/internal/notifier"
+	"github.com/Beardsoft/GoPool/internal/ops"
 
 	"go.uber.org/zap"
 )
@@ -32,17 +34,31 @@ const chainGaugeInterval = 30 * time.Second
 
 // Manager is the pool daemon: it replays chain heights and runs payouts.
 type Manager struct {
-	chain   *chain.Chain
-	queries *db.Queries
-	cfg     *config.Config
-	policy  *rpc.Policy
+	chain       *chain.Chain
+	queries     *db.Queries
+	cfg         *config.Config
+	policy      *rpc.Policy
+	broadcaster *Broadcaster
+	notifier    *notifier.Notifier
+	recorder    *ops.Recorder
+	// feeFloorAlerted tracks stakers currently in a fee-floor hold so the
+	// operator gets one alert per hold episode, not one per ~2s tick.
+	feeFloorAlerted       map[string]bool
 	lastChainGaugeRefresh time.Time
 	lastValidatorObserve  time.Time
 }
 
 // NewManager builds a Manager. Policy is loaded on Run.
-func NewManager(c *chain.Chain, q *db.Queries, cfg *config.Config) *Manager {
-	return &Manager{chain: c, queries: q, cfg: cfg}
+func NewManager(c *chain.Chain, q *db.Queries, cfg *config.Config, opts ...func(*Manager)) *Manager {
+	m := &Manager{chain: c, queries: q, cfg: cfg, broadcaster: GetBroadcaster(), notifier: notifier.New(cfg), feeFloorAlerted: make(map[string]bool)}
+	for _, o := range opts {
+		o(m)
+	}
+	return m
+}
+
+func WithRecorder(r *ops.Recorder) func(*Manager) {
+	return func(m *Manager) { m.recorder = r }
 }
 
 // classify reports what kind of block a height is, relative to the cached
@@ -146,6 +162,59 @@ func (m *Manager) observeTickGauges(ctx context.Context, head uint32, cursor int
 	metrics.WalletBalance.WithLabelValues("reward").Set(float64(rbal))
 }
 
+func (m *Manager) recordHeartbeat(ctx context.Context, head uint32, processed int64, tickStart time.Time) error {
+	if m.recorder == nil {
+		return nil
+	}
+	// best-effort validator state
+	validatorState := "unknown"
+	if v, err := m.chain.RPC.GetValidator(ctx, m.chain.Address()); err == nil {
+		validatorState = validatorLiveState(v, head)
+	}
+	hb := ops.Heartbeat{
+		HeartbeatAt:             time.Now().UTC(),
+		DaemonVersion:           "",
+		ConfigHash:              "",
+		DerivedValidatorAddress: m.chain.Address().String(),
+		ValidatorState:          validatorState,
+		LastProcessedHeight:     processed,
+		ChainHead:               int64(head),
+		LastTickMs:              int64(time.Since(tickStart).Milliseconds()),
+		RPCOk:                   true,
+		ReadinessError:          "",
+	}
+	return m.recorder.RecordHeartbeat(ctx, hb)
+}
+
+func (m *Manager) recordSnapshot(ctx context.Context, head uint32, processed int64, tickStart time.Time) error {
+	if m.recorder == nil {
+		return nil
+	}
+	stats, _ := m.queries.GetPayslipStats(ctx)
+	snap, _ := m.queries.GetCurrentEpochSnapshot(ctx)
+	bal, _ := m.chain.RPC.GetBalance(ctx, m.chain.Address())
+	validatorState := "unknown"
+	if v, err := m.chain.RPC.GetValidator(ctx, m.chain.Address()); err == nil {
+		validatorState = validatorLiveState(v, head)
+	}
+	s := ops.Snapshot{
+		RecordedAt:          time.Now().UTC(),
+		ChainHead:           int64(head),
+		ProcessedHeight:     processed,
+		TickMs:              int64(time.Since(tickStart).Milliseconds()),
+		ValidatorState:      validatorState,
+		LiveStake:           0,
+		StakerCount:         snap.NumStakers,
+		PendingPayoutCount:  stats.PendingCount,
+		PendingPayoutLuna:   stats.PendingLuna,
+		StuckPayoutCount:    stats.StuckCount,
+		StuckPayoutLuna:     0,
+		WalletBalance:       int64(bal),
+		RPCOk:               true,
+	}
+	return m.recorder.RecordSnapshot(ctx, s)
+}
+
 // Run is the daemon's main loop: replay every height between the last
 // processed cursor and the current chain head, in order, then sleep.
 func (m *Manager) Run(ctx context.Context) error {
@@ -154,6 +223,25 @@ func (m *Manager) Run(ctx context.Context) error {
 		return err
 	}
 	m.policy = policy
+
+	// Readiness check: validator address must match config
+	derived := m.chain.Address().String()
+	if m.cfg.ValidatorAddress != "" && derived != m.cfg.ValidatorAddress {
+		if m.recorder != nil {
+			_ = m.recorder.RecordEvent(ctx, ops.EventInput{
+				Severity: "error",
+				Category: "readiness",
+				Source:   "daemon",
+				Type:     "validator_address_mismatch",
+				Summary:  "Derived validator address does not match config",
+				Context: map[string]any{
+					"derived":  derived,
+					"expected": m.cfg.ValidatorAddress,
+				},
+			})
+		}
+		return nil
+	}
 
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -170,6 +258,16 @@ func (m *Manager) Run(ctx context.Context) error {
 		if err != nil {
 			logger.Logger.Error("fetching block number", zap.Error(err))
 			metrics.RPCErrors.WithLabelValues("block_number").Inc()
+			if m.recorder != nil {
+				_ = m.recorder.RecordEvent(ctx, ops.EventInput{
+					Severity: "error",
+					Category: "rpc",
+					Source:   "daemon",
+					Type:     "rpc_failure",
+					Summary:  "Failed to fetch block number",
+					Context:  map[string]any{"error": err.Error()},
+				})
+			}
 			continue
 		}
 
@@ -198,6 +296,9 @@ func (m *Manager) Run(ctx context.Context) error {
 		if err := m.runPayouts(ctx); err != nil {
 			logger.Logger.Error("running payouts", zap.Error(err))
 		}
+		if err := m.processApprovedPayouts(ctx); err != nil {
+			logger.Logger.Error("processing approved payouts", zap.Error(err))
+		}
 		if err := m.runConfirmations(ctx); err != nil {
 			logger.Logger.Error("running confirmations", zap.Error(err))
 		}
@@ -212,11 +313,16 @@ func (m *Manager) Run(ctx context.Context) error {
 
 		processed := int64(head)
 		if start <= head {
-			if c, err := m.queries.GetCursor(ctx, cursorName); err == nil {
+			if c, err := m.queries.GetCursor(ctx, CursorName); err == nil {
 				processed = c
 			}
 		}
 		m.observeTickGauges(ctx, head, processed, tickStart)
+
+		if m.recorder != nil {
+			_ = m.recordHeartbeat(ctx, head, processed, tickStart)
+			_ = m.recordSnapshot(ctx, head, processed, tickStart)
+		}
 	}
 }
 

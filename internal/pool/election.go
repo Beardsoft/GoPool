@@ -2,11 +2,14 @@ package pool
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	nimiq "github.com/NimMiniApps/nimiq-go"
 
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
+	"github.com/Beardsoft/GoPool/internal/ops"
 
 	"go.uber.org/zap"
 )
@@ -33,16 +36,21 @@ func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 	if err != nil {
 		return err
 	}
-	if exists != 0 {
+	if exists {
 		return nil
 	}
 
 	addr := m.chain.Address()
 	validator, err := m.chain.RPC.GetValidator(ctx, addr)
 	if err != nil {
-		return m.queries.InsertEpoch(ctx, db.InsertEpochParams{
+		insertErr := m.queries.InsertEpoch(ctx, db.InsertEpochParams{
 			Number: int64(nextEpoch), NumStakers: 0, Balance: 0, Status: "not_elected",
 		})
+		if m.notifier != nil {
+			m.notifier.Send("warning", "Missed election",
+				fmt.Sprintf("Could not confirm validator election for epoch %d: %v", nextEpoch, err))
+		}
+		return insertErr
 	}
 	m.observeValidator(validator, height)
 
@@ -58,9 +66,40 @@ func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 		status = "no_stakers"
 	}
 	if status != "" {
-		return m.queries.InsertEpoch(ctx, db.InsertEpochParams{
+		if err := m.queries.InsertEpoch(ctx, db.InsertEpochParams{
 			Number: int64(nextEpoch), NumStakers: 0, Balance: int64(validator.Balance), Status: status,
-		})
+		}); err != nil {
+			return err
+		}
+		if m.notifier != nil {
+			m.notifier.Send("warning", "Validator state", "Validator is "+status+" for epoch "+fmt.Sprintf("%d", nextEpoch))
+		}
+		if m.broadcaster != nil {
+			m.broadcaster.Publish(PoolEvent{
+				Type:      "validator_state_change",
+				Timestamp: time.Now().UnixMilli(),
+				Data: mustMarshal(map[string]any{
+					"epoch":  nextEpoch,
+					"height": height,
+					"status": status,
+				}),
+			})
+		}
+		if m.recorder != nil {
+			_ = m.recorder.RecordEvent(ctx, ops.EventInput{
+				Severity: "warning",
+				Category: "validator",
+				Source:   "daemon",
+				Type:     "validator_state_change",
+				Summary:  "Validator state change",
+				Context: map[string]any{
+					"epoch":  nextEpoch,
+					"height": height,
+					"status": status,
+				},
+			})
+		}
+		return nil
 	}
 
 	stakers, err := m.chain.RPC.GetStakersByValidatorAddress(ctx, addr)
@@ -72,6 +111,19 @@ func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 		Number: int64(nextEpoch), NumStakers: int64(len(stakers)), Balance: int64(validator.Balance), Status: "in_progress",
 	}); err != nil {
 		return err
+	}
+
+	if m.broadcaster != nil {
+		m.broadcaster.Publish(PoolEvent{
+			Type:      "epoch_started",
+			Timestamp: time.Now().UnixMilli(),
+			Data: mustMarshal(map[string]any{
+				"epoch":      nextEpoch,
+				"height":     height,
+				"numStakers": len(stakers),
+				"balance":    int64(validator.Balance),
+			}),
+		})
 	}
 
 	for _, s := range stakers {
@@ -90,5 +142,20 @@ func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 
 	logger.Logger.Info("validator elected for next epoch",
 		zap.Uint32("epoch", nextEpoch), zap.Int("stakers", len(stakers)))
+	if m.recorder != nil {
+		_ = m.recorder.RecordEvent(ctx, ops.EventInput{
+			Severity: "info",
+			Category: "election",
+			Source:   "daemon",
+			Type:     "epoch_started",
+			Summary:  "Validator elected for next epoch",
+			Context: map[string]any{
+				"epoch":      nextEpoch,
+				"height":     height,
+				"numStakers": len(stakers),
+				"balance":    int64(validator.Balance),
+			},
+		})
+	}
 	return nil
 }

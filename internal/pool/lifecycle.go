@@ -11,6 +11,7 @@ import (
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
 	"github.com/Beardsoft/GoPool/internal/metrics"
+	"github.com/Beardsoft/GoPool/internal/ops"
 
 	"go.uber.org/zap"
 )
@@ -52,7 +53,7 @@ func (m *Manager) runAutoReactivate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if pending != 0 {
+	if pending {
 		return nil
 	}
 
@@ -63,7 +64,7 @@ func (m *Manager) runAutoReactivate(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if outstanding != 0 {
+		if outstanding {
 			return nil
 		}
 	}
@@ -92,6 +93,18 @@ func (m *Manager) runAutoReactivate(ctx context.Context) error {
 		return err
 	}
 	logger.Logger.Info("validator reactivation submitted", zap.String("tx", hash))
+	if m.recorder != nil {
+		_ = m.recorder.RecordEvent(ctx, ops.EventInput{
+			Severity: "info",
+			Category: "validator",
+			Source:   "daemon",
+			Type:     "reactivation_submitted",
+			Summary:  "Validator reactivation submitted",
+			Context: map[string]any{
+				"txHash": hash,
+			},
+		})
+	}
 	return nil
 }
 
@@ -189,6 +202,21 @@ func (m *Manager) ProcessRequestedActions(ctx context.Context) error {
 			Outcome: outcome, TxHash: sql.NullString{String: hash, Valid: hash != ""}, ID: req.ID,
 		}); setErr != nil {
 			return setErr
+		}
+		if m.recorder != nil {
+			_ = m.recorder.RecordEvent(ctx, ops.EventInput{
+				Severity:  "info",
+				Category:  "validator",
+				Source:    "daemon",
+				Type:      "validator_action",
+				Summary:   "Validator action processed",
+				Context: map[string]any{
+					"action": req.Action,
+					"outcome": outcome,
+					"txHash": hash,
+				},
+				CorrelationID: fmt.Sprintf("validator-action-%d", req.ID),
+			})
 		}
 	}
 	return nil

@@ -10,6 +10,7 @@ import (
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/logger"
 	"github.com/Beardsoft/GoPool/internal/metrics"
+	"github.com/Beardsoft/GoPool/internal/ops"
 
 	"go.uber.org/zap"
 )
@@ -70,6 +71,19 @@ func (m *Manager) runConfirmations(ctx context.Context) error {
 			}
 			logger.Logger.Info("payout confirmed", zap.String("hash", tx.Hash))
 			metrics.PayoutsConfirmed.Inc()
+			if m.recorder != nil {
+				_ = m.recorder.RecordEvent(ctx, ops.EventInput{
+					Severity: "info",
+					Category: "payout",
+					Source:   "daemon",
+					Type:     "payout_confirmed",
+					Summary:  "Payout confirmed",
+					Context: map[string]any{
+						"txHash": tx.Hash,
+						"address": tx.Address,
+					},
+				})
+			}
 		case outcomeFailed:
 			if err := m.queries.SetTransactionStatus(ctx, db.SetTransactionStatusParams{Status: "failed", Hash: tx.Hash}); err != nil {
 				return err
@@ -79,6 +93,19 @@ func (m *Manager) runConfirmations(ctx context.Context) error {
 			}
 			logger.Logger.Warn("payout failed, reset for retry", zap.String("hash", tx.Hash))
 			metrics.PayoutsFailed.Inc()
+			if m.recorder != nil {
+				_ = m.recorder.RecordEvent(ctx, ops.EventInput{
+					Severity: "error",
+					Category: "payout",
+					Source:   "daemon",
+					Type:     "payout_failed",
+					Summary:  "Payout failed",
+					Context: map[string]any{
+						"txHash": tx.Hash,
+						"address": tx.Address,
+					},
+				})
+			}
 		}
 	}
 
