@@ -100,3 +100,45 @@ export interface OperatorActivityResponse {
   next_cursor: string | null;
   has_more: boolean;
 }
+
+export interface OperatorAction {
+  id: number;
+  action: 'deactivate' | 'retire';
+  state: 'requested' | 'processing' | 'submitted' | 'confirmed' | 'failed' | 'cancelled';
+  requested_at?: string;
+  updated_at?: string;
+  tx_hash?: string;
+  error_summary?: string;
+  correlation_id?: string;
+}
+
+export interface OperatorPayout {
+  hash: string;
+  address: string;
+  amount: number;
+  status: string;
+  submitted_at?: string;
+}
+
+export interface PageResponse<T> {
+  items: T[];
+  next_cursor: number | string | null;
+}
+
+export interface AlertChannelStatus {
+  enabled: boolean;
+  configured: boolean;
+  destination_hint: string;
+  state: 'configured' | 'missing' | 'unavailable' | 'invalid';
+}
+
+export interface AlertDelivery {
+  id: number;
+  channel: string;
+  alert_type: string;
+  destination: string;
+  state: string;
+  response_summary?: string;
+  attempted_at: string;
+  correlation_id?: string;
+}

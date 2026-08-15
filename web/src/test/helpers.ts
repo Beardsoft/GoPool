@@ -48,3 +48,8 @@ export function overviewFixture(overrides: Partial<OperatorOverview> = {}): Oper
 export const operatorTestGlobals = {
   router: createRouter({ history: createMemoryHistory(), routes: [] })
 }
+
+export function mockAlertResponse(channels: Record<string, unknown>) {
+  mockFetch('/api/operator/alerts', { channels })
+  mockFetch('/api/operator/alerts/deliveries?limit=50', { items: [], next_cursor: 0 })
+}

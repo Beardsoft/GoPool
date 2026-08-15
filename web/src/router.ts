@@ -25,6 +25,8 @@ export const router = createRouter({
       children: [
         { path: '', name: 'operator-overview', component: () => import('./pages/operator/Overview.vue') },
         { path: 'activity', name: 'operator-activity', component: () => import('./pages/operator/Activity.vue') },
+        { path: 'operations', name: 'operator-operations', component: () => import('./pages/operator/Operations.vue') },
+        { path: 'alerts', name: 'operator-alerts', component: () => import('./pages/operator/Alerts.vue') },
       ]
     },
     {
