@@ -5,6 +5,7 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/NimMiniApps/nimiq-go/rpc"
@@ -50,4 +51,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+func decodeJSON(r io.Reader, v any) error {
+	return json.NewDecoder(r).Decode(v)
 }
