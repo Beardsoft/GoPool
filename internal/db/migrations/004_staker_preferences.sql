@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS staker_preferences (
+    address TEXT PRIMARY KEY,
+    compound INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
