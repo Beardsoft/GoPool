@@ -47,10 +47,11 @@ existing `loginWithHub()`; on success the cache is invalidated and refetched.
 
 ## Identicons
 
-- New dependency `@nimiq/core-identicon` (official Nimiq package).
+- New dependency `@nimiq/identicons` (official Nimiq package, SVG data-URL
+  identicons; no TypeScript types, so a local module declaration is added).
 - New `web/src/components/ui/Identicon.vue`: `address` + `size` props, renders
-  the deterministic identicon to a canvas; renders nothing for invalid
-  addresses.
+  the deterministic identicon as an `<img>` from `Identicons.toDataUrl`;
+  renders nothing for invalid addresses.
 - Built into `AddressIdentity.vue` (covers operator Overview and any future
   reuse). Added at the raw-render sites: `StakerLookup.vue`,
   `MyDashboard.vue`, `operator/Operations.vue` payouts, `EpochDetail.vue`
