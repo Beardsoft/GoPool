@@ -257,30 +257,45 @@ func validatePoolWallet(configured, derived string, validator *rpc.Validator) er
 	return nil
 }
 
-func poolWalletReadinessHeartbeat(derived string, readinessErr error) ops.Heartbeat {
+func poolWalletReadinessHeartbeat(derived string, readinessErr error, rpcOK bool) ops.Heartbeat {
 	return ops.Heartbeat{
 		HeartbeatAt: time.Now().UTC(), DerivedValidatorAddress: derived,
-		ValidatorState: "unready", RPCOk: true, ReadinessError: readinessErr.Error(),
+		ValidatorState: "unready", RPCOk: rpcOK, ReadinessError: readinessErr.Error(),
 	}
+}
+
+func (m *Manager) recordReadinessFailure(ctx context.Context, derived string, readinessErr error, rpcOK bool) {
+	if m.recorder == nil {
+		return
+	}
+	_ = m.recorder.RecordHeartbeat(ctx, poolWalletReadinessHeartbeat(derived, readinessErr, rpcOK))
+	_ = m.recorder.RecordEvent(ctx, ops.EventInput{
+		Severity: "error", Category: "readiness", Source: "daemon", Type: "pool_wallet_readiness_failed",
+		Summary: "Pool wallet readiness check failed", Context: map[string]any{"derived": derived, "error": readinessErr.Error()},
+	})
 }
 
 // Run is the daemon's main loop: replay every height between the last
 // processed cursor and the current chain head, in order, then sleep.
 func (m *Manager) Run(ctx context.Context) error {
+	derived := m.chain.Address().String()
 	policy, err := m.chain.RPC.GetPolicy(ctx)
 	if err != nil {
+		err = fmt.Errorf("load policy for pool wallet readiness: %w", err)
+		m.recordReadinessFailure(ctx, derived, err, false)
 		return err
 	}
 	m.policy = policy
 
-	derived := m.chain.Address().String()
 	validator, err := m.chain.RPC.GetValidator(ctx, m.chain.Address())
 	if err != nil {
-		return fmt.Errorf("load validator for pool wallet readiness: %w", err)
+		err = fmt.Errorf("load validator for pool wallet readiness: %w", err)
+		m.recordReadinessFailure(ctx, derived, err, false)
+		return err
 	}
 	if err := validatePoolWallet(m.cfg.ValidatorAddress, derived, validator); err != nil {
 		if m.recorder != nil {
-			_ = m.recorder.RecordHeartbeat(ctx, poolWalletReadinessHeartbeat(derived, err))
+			_ = m.recorder.RecordHeartbeat(ctx, poolWalletReadinessHeartbeat(derived, err, true))
 			_ = m.recorder.RecordEvent(ctx, ops.EventInput{
 				Severity: "error",
 				Category: "readiness",

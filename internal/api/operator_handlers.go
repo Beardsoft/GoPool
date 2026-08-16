@@ -118,11 +118,13 @@ func (a *API) handleAuditApprove(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := a.queries.UpdateAuditLogStatus(r.Context(), db.UpdateAuditLogStatusParams{
-		Status: "approved",
-		ID:     body.ID,
-	}); err != nil {
+	updated, err := a.queries.ApprovePendingAuditLog(r.Context(), body.ID)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "updating audit log")
+		return
+	}
+	if updated != 1 {
+		writeError(w, http.StatusConflict, "audit log is not pending")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "approved"})

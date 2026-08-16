@@ -11,6 +11,20 @@ import (
 	"time"
 )
 
+const ApprovePendingAuditLog = `-- name: ApprovePendingAuditLog :execrows
+UPDATE audit_logs
+SET status = 'approved', approved_at = CURRENT_TIMESTAMP
+WHERE id = ? AND status = 'pending'
+`
+
+func (q *Queries) ApprovePendingAuditLog(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, ApprovePendingAuditLog, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const CancelRequestedValidatorAction = `-- name: CancelRequestedValidatorAction :one
 UPDATE validator_actions
 SET state = 'cancelled', outcome = 'cancelled', updated_at = CURRENT_TIMESTAMP

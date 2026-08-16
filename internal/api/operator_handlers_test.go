@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	nimiq "github.com/NimMiniApps/nimiq-go"
@@ -13,6 +15,34 @@ import (
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/pool"
 )
+
+func TestAuditApproveOnlyTransitionsPendingRows(t *testing.T) {
+	a, operatorCookie, _ := operatorTestAPI(t)
+	ctx := context.Background()
+	pendingID, err := a.queries.InsertAuditLog(ctx, db.InsertAuditLogParams{ActionType: "payout", Address: testAddr, Amount: 100, Kind: "transfer", Status: "pending"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executedID, err := a.queries.InsertAuditLog(ctx, db.InsertAuditLogParams{ActionType: "payout", Address: testAddr, Amount: 100, Kind: "transfer", Status: "executed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	approve := func(id int64) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/operator/audit/approve", strings.NewReader(fmt.Sprintf(`{"id":%d}`, id)))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(operatorCookie)
+		a.Mux().ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := approve(pendingID); rec.Code != http.StatusOK {
+		t.Fatalf("pending approve status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if rec := approve(executedID); rec.Code != http.StatusConflict {
+		t.Fatalf("executed replay status = %d, want 409; body = %s", rec.Code, rec.Body.String())
+	}
+}
 
 func operatorTestAPI(t *testing.T) (*API, *http.Cookie, *http.Cookie) {
 	t.Helper()

@@ -56,8 +56,8 @@ func TestValidatePoolWallet(t *testing.T) {
 
 func TestPoolWalletReadinessHeartbeatPersistsFailure(t *testing.T) {
 	err := fmt.Errorf("reward wallet mismatch")
-	hb := poolWalletReadinessHeartbeat("NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E", err)
-	if hb.ReadinessError != err.Error() || hb.ValidatorState != "unready" || !hb.RPCOk {
+	hb := poolWalletReadinessHeartbeat("NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E", err, false)
+	if hb.ReadinessError != err.Error() || hb.ValidatorState != "unready" || hb.RPCOk {
 		t.Fatalf("heartbeat = %+v", hb)
 	}
 }

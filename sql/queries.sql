@@ -209,6 +209,11 @@ UPDATE audit_logs
 SET status = ?, approved_at = CURRENT_TIMESTAMP
 WHERE id = ?;
 
+-- name: ApprovePendingAuditLog :execrows
+UPDATE audit_logs
+SET status = 'approved', approved_at = CURRENT_TIMESTAMP
+WHERE id = ? AND status = 'pending';
+
 -- name: ClaimApprovedAuditLog :execrows
 UPDATE audit_logs
 SET status = 'executed', tx_hash = ?, approved_at = CURRENT_TIMESTAMP

@@ -219,6 +219,14 @@ func TestPersistPayoutSubmissionClaimsAuditExactlyOnce(t *testing.T) {
 	if err := m.persistPayoutSubmission(ctx, log, "hash-b", 124); err == nil {
 		t.Fatal("second claim unexpectedly succeeded")
 	}
+	secondID, err := q.InsertAuditLog(ctx, db.InsertAuditLogParams{ActionType: "payout", Address: "A", Amount: 100, Kind: "delegate", Status: "approved"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := db.ListApprovedAuditLogsRow{ID: secondID, Address: "A", Amount: 100, Kind: "delegate", Status: "approved"}
+	if err := m.persistPayoutSubmission(ctx, second, "hash-c", 125); err == nil {
+		t.Fatal("second active payout for the same address unexpectedly succeeded")
+	}
 	pending, err := q.GetPendingTransactions(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -230,8 +238,8 @@ func TestPersistPayoutSubmissionClaimsAuditExactlyOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(approved) != 0 {
-		t.Fatalf("approved logs = %+v, want claimed audit removed from retry queue", approved)
+	if len(approved) != 1 || approved[0].ID != secondID {
+		t.Fatalf("approved logs = %+v, want rejected second audit left unclaimed", approved)
 	}
 }
 

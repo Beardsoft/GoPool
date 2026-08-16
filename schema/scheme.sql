@@ -65,6 +65,10 @@ CREATE TABLE IF NOT EXISTS transactions (
     submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_one_awaiting_per_address
+ON transactions(address)
+WHERE status = 'awaiting_confirmation';
+
 CREATE TABLE IF NOT EXISTS staker_preferences (
     address TEXT PRIMARY KEY,
     compound INTEGER NOT NULL DEFAULT 0,
