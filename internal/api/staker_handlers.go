@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -99,6 +101,8 @@ func (a *API) registerStakerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/me", a.requireSession(a.handleMe))
 	mux.HandleFunc("GET /api/me/history", a.requireSession(a.handleMeHistory))
 	mux.HandleFunc("GET /api/me/payslips.csv", a.requireSession(a.handleMePayslipsCSV))
+	mux.HandleFunc("GET /api/me/preference", a.requireSession(a.handleGetMyPreference))
+	mux.HandleFunc("PUT /api/me/preference", a.requireSession(a.handlePutMyPreference))
 }
 
 func (a *API) handleGetStaker(w http.ResponseWriter, r *http.Request) {
@@ -266,4 +270,60 @@ func (a *API) handleMePayslipsCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writePayslipsCSV(w, r, a.queries, addr.String())
+}
+
+// effectiveCompound returns the stored preference, or the value implied by the
+// global payout_mode when the staker has not chosen yet.
+func (a *API) effectiveCompound(ctx context.Context, address string) (bool, error) {
+	pref, err := a.queries.GetStakerPreference(ctx, address)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return a.cfg.PayoutMode == "delegate", nil
+		}
+		return false, err
+	}
+	return pref == 1, nil
+}
+
+func (a *API) handleGetMyPreference(w http.ResponseWriter, r *http.Request) {
+	addr, ok := addressFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not logged in")
+		return
+	}
+	compound, err := a.effectiveCompound(r.Context(), addr.String())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "loading preference")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"compound": compound})
+}
+
+func (a *API) handlePutMyPreference(w http.ResponseWriter, r *http.Request) {
+	addr, ok := addressFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not logged in")
+		return
+	}
+	var body struct {
+		Compound bool `json:"compound"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := a.queries.UpsertStakerPreference(r.Context(), db.UpsertStakerPreferenceParams{
+		Address: addr.String(), Compound: boolToInt(body.Compound),
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "saving preference")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"compound": body.Compound})
+}
+
+func boolToInt(b bool) int64 {
+	if b {
+		return 1
+	}
+	return 0
 }

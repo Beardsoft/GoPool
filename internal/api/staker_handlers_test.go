@@ -163,3 +163,37 @@ func TestMePayslipsCSV(t *testing.T) {
 		t.Errorf("no cookie: status = %d, want 401", rec401.Code)
 	}
 }
+
+func TestMePreferencePutAndGet(t *testing.T) {
+	q := newTestDB(t)
+	a := &API{queries: q, cfg: &config.Config{SessionSecret: "test-secret"}}
+	addr, _ := nimiq.ParseAddress(testAddr)
+	a.Mux()
+
+	body := `{"compound":true}`
+	req := httptest.NewRequest(http.MethodPut, "/api/me/preference", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: a.issueSession(addr)})
+	rec := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/api/me/preference", nil)
+	req2.AddCookie(&http.Cookie{Name: sessionCookieName, Value: a.issueSession(addr)})
+	rec2 := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, body = %s", rec2.Code, rec2.Body.String())
+	}
+	if !strings.Contains(rec2.Body.String(), `"compound":true`) {
+		t.Fatalf("GET body = %s, want compound:true", rec2.Body.String())
+	}
+
+	rec3 := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec3, httptest.NewRequest(http.MethodGet, "/api/me/preference", nil))
+	if rec3.Code != http.StatusUnauthorized {
+		t.Fatalf("unauth GET status = %d, want 401", rec3.Code)
+	}
+}
