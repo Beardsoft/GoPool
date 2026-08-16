@@ -6,6 +6,16 @@ import (
 	nimiq "github.com/NimMiniApps/nimiq-go"
 )
 
+func TestNewPayoutTransactionRecordsHead(t *testing.T) {
+	got := newPayoutTransaction("hash", "address", 123, 456)
+	if got.Hash != "hash" || got.Address != "address" || got.Amount != 123 || got.Status != "awaiting_confirmation" {
+		t.Fatalf("transaction params = %+v", got)
+	}
+	if got.SubmittedHeight != 456 {
+		t.Fatalf("submitted height = %d, want 456", got.SubmittedHeight)
+	}
+}
+
 func TestChoosePayoutTx(t *testing.T) {
 	cases := []struct {
 		mode           string

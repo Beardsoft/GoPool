@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/NimMiniApps/nimiq-go/signer"
@@ -75,6 +76,27 @@ func TestDevnetValidatorKeyMatchesConfiguredValidator(t *testing.T) {
 	}
 	if got, want := key.Address().String(), "NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E"; got != want {
 		t.Fatalf("validator key derives %s, want %s", got, want)
+	}
+}
+
+func TestDevnetFirstValidatorUsesOneWallet(t *testing.T) {
+	data, err := os.ReadFile("one-wallet-genesis.patch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch := string(data)
+	if !strings.Contains(patch, `-reward_address = "NQ46 U66M JNLD 0DJ7 0E9P Q7XR V9KV H976 813A"`) {
+		t.Fatal("patch does not replace the old first-validator reward address")
+	}
+	if !strings.Contains(patch, `+reward_address = "NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E"`) {
+		t.Fatal("patch does not set the first-validator reward address to the pool wallet")
+	}
+	runScript, err := os.ReadFile("run.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(runScript), "one-wallet-genesis.patch") {
+		t.Fatal("run.sh does not apply the tracked one-wallet genesis patch")
 	}
 }
 

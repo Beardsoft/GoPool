@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash
 
 up=$PWD
 export NETWORK_NAME=nimiq.local
@@ -33,22 +33,32 @@ function sync_repo() {
 
     echo -e "\n${BLUE}Syncing ${REPO}${NOCOLOR}"
 
-    if [ -d $up/$DIR ]; then 
-        cd $up/$DIR 
+    if [ -d $up/$DIR ]; then
+        cd $up/$DIR
         git fetch origin
         if [ "$(git status --porcelain)" == "" ] && [ "$(git branch --show-current)" == "$BRANCH" ]; then
-            git merge origin/$BRANCH 
-        else 
+            git merge origin/$BRANCH
+        else
             echo -e "${RED}Repo has untracked changes or is not on $BRANCH branch: merge manually${NOCOLOR}"
         fi
         cd $up
-    else 
-        git clone $REPO -b $BRANCH $DIR 
-    fi 
+    else
+        git clone $REPO -b $BRANCH $DIR
+    fi
     echo -e "${GREEN}Done${NOCOLOR}"
 }
 
+function apply_repo_patch() {
+    PATCH_FILE=$1
+    if git -C "$up/albatross" apply --reverse --check "$PATCH_FILE" >/dev/null 2>&1; then
+        return
+    fi
+    git -C "$up/albatross" apply --check "$PATCH_FILE"
+    git -C "$up/albatross" apply "$PATCH_FILE"
+}
+
 function build_albatross() {
+    apply_repo_patch "$up/one-wallet-genesis.patch"
     cp -f build_ubuntu.Dockerfile albatross/build_ubuntu.Dockerfile
     cp -f build_ubuntu.Dockerfile.dockerignore albatross/build_ubuntu.Dockerfile.dockerignore
     cp -f docker_run.sh albatross/scripts/docker_run.sh
@@ -57,12 +67,12 @@ function build_albatross() {
     chmod 777 albatross/scripts/docker_run.sh
     chmod 777 albatross/scripts/docker_config.sh
 
-    docker compose -f ./docker-compose.yaml build 
+    docker compose -f ./docker-compose.yaml build
 }
 
 function up_albatross() {
     docker volume ls | grep -v "VOLUME" | awk '{print $2}' | while read volume; do docker volume rm $volume; done
-    docker compose -f ./docker-compose.yaml up -d 
+    docker compose -f ./docker-compose.yaml up -d
 }
 
 function log_albatross() {
@@ -83,32 +93,32 @@ usage:
 supported commands:
     sync                Sync all necessary repositories
     build-albatross     Build albatross container
-    up-albatross        Bring up albatross test-lab with docker-compose 
-    down-albatross      Bring down albatross test-lab with docker-compose 
+    up-albatross        Bring up albatross test-lab with docker-compose
+    down-albatross      Bring down albatross test-lab with docker-compose
     log-albatross       Attach logger to running albatross nodes
 EOF
 }
 
 if [ $# -gt 0 ]; then
-    case $1 in 
-        sync) 
+    case $1 in
+        sync)
             list_repos | while read info; do sync_repo $info; done;;
-        
+
         build-albatross)
             build_albatross;;
-        
+
         up-albatross)
             up_albatross;;
-        
+
         down-albatross)
             down_albatross;;
 
         log-albatross)
              log_albatross;;
-        
-        *) 
+
+        *)
             show_help;;
     esac
-else 
+else
     show_help
 fi

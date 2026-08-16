@@ -325,12 +325,7 @@ func (m *Manager) processApprovedPayouts(ctx context.Context) error {
 			TxHash:  sql.NullString{String: hash, Valid: true},
 			Address: log.Address,
 		})
-		_ = m.queries.InsertTransaction(ctx, db.InsertTransactionParams{
-			Hash:    hash,
-			Address: log.Address,
-			Amount:  log.Amount,
-			Status:  "awaiting_confirmation",
-		})
+		_ = m.queries.InsertTransaction(ctx, newPayoutTransaction(hash, log.Address, log.Amount, head))
 
 		logger.Logger.Info("approved payout executed", zap.Int64("audit_id", log.ID), zap.String("address", log.Address), zap.String("tx", hash))
 		metrics.PayoutsSubmitted.WithLabelValues(log.Kind).Inc()
@@ -370,6 +365,12 @@ func (m *Manager) processApprovedPayouts(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func newPayoutTransaction(hash, address string, amount int64, head uint32) db.InsertTransactionParams {
+	return db.InsertTransactionParams{
+		Hash: hash, Address: address, Amount: amount, Status: "awaiting_confirmation", SubmittedHeight: int64(head),
+	}
 }
 
 func (m *Manager) buildPayoutTx(recipient nimiq.Address, amount, fee nimiq.Luna, kind payoutKind, head uint32) (*nimiq.Transaction, error) {

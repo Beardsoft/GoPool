@@ -1,0 +1,12 @@
+diff --git a/genesis/src/genesis/dev-albatross-4-validators.toml b/genesis/src/genesis/dev-albatross-4-validators.toml
+--- a/genesis/src/genesis/dev-albatross-4-validators.toml
++++ b/genesis/src/genesis/dev-albatross-4-validators.toml
+@@ -17,7 +17,7 @@ voting_key = """333b4a431577598ae558e047502139a8e91f22c23dc195b2b741b17a4dcbc30e
+ c63211e1ce3d4c7b85c5f38170385769c738c05be983887774c3a8b8d04482cab6e70f13bce30d49be725627e0338edde4c4e09a8884fe91191100"""
+ # secret_key = "ac29bc07201d3d09f34078b44abd060a5399654db8d2da9876716082b5d329e7c54cc9668994461ef20bd7f5fdc3033ceb22b
+ # c9e052c287aa3a476814608ab995c88b02037e2bc5de7896d645294b2645aa8697cb51b24ed40a2d2726df300"
+-reward_address = "NQ46 U66M JNLD 0DJ7 0E9P Q7XR V9KV H976 813A"
++reward_address = "NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E"
+ # secret_key = 6c9320ac201caf1f8eaa5b05f5d67a9e77826f3f6be266a0ecccc20416dc6587
+
+ [[validators]]
