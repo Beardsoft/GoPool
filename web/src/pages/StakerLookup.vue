@@ -9,7 +9,9 @@ import StatusBadge from '../components/ui/StatusBadge.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import SkeletonBlock from '../components/ui/SkeletonBlock.vue'
 import { formatNim } from '../utils/format'
+import { useSession } from '../composables/useSession'
 
+const { signedIn, address: sessionAddress } = useSession()
 const props = defineProps<{ address?: string }>()
 const router = useRouter()
 const input = ref(props.address ?? '')
@@ -146,14 +148,22 @@ function submit() {
   if (value) router.push(`/stakers/${encodeURIComponent(value)}`)
 }
 
-watch(() => props.address, (a) => { if (a) lookup(a) }, { immediate: true })
+const isOwn = computed(() => sessionAddress.value !== '' && staker.value?.address === sessionAddress.value)
+
+watch([() => props.address, () => sessionAddress.value], ([routeAddr, mine]) => {
+  if (routeAddr) {
+    lookup(routeAddr)
+    return
+  }
+  if (mine) lookup(mine)
+}, { immediate: true })
 onMounted(() => {})
 onUnmounted(() => { if (chart) chart.destroy() })
 </script>
 
 <template>
   <div class="staker-page">
-    <section v-if="!props.address" data-section="staker-lookup" class="card lookup-card">
+    <section v-if="!props.address && !staker" data-section="staker-lookup" class="card lookup-card">
       <p class="section-kicker">Find your stake</p>
       <h1>See exactly what your stake is doing.</h1>
       <p class="muted">Enter your Nimiq address to inspect delegated stake, pool share, rewards, and payout history.</p>
@@ -174,8 +184,11 @@ onUnmounted(() => { if (chart) chart.destroy() })
         <div>
           <p class="section-kicker">Your position</p>
           <h1>Staker position</h1>
-          <p class="address-line"><ExplorerLink kind="account" :value="staker.address" /></p>
-          <RouterLink to="/me" class="btn cta-manage">Log in to manage your stake</RouterLink>
+          <p class="address-line">
+            <ExplorerLink kind="account" :value="staker.address" />
+            <span v-if="isOwn" class="own-badge">Your stake</span>
+          </p>
+          <RouterLink to="/me" class="btn cta-manage">{{ signedIn ? 'Manage your stake' : 'Log in to manage your stake' }}</RouterLink>
         </div>
         <a :href="csvUrl" download class="btn">Download payslips CSV</a>
       </header>
@@ -287,6 +300,16 @@ onUnmounted(() => { if (chart) chart.destroy() })
   flex-wrap: wrap;
 }
 .address-line { margin-bottom: 0; }
+.own-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--nimiq-green) 14%, transparent);
+  color: var(--nimiq-green);
+  font-size: .75rem;
+  font-weight: 700;
+}
 .cta-manage {
   display: inline-block;
   margin-top: var(--space-12);

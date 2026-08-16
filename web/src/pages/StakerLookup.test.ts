@@ -13,6 +13,7 @@ vi.mock('chart.js/auto', () => ({
 import StakerLookup from './StakerLookup.vue'
 import { mockFetch } from '../test/helpers'
 import { loadNetwork, resetExplorerForTests } from '../composables/useExplorer'
+import { resetSessionCache } from '../composables/useSession'
 
 const ADDR = 'NQ32 EGL6 H9C8 0JJB PH4S 7RYY ULRC 5B6N 56RE'
 const TX1 = 'ab'.repeat(32)
@@ -59,6 +60,8 @@ describe('StakerLookup', () => {
   beforeEach(() => {
     chartConfigs.length = 0
     resetExplorerForTests()
+    resetSessionCache()
+    mockFetch('/api/session', { error: 'not logged in' }, 401)
   })
 
   it('shows the lookup form when no address is given', async () => {
@@ -113,5 +116,19 @@ describe('StakerLookup', () => {
     const cta = wrapper.get('a.cta-manage')
     expect(cta.text()).toContain('Log in to manage your stake')
     expect(cta.attributes('href')).toBe('/me')
+  })
+
+  it('auto-loads the signed-in staker\'s own position with a Your stake badge', async () => {
+    const MINE = 'NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E'
+    mockFetch('/api/session', { address: MINE, operator: false })
+    mockFetch(`/api/stakers/${encodeURIComponent(MINE)}`, {
+      address: MINE, stake_luna: 100_000_000, percentage: 0.4335, payslips: [],
+    })
+    mockFetch(`/api/stakers/${encodeURIComponent(MINE)}/history`, {
+      address: MINE, epochs: [], cumulative_reward_luna: 0,
+    })
+    const wrapper = await mountPage()
+    expect(wrapper.text()).toContain('Your stake')
+    expect(wrapper.text()).toContain('1,000 NIM')
   })
 })
