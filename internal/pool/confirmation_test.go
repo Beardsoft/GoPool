@@ -276,3 +276,28 @@ func TestStuckFailedPayoutCanBeRetried(t *testing.T) {
 		t.Fatalf("after retry payslips = %+v, want pending with cleared tx", payslips)
 	}
 }
+
+func TestStakerPreferenceUpsertAndGet(t *testing.T) {
+	q := newLifecycleTestQueries(t)
+	ctx := t.Context()
+
+	if _, err := q.GetStakerPreference(ctx, "A"); err != sql.ErrNoRows {
+		t.Fatalf("absent preference err = %v, want sql.ErrNoRows", err)
+	}
+
+	if err := q.UpsertStakerPreference(ctx, db.UpsertStakerPreferenceParams{Address: "A", Compound: 1}); err != nil {
+		t.Fatal(err)
+	}
+	pref, err := q.GetStakerPreference(ctx, "A")
+	if err != nil || pref != 1 {
+		t.Fatalf("after upsert pref = %d, err = %v, want 1", pref, err)
+	}
+
+	if err := q.UpsertStakerPreference(ctx, db.UpsertStakerPreferenceParams{Address: "A", Compound: 0}); err != nil {
+		t.Fatal(err)
+	}
+	pref, err = q.GetStakerPreference(ctx, "A")
+	if err != nil || pref != 0 {
+		t.Fatalf("after overwrite pref = %d, err = %v, want 0", pref, err)
+	}
+}

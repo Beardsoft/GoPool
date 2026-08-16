@@ -541,6 +541,17 @@ func (q *Queries) GetStakerLatest(ctx context.Context, address string) (GetStake
 	return i, err
 }
 
+const GetStakerPreference = `-- name: GetStakerPreference :one
+SELECT compound FROM staker_preferences WHERE address = ?
+`
+
+func (q *Queries) GetStakerPreference(ctx context.Context, address string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, GetStakerPreference, address)
+	var compound int64
+	err := row.Scan(&compound)
+	return compound, err
+}
+
 const GetStakerRewardsByEpoch = `-- name: GetStakerRewardsByEpoch :many
 SELECT r.epoch_number, CAST(COALESCE(SUM(p.amount), 0) AS INTEGER) AS reward
 FROM payslips p
@@ -1916,5 +1927,21 @@ func (q *Queries) UpsertRuntimeStatus(ctx context.Context, arg UpsertRuntimeStat
 		arg.RpcOk,
 		arg.ReadinessError,
 	)
+	return err
+}
+
+const UpsertStakerPreference = `-- name: UpsertStakerPreference :exec
+INSERT INTO staker_preferences (address, compound, updated_at)
+VALUES (?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(address) DO UPDATE SET compound = excluded.compound, updated_at = CURRENT_TIMESTAMP;
+`
+
+type UpsertStakerPreferenceParams struct {
+	Address  string `json:"address"`
+	Compound int64  `json:"compound"`
+}
+
+func (q *Queries) UpsertStakerPreference(ctx context.Context, arg UpsertStakerPreferenceParams) error {
+	_, err := q.db.ExecContext(ctx, UpsertStakerPreference, arg.Address, arg.Compound)
 	return err
 }

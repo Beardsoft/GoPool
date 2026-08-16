@@ -383,3 +383,11 @@ SELECT batch_number, epoch_number, amount, pool_fee, num_stakers
 FROM rewards
 WHERE epoch_number = ?
 ORDER BY batch_number ASC;
+
+-- name: GetStakerPreference :one
+SELECT compound FROM staker_preferences WHERE address = ?;
+
+-- name: UpsertStakerPreference :exec
+INSERT INTO staker_preferences (address, compound, updated_at)
+VALUES (?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(address) DO UPDATE SET compound = excluded.compound, updated_at = CURRENT_TIMESTAMP;
