@@ -105,4 +105,13 @@ describe('StakerLookup', () => {
     const wrapper = await mountPage('NQ00 UNKNOWN STAKER ADDRESS HERE')
     expect(wrapper.get('[role="alert"]').text()).toContain('no staker')
   })
+
+  it('shows a "log in to manage" CTA linking to the dashboard', async () => {
+    mockStakerApi()
+    await loadNetwork()
+    const wrapper = await mountPage(ADDR)
+    const cta = wrapper.get('a.cta-manage')
+    expect(cta.text()).toContain('Log in to manage your stake')
+    expect(cta.attributes('href')).toBe('/me')
+  })
 })

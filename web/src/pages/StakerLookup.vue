@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, RouterLink } from 'vue-router'
 import { apiGet } from '../api'
 import Chart from 'chart.js/auto'
 import NimAmount from '../components/ui/NimAmount.vue'
@@ -175,6 +175,7 @@ onUnmounted(() => { if (chart) chart.destroy() })
           <p class="section-kicker">Your position</p>
           <h1>Staker position</h1>
           <p class="address-line"><ExplorerLink kind="account" :value="staker.address" /></p>
+          <RouterLink to="/me" class="btn cta-manage">Log in to manage your stake</RouterLink>
         </div>
         <a :href="csvUrl" download class="btn">Download payslips CSV</a>
       </header>
@@ -286,6 +287,14 @@ onUnmounted(() => { if (chart) chart.destroy() })
   flex-wrap: wrap;
 }
 .address-line { margin-bottom: 0; }
+.cta-manage {
+  display: inline-block;
+  margin-top: var(--space-12);
+  color: var(--nimiq-light-blue);
+  border: 1px solid color-mix(in srgb, var(--nimiq-light-blue) 40%, transparent);
+  box-shadow: none;
+}
+.cta-manage:hover { box-shadow: none; }
 
 .stat-grid {
   display: grid;
