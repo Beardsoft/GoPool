@@ -106,11 +106,19 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 		}
 		amount := nimiq.Luna(uint64(row.Total))
 
+		pref, perr := m.queries.GetStakerPreference(ctx, row.Address)
+		var prefPtr *bool
+		if perr == nil {
+			b := pref == 1
+			prefPtr = &b
+		}
+		// Only query the chain for delegation when the resolved mode is
+		// delegate; a transfer-mode staker never needs it.
 		kind := payoutTransfer
-		if m.cfg.PayoutMode == "delegate" {
+		if effectivePayoutKind(m.cfg.PayoutMode, prefPtr, true) == payoutDelegate {
 			staker, err := m.chain.RPC.GetStaker(ctx, addr)
 			stillDelegated := err == nil && staker.Delegation == m.chain.Address().String()
-			kind = choosePayoutTx(m.cfg.PayoutMode, stillDelegated)
+			kind = effectivePayoutKind(m.cfg.PayoutMode, prefPtr, stillDelegated)
 		}
 
 		tx, err := m.buildPayoutTx(addr, amount, 0, kind, head)
