@@ -3,11 +3,12 @@ import { onMounted, ref } from 'vue'
 import AppHeader from '../components/AppHeader.vue'
 import OperatorNav from '../components/OperatorNav.vue'
 import { apiGet, type ApiError } from '../api'
-import { loginWithHub } from '../hub'
+import { useSession } from '../composables/useSession'
 import type { OperatorOverview } from '../types/api'
 
 type AccessState = 'checking' | 'signed-out' | 'denied' | 'ready' | 'error'
 
+const { login: sessionLogin } = useSession()
 const access = ref<AccessState>('checking')
 const message = ref('')
 const signingIn = ref(false)
@@ -35,7 +36,7 @@ async function signIn() {
   signingIn.value = true
   message.value = ''
   try {
-    await loginWithHub()
+    await sessionLogin()
     await verifyAccess()
   } catch (cause) {
     const error = cause as ApiError

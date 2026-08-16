@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { apiGet, apiPut } from '../api'
-import { loginWithHub } from '../hub'
+import { useSession } from '../composables/useSession'
 import ExplorerLink from '../components/ui/ExplorerLink.vue'
 import NimAmount from '../components/ui/NimAmount.vue'
 import StatusBadge from '../components/ui/StatusBadge.vue'
@@ -42,6 +42,7 @@ interface StakerHistory {
 
 const PENDING_STATUSES = ['pending', 'out_for_payment', 'awaiting_confirmation']
 
+const { login: sessionLogin } = useSession()
 const me = ref<StakerDetail | null>(null)
 const history = ref<StakerHistory | null>(null)
 const loggedIn = ref(false)
@@ -66,7 +67,7 @@ async function load() {
 async function login() {
   error.value = ''
   try {
-    await loginWithHub()
+    await sessionLogin()
     await load()
   } catch (e) {
     error.value = (e as Error).message
