@@ -234,3 +234,45 @@ func TestRunConfirmationsFailsStuckPayout(t *testing.T) {
 		t.Fatalf("payslips = %+v, want one failed", payslips)
 	}
 }
+
+func TestStuckFailedPayoutCanBeRetried(t *testing.T) {
+	q := newLifecycleTestQueries(t)
+	ctx := t.Context()
+	if err := q.InsertReward(ctx, db.InsertRewardParams{BatchNumber: 1, EpochNumber: 1, Amount: 1000, PoolFee: 0, NumStakers: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.InsertPayslip(ctx, db.InsertPayslipParams{BatchNumber: 1, Address: "A", Amount: 1000, Status: "out_for_payment"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.SetPayslipsTransaction(ctx, db.SetPayslipsTransactionParams{TxHash: sql.NullString{String: "h1", Valid: true}, Address: "A"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.InsertTransaction(ctx, db.InsertTransactionParams{Hash: "h1", Address: "A", Amount: 1000, Status: "awaiting_confirmation", SubmittedHeight: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate the stuck-detection failure path.
+	if err := q.SetTransactionStatus(ctx, db.SetTransactionStatusParams{Status: "failed", Hash: "h1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.UpdatePayslipStatusFailed(ctx, sql.NullString{String: "h1", Valid: true}); err != nil {
+		t.Fatal(err)
+	}
+	payslips, err := q.GetPayslipsForAddress(ctx, "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payslips) != 1 || payslips[0].Status != "failed" {
+		t.Fatalf("before retry payslips = %+v, want failed", payslips)
+	}
+	// Operator retries the failed payout group.
+	if _, err := q.RetryFailedPayoutPayslips(ctx, sql.NullString{String: "h1", Valid: true}); err != nil {
+		t.Fatal(err)
+	}
+	payslips, err = q.GetPayslipsForAddress(ctx, "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payslips) != 1 || payslips[0].Status != "pending" || payslips[0].TxHash.Valid {
+		t.Fatalf("after retry payslips = %+v, want pending with cleared tx", payslips)
+	}
+}
