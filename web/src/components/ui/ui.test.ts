@@ -1,9 +1,17 @@
-import { mount } from '@vue/test-utils'
-import { describe, it, expect, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import NimAmount from './NimAmount.vue'
 import HoldConfirmButton from './HoldConfirmButton.vue'
+import ExplorerLink from './ExplorerLink.vue'
+import AddressIdentity from './AddressIdentity.vue'
+import { mockFetch } from '../../test/helpers'
+import { loadNetwork, resetExplorerForTests } from '../../composables/useExplorer'
 
 describe('UI primitives', () => {
+  beforeEach(() => {
+    resetExplorerForTests()
+  })
+
   it('renders luna as NIM', () => {
     const wrapper = mount(NimAmount, { props: { luna: 123_456_789 } })
     expect(wrapper.text()).toContain('1,234.56789 NIM')
@@ -18,5 +26,29 @@ describe('UI primitives', () => {
     vi.advanceTimersByTime(1)
     expect(wrapper.emitted('confirm')).toHaveLength(1)
     vi.useRealTimers()
+  })
+
+  it('shows an identicon next to account links', async () => {
+    mockFetch('/api/pool', { network: 'test-albatross' })
+    await loadNetwork()
+    const wrapper = mount(ExplorerLink, {
+      props: { kind: 'account', value: 'NQ32 EGL6 H9C8 0JJB PH4S 7RYY ULRC 5B6N 56RE' },
+    })
+    await flushPromises()
+    expect(wrapper.find('img.identicon').exists()).toBe(true)
+  })
+
+  it('shows no identicon for transaction links', async () => {
+    mockFetch('/api/pool', { network: 'test-albatross' })
+    await loadNetwork()
+    const wrapper = mount(ExplorerLink, { props: { kind: 'transaction', value: 'ab'.repeat(32) } })
+    await flushPromises()
+    expect(wrapper.find('img.identicon').exists()).toBe(false)
+  })
+
+  it('shows an identicon in AddressIdentity', async () => {
+    const wrapper = mount(AddressIdentity, { props: { address: 'NQ32 EGL6 H9C8 0JJB PH4S 7RYY ULRC 5B6N 56RE' } })
+    await flushPromises()
+    expect(wrapper.find('img.identicon').exists()).toBe(true)
   })
 })

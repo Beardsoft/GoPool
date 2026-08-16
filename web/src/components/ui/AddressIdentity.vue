@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { shortAddress } from '../../utils/format'
+import Identicon from './Identicon.vue'
 
 const props = defineProps<{
   address: string
@@ -22,6 +23,7 @@ const copy = async () => {
 
 <template>
   <span class="address-identity">
+    <Identicon :address="address" />
     <span class="address" :title="address">{{ display }}</span>
     <button v-if="copyable" class="copy-btn" @click="copy" type="button" aria-label="Copy address">Copy</button>
   </span>

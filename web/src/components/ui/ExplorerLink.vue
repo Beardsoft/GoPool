@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useExplorer } from '../../composables/useExplorer'
+import Identicon from './Identicon.vue'
 
 const props = defineProps<{
   kind: 'account' | 'transaction'
@@ -17,11 +18,19 @@ const display = computed(() => (isHash.value ? `${props.value.slice(0, 10)}…${
 </script>
 
 <template>
-  <a v-if="href" :href="href" target="_blank" rel="noopener noreferrer" :title="title ?? value">{{ label ?? value }}</a>
-  <span v-else class="explorer-mono" :title="title ?? value">{{ display }}</span>
+  <span class="explorer-link">
+    <Identicon v-if="kind === 'account'" :address="value" />
+    <a v-if="href" :href="href" target="_blank" rel="noopener noreferrer" :title="title ?? value">{{ label ?? value }}</a>
+    <span v-else class="explorer-mono" :title="title ?? value">{{ display }}</span>
+  </span>
 </template>
 
 <style scoped>
+.explorer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 a { color: var(--nimiq-light-blue); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .explorer-mono {
