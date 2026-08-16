@@ -36,6 +36,16 @@ type stakerDetailResponse struct {
 	Transactions []transactionResponse `json:"transactions"`
 }
 
+// meResponse extends the public staker detail with the logged-in staker's live
+// profile: pending/paid totals, current delegation state, and compounding choice.
+type meResponse struct {
+	stakerDetailResponse
+	PendingLuna int64 `json:"pending_luna"`
+	PaidLuna    int64 `json:"paid_luna"`
+	Delegated   bool  `json:"delegated"`
+	Compound    bool  `json:"compound"`
+}
+
 type stakerHistoryEpoch struct {
 	EpochNumber int64   `json:"epoch_number"`
 	StakeLuna   int64   `json:"stake_luna"`
@@ -139,7 +149,36 @@ func (a *API) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "loading staker")
 		return
 	}
-	writeJSON(w, http.StatusOK, detail)
+
+	var pending, paid int64
+	for _, p := range detail.Payslips {
+		switch p.Status {
+		case "completed":
+			paid += p.AmountLuna
+		case "pending", "out_for_payment", "awaiting_confirmation":
+			pending += p.AmountLuna
+		}
+	}
+
+	delegated := false
+	if a.rpc != nil && a.cfg != nil && a.cfg.ValidatorAddress != "" {
+		if staker, rerr := a.rpc.GetStaker(r.Context(), addr); rerr == nil {
+			delegated = staker.Delegation == a.cfg.ValidatorAddress
+		}
+	}
+	compound, cerr := a.effectiveCompound(r.Context(), addr.String())
+	if cerr != nil {
+		writeError(w, http.StatusInternalServerError, "loading preference")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, meResponse{
+		stakerDetailResponse: detail,
+		PendingLuna:          pending,
+		PaidLuna:             paid,
+		Delegated:            delegated,
+		Compound:             compound,
+	})
 }
 
 func stakerHistory(ctx context.Context, q *db.Queries, addr nimiq.Address) (stakerHistoryResponse, error) {

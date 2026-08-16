@@ -197,3 +197,35 @@ func TestMePreferencePutAndGet(t *testing.T) {
 		t.Fatalf("unauth GET status = %d, want 401", rec3.Code)
 	}
 }
+
+func TestMeProfileFields(t *testing.T) {
+	q := newTestDB(t)
+	a := &API{queries: q, cfg: &config.Config{SessionSecret: "test-secret", PayoutMode: "delegate"}}
+	addr, _ := nimiq.ParseAddress(testAddr)
+
+	ctx := t.Context()
+	must := func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(q.InsertReward(ctx, db.InsertRewardParams{BatchNumber: 1, EpochNumber: 1, Amount: 500, PoolFee: 0, NumStakers: 1}))
+	must(q.InsertReward(ctx, db.InsertRewardParams{BatchNumber: 2, EpochNumber: 2, Amount: 700, PoolFee: 0, NumStakers: 1}))
+	must(q.InsertStaker(ctx, db.InsertStakerParams{EpochNumber: 1, Address: addr.String(), Stake: 1000000, Percentage: 0.5}))
+	must(q.InsertPayslip(ctx, db.InsertPayslipParams{BatchNumber: 1, Address: addr.String(), Amount: 500, Status: "completed"}))
+	must(q.InsertPayslip(ctx, db.InsertPayslipParams{BatchNumber: 2, Address: addr.String(), Amount: 700, Status: "pending"}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: a.issueSession(addr)})
+	rec := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/me status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	b := rec.Body.String()
+	for _, want := range []string{`"pending_luna":700`, `"paid_luna":500`, `"delegated":`, `"compound":`} {
+		if !strings.Contains(b, want) {
+			t.Fatalf("body missing %s; got %s", want, b)
+		}
+	}
+}
