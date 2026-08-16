@@ -2,6 +2,7 @@ package pool
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	nimiq "github.com/NimMiniApps/nimiq-go"
@@ -43,14 +44,20 @@ type Manager struct {
 	recorder    *ops.Recorder
 	// feeFloorAlerted tracks stakers currently in a fee-floor hold so the
 	// operator gets one alert per hold episode, not one per ~2s tick.
-	feeFloorAlerted       map[string]bool
+	feeFloorAlerted map[string]bool
+	// balanceHoldAlerted tracks insufficient-wallet holds until that address
+	// can be funded and processed successfully.
+	balanceHoldAlerted    map[string]bool
 	lastChainGaugeRefresh time.Time
 	lastValidatorObserve  time.Time
 }
 
 // NewManager builds a Manager. Policy is loaded on Run.
 func NewManager(c *chain.Chain, q *db.Queries, cfg *config.Config, opts ...func(*Manager)) *Manager {
-	m := &Manager{chain: c, queries: q, cfg: cfg, broadcaster: GetBroadcaster(), notifier: notifier.New(cfg), feeFloorAlerted: make(map[string]bool)}
+	m := &Manager{
+		chain: c, queries: q, cfg: cfg, broadcaster: GetBroadcaster(), notifier: notifier.New(cfg),
+		feeFloorAlerted: make(map[string]bool, 1), balanceHoldAlerted: make(map[string]bool, 1),
+	}
 	for _, o := range opts {
 		o(m)
 	}
@@ -215,6 +222,41 @@ func (m *Manager) recordSnapshot(ctx context.Context, head uint32, processed int
 	return m.recorder.RecordSnapshot(ctx, s)
 }
 
+// validatePoolWallet enforces GoPool's one-wallet contract: the configured
+// validator identity, signer-derived address, live validator identity, and
+// live reward address must all be the same account.
+func validatePoolWallet(configured, derived string, validator *rpc.Validator) error {
+	configuredAddr, err := nimiq.ParseAddress(configured)
+	if err != nil {
+		return fmt.Errorf("configured validator address: %w", err)
+	}
+	derivedAddr, err := nimiq.ParseAddress(derived)
+	if err != nil {
+		return fmt.Errorf("derived pool wallet address: %w", err)
+	}
+	if configuredAddr != derivedAddr {
+		return fmt.Errorf("configured validator address %s does not match pool wallet %s", configuredAddr, derivedAddr)
+	}
+	if validator == nil {
+		return fmt.Errorf("on-chain validator is missing")
+	}
+	liveAddr, err := nimiq.ParseAddress(validator.Address)
+	if err != nil {
+		return fmt.Errorf("on-chain validator address: %w", err)
+	}
+	if liveAddr != derivedAddr {
+		return fmt.Errorf("on-chain validator address %s does not match pool wallet %s", liveAddr, derivedAddr)
+	}
+	rewardAddr, err := nimiq.ParseAddress(validator.RewardAddress)
+	if err != nil {
+		return fmt.Errorf("on-chain reward address: %w", err)
+	}
+	if rewardAddr != derivedAddr {
+		return fmt.Errorf("on-chain reward address %s does not match pool wallet %s; update the validator reward address before running GoPool", rewardAddr, derivedAddr)
+	}
+	return nil
+}
+
 // Run is the daemon's main loop: replay every height between the last
 // processed cursor and the current chain head, in order, then sleep.
 func (m *Manager) Run(ctx context.Context) error {
@@ -224,23 +266,26 @@ func (m *Manager) Run(ctx context.Context) error {
 	}
 	m.policy = policy
 
-	// Readiness check: validator address must match config
 	derived := m.chain.Address().String()
-	if m.cfg.ValidatorAddress != "" && derived != m.cfg.ValidatorAddress {
+	validator, err := m.chain.RPC.GetValidator(ctx, m.chain.Address())
+	if err != nil {
+		return fmt.Errorf("load validator for pool wallet readiness: %w", err)
+	}
+	if err := validatePoolWallet(m.cfg.ValidatorAddress, derived, validator); err != nil {
 		if m.recorder != nil {
 			_ = m.recorder.RecordEvent(ctx, ops.EventInput{
 				Severity: "error",
 				Category: "readiness",
 				Source:   "daemon",
-				Type:     "validator_address_mismatch",
-				Summary:  "Derived validator address does not match config",
+				Type:     "pool_wallet_mismatch",
+				Summary:  "Pool wallet does not match validator and reward identities",
 				Context: map[string]any{
-					"derived":  derived,
-					"expected": m.cfg.ValidatorAddress,
+					"derived": derived,
+					"error":   err.Error(),
 				},
 			})
 		}
-		return nil
+		return err
 	}
 
 	ticker := time.NewTicker(2 * time.Second)

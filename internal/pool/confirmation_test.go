@@ -168,6 +168,36 @@ func TestInsertAndReadSubmittedHeight(t *testing.T) {
 	}
 }
 
+func TestEligiblePayoutExcludesActiveAttempt(t *testing.T) {
+	q := newLifecycleTestQueries(t)
+	ctx := t.Context()
+	for batch, address := range []string{"A", "B", "C"} {
+		if err := q.InsertPayslip(ctx, db.InsertPayslipParams{
+			BatchNumber: int64(batch + 1), Address: address, Amount: 100, Status: "pending",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := q.InsertAuditLog(ctx, db.InsertAuditLogParams{
+		ActionType: "payout", Address: "A", Amount: 100, Kind: "delegate", Status: "approved",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.InsertTransaction(ctx, db.InsertTransactionParams{
+		Hash: "active-b", Address: "B", Amount: 100, Status: "awaiting_confirmation", SubmittedHeight: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	eligible, err := q.GetEligibleForPayout(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(eligible) != 1 || eligible[0].Address != "C" {
+		t.Fatalf("eligible = %+v, want only C", eligible)
+	}
+}
+
 func TestRunConfirmationsFailsStuckPayout(t *testing.T) {
 	q := newLifecycleTestQueries(t)
 	const blocksPerEpoch = uint32(43200)

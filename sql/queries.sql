@@ -62,11 +62,22 @@ VALUES (?, ?, ?, ?, ?);
 INSERT INTO payslips (batch_number, address, amount, status) VALUES (?, ?, ?, ?);
 
 -- name: GetEligibleForPayout :many
-SELECT address, CAST(SUM(amount) AS INTEGER) AS total
+SELECT address, CAST(SUM(payslips.amount) AS INTEGER) AS total
 FROM payslips
 WHERE status = 'pending'
+  AND NOT EXISTS (
+      SELECT 1 FROM audit_logs
+      WHERE audit_logs.action_type = 'payout'
+        AND audit_logs.address = payslips.address
+        AND audit_logs.status = 'approved'
+  )
+  AND NOT EXISTS (
+      SELECT 1 FROM transactions
+      WHERE transactions.address = payslips.address
+        AND transactions.status = 'awaiting_confirmation'
+  )
 GROUP BY address
-HAVING SUM(amount) >= ?;
+HAVING SUM(payslips.amount) >= ?;
 
 -- name: MarkPayslipsOutForPayment :exec
 UPDATE payslips SET status = 'out_for_payment' WHERE address = ? AND status = 'pending';

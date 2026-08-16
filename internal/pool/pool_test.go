@@ -1,11 +1,57 @@
 package pool
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/NimMiniApps/nimiq-go/rpc"
 )
+
+func TestValidatePoolWallet(t *testing.T) {
+	const wallet = "NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E"
+	const other = "NQ46 U66M JNLD 0DJ7 0E9P Q7XR V9KV H976 813A"
+
+	tests := []struct {
+		name       string
+		configured string
+		derived    string
+		validator  *rpc.Validator
+		wantError  string
+	}{
+		{
+			name: "all identities use one wallet", configured: wallet, derived: wallet,
+			validator: &rpc.Validator{Address: wallet, RewardAddress: wallet},
+		},
+		{
+			name: "configured validator differs", configured: other, derived: wallet,
+			validator: &rpc.Validator{Address: wallet, RewardAddress: wallet}, wantError: "configured validator address",
+		},
+		{
+			name: "live validator differs", configured: wallet, derived: wallet,
+			validator: &rpc.Validator{Address: other, RewardAddress: wallet}, wantError: "on-chain validator address",
+		},
+		{
+			name: "reward wallet differs", configured: wallet, derived: wallet,
+			validator: &rpc.Validator{Address: wallet, RewardAddress: other}, wantError: "reward address",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePoolWallet(tt.configured, tt.derived, tt.validator)
+			if tt.wantError == "" {
+				if err != nil {
+					t.Fatalf("validatePoolWallet() error = %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("validatePoolWallet() error = %v, want text %q", err, tt.wantError)
+			}
+		})
+	}
+}
 
 func testPolicy() *rpc.Policy {
 	return &rpc.Policy{

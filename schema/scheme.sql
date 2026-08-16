@@ -61,7 +61,14 @@ CREATE TABLE IF NOT EXISTS transactions (
     address TEXT NOT NULL,
     amount INTEGER NOT NULL,
     status TEXT NOT NULL,
+    submitted_height INTEGER NOT NULL DEFAULT 0,
     submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS staker_preferences (
+    address TEXT PRIMARY KEY,
+    compound INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS validator_actions (

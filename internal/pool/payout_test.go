@@ -42,6 +42,39 @@ func TestPayoutWorthSending(t *testing.T) {
 	}
 }
 
+func TestPayoutFitsBalance(t *testing.T) {
+	tests := []struct {
+		name                 string
+		balance, amount, fee nimiq.Luna
+		want                 bool
+	}{
+		{name: "exact balance", balance: 110, amount: 100, fee: 10, want: true},
+		{name: "one luna short", balance: 109, amount: 100, fee: 10, want: false},
+		{name: "addition overflow", balance: nimiq.Luna(^uint64(0)), amount: nimiq.Luna(^uint64(0)), fee: 1, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := payoutFitsBalance(tt.balance, tt.amount, tt.fee); got != tt.want {
+				t.Fatalf("payoutFitsBalance(%d, %d, %d) = %v, want %v", tt.balance, tt.amount, tt.fee, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBalanceHoldAlertsOnceAndRearmsAfterRecovery(t *testing.T) {
+	alerted := map[string]bool{}
+	if !markHold(alerted, "A") {
+		t.Fatal("first insufficient-balance hold must alert")
+	}
+	if markHold(alerted, "A") {
+		t.Fatal("repeated insufficient-balance hold must not alert")
+	}
+	pruneHolds(map[string]bool{}, alerted)
+	if !markHold(alerted, "A") {
+		t.Fatal("a hold after balance recovery must alert again")
+	}
+}
+
 func TestPayoutKindLabel(t *testing.T) {
 	if got := payoutKindLabel(payoutDelegate); got != "delegate" {
 		t.Errorf("delegate label = %q", got)

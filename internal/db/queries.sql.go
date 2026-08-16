@@ -196,11 +196,22 @@ func (q *Queries) GetCursor(ctx context.Context, name string) (int64, error) {
 }
 
 const GetEligibleForPayout = `-- name: GetEligibleForPayout :many
-SELECT address, CAST(SUM(amount) AS INTEGER) AS total
+SELECT address, CAST(SUM(payslips.amount) AS INTEGER) AS total
 FROM payslips
 WHERE status = 'pending'
+  AND NOT EXISTS (
+      SELECT 1 FROM audit_logs
+      WHERE audit_logs.action_type = 'payout'
+        AND audit_logs.address = payslips.address
+        AND audit_logs.status = 'approved'
+  )
+  AND NOT EXISTS (
+      SELECT 1 FROM transactions
+      WHERE transactions.address = payslips.address
+        AND transactions.status = 'awaiting_confirmation'
+  )
 GROUP BY address
-HAVING SUM(amount) >= ?
+HAVING SUM(payslips.amount) >= ?
 `
 
 type GetEligibleForPayoutRow struct {
@@ -419,7 +430,12 @@ func (q *Queries) GetPendingTransactions(ctx context.Context) ([]GetPendingTrans
 	items := []GetPendingTransactionsRow{}
 	for rows.Next() {
 		var i GetPendingTransactionsRow
-		if err := rows.Scan(&i.Hash, &i.Address, &i.Amount, &i.SubmittedHeight); err != nil {
+		if err := rows.Scan(
+			&i.Hash,
+			&i.Address,
+			&i.Amount,
+			&i.SubmittedHeight,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1368,7 +1384,15 @@ type ListPayoutTransactionsParams struct {
 	Offset  int64       `json:"offset"`
 }
 
-func (q *Queries) ListPayoutTransactions(ctx context.Context, arg ListPayoutTransactionsParams) ([]Transaction, error) {
+type ListPayoutTransactionsRow struct {
+	Hash        string       `json:"hash"`
+	Address     string       `json:"address"`
+	Amount      int64        `json:"amount"`
+	Status      string       `json:"status"`
+	SubmittedAt sql.NullTime `json:"submitted_at"`
+}
+
+func (q *Queries) ListPayoutTransactions(ctx context.Context, arg ListPayoutTransactionsParams) ([]ListPayoutTransactionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, ListPayoutTransactions,
 		arg.Column1,
 		arg.Status,
@@ -1379,9 +1403,9 @@ func (q *Queries) ListPayoutTransactions(ctx context.Context, arg ListPayoutTran
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Transaction{}
+	items := []ListPayoutTransactionsRow{}
 	for rows.Next() {
-		var i Transaction
+		var i ListPayoutTransactionsRow
 		if err := rows.Scan(
 			&i.Hash,
 			&i.Address,
@@ -1933,7 +1957,7 @@ func (q *Queries) UpsertRuntimeStatus(ctx context.Context, arg UpsertRuntimeStat
 const UpsertStakerPreference = `-- name: UpsertStakerPreference :exec
 INSERT INTO staker_preferences (address, compound, updated_at)
 VALUES (?, ?, CURRENT_TIMESTAMP)
-ON CONFLICT(address) DO UPDATE SET compound = excluded.compound, updated_at = CURRENT_TIMESTAMP;
+ON CONFLICT(address) DO UPDATE SET compound = excluded.compound, updated_at = CURRENT_TIMESTAMP
 `
 
 type UpsertStakerPreferenceParams struct {

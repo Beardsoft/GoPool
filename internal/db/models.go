@@ -149,12 +149,19 @@ type Staker struct {
 	Percentage  float64 `json:"percentage"`
 }
 
+type StakerPreference struct {
+	Address   string       `json:"address"`
+	Compound  int64        `json:"compound"`
+	UpdatedAt sql.NullTime `json:"updated_at"`
+}
+
 type Transaction struct {
-	Hash        string       `json:"hash"`
-	Address     string       `json:"address"`
-	Amount      int64        `json:"amount"`
-	Status      string       `json:"status"`
-	SubmittedAt sql.NullTime `json:"submitted_at"`
+	Hash            string       `json:"hash"`
+	Address         string       `json:"address"`
+	Amount          int64        `json:"amount"`
+	Status          string       `json:"status"`
+	SubmittedHeight int64        `json:"submitted_height"`
+	SubmittedAt     sql.NullTime `json:"submitted_at"`
 }
 
 type ValidatorAction struct {

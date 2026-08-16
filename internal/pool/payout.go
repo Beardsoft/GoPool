@@ -47,10 +47,12 @@ func payoutWorthSending(amount, fee nimiq.Luna) bool {
 	return amount >= fee*feePayoutMultiple
 }
 
-// markFeeFloorHold records that a staker is in a fee-floor hold, returning
-// true on the first tick of the hold so the caller sends a single alert
-// instead of one per ~2s tick.
-func markFeeFloorHold(alerted map[string]bool, staker string) bool {
+func payoutFitsBalance(balance, amount, fee nimiq.Luna) bool {
+	total, err := amount.Add(fee)
+	return err == nil && balance >= total
+}
+
+func markHold(alerted map[string]bool, staker string) bool {
 	if alerted[staker] {
 		return false
 	}
@@ -58,14 +60,25 @@ func markFeeFloorHold(alerted map[string]bool, staker string) bool {
 	return true
 }
 
+func pruneHolds(held, alerted map[string]bool) {
+	for staker := range alerted {
+		if !held[staker] {
+			delete(alerted, staker)
+		}
+	}
+}
+
+// markFeeFloorHold records that a staker is in a fee-floor hold, returning
+// true on the first tick of the hold so the caller sends a single alert
+// instead of one per ~2s tick.
+func markFeeFloorHold(alerted map[string]bool, staker string) bool {
+	return markHold(alerted, staker)
+}
+
 // pruneFeeFloorHolds drops stakers that are no longer held this tick, so a
 // future hold re-alerts instead of staying silent.
 func pruneFeeFloorHolds(held, alerted map[string]bool) {
-	for s := range alerted {
-		if !held[s] {
-			delete(alerted, s)
-		}
-	}
+	pruneHolds(held, alerted)
 }
 
 // choosePayoutTx picks the transaction shape for a payout. "delegate" mode
@@ -92,9 +105,16 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	available, err := m.chain.RPC.GetBalance(ctx, m.chain.Address())
+	if err != nil {
+		return fmt.Errorf("loading pool wallet balance: %w", err)
+	}
 
 	if m.feeFloorAlerted == nil {
 		m.feeFloorAlerted = make(map[string]bool)
+	}
+	if m.balanceHoldAlerted == nil {
+		m.balanceHoldAlerted = make(map[string]bool)
 	}
 	held := make(map[string]bool)
 
@@ -143,6 +163,21 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 				zap.Uint64("fee", uint64(fee)))
 			continue
 		}
+		if !payoutFitsBalance(available, amount, fee) {
+			if markHold(m.balanceHoldAlerted, row.Address) && m.notifier != nil {
+				m.notifier.Send(ctx, notifier.Alert{
+					Level: "error", Type: "insufficient_payout_balance", Title: "Pool wallet needs funding",
+					Message: fmt.Sprintf("Payout to %s held: pool wallet has %d luna available but needs %d luna plus %d luna fee", row.Address, available, amount, fee),
+				})
+			}
+			logger.Logger.Warn("holding payout because pool wallet balance is insufficient",
+				zap.String("staker", row.Address), zap.Uint64("available", uint64(available)),
+				zap.Uint64("amount", uint64(amount)), zap.Uint64("fee", uint64(fee)))
+			continue
+		}
+		total, _ := amount.Add(fee)
+		available -= total
+		delete(m.balanceHoldAlerted, row.Address)
 
 		// Build intent for audit log
 		intent := map[string]any{
@@ -210,6 +245,13 @@ func (m *Manager) processApprovedPayouts(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	available, err := m.chain.RPC.GetBalance(ctx, m.chain.Address())
+	if err != nil {
+		return fmt.Errorf("loading pool wallet balance: %w", err)
+	}
+	if m.balanceHoldAlerted == nil {
+		m.balanceHoldAlerted = make(map[string]bool)
+	}
 
 	for _, log := range logs {
 		addr, err := nimiq.ParseAddress(log.Address)
@@ -219,6 +261,15 @@ func (m *Manager) processApprovedPayouts(ctx context.Context) error {
 		}
 		amount := nimiq.Luna(uint64(log.Amount))
 		fee := nimiq.Luna(uint64(log.Fee))
+		if !payoutFitsBalance(available, amount, fee) {
+			if markHold(m.balanceHoldAlerted, log.Address) && m.notifier != nil {
+				m.notifier.Send(ctx, notifier.Alert{
+					Level: "error", Type: "insufficient_payout_balance", Title: "Pool wallet needs funding",
+					Message: fmt.Sprintf("Approved payout to %s held: pool wallet has %d luna available but needs %d luna plus %d luna fee", log.Address, available, amount, fee),
+				})
+			}
+			continue
+		}
 
 		kind := payoutTransfer
 		if log.Kind == "delegate" {
@@ -257,6 +308,9 @@ func (m *Manager) processApprovedPayouts(ctx context.Context) error {
 			}
 			continue
 		}
+		total, _ := amount.Add(fee)
+		available -= total
+		delete(m.balanceHoldAlerted, log.Address)
 
 		// Update audit log
 		if err := m.queries.UpdateAuditLogStatus(ctx, db.UpdateAuditLogStatusParams{
