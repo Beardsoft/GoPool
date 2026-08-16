@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
 import { useTheme } from '../composables/useTheme'
+import { useSession } from '../composables/useSession'
+import Identicon from './ui/Identicon.vue'
+import { shortAddress } from '../utils/format'
 
 const { theme, toggleTheme } = useTheme()
+const { signedIn, address, operator, login, logout } = useSession()
 </script>
 
 <template>
@@ -20,8 +24,14 @@ const { theme, toggleTheme } = useTheme()
           <RouterLink to="/">Pool</RouterLink>
           <RouterLink to="/performance">Performance</RouterLink>
           <RouterLink to="/stakers">Find my stake</RouterLink>
-          <RouterLink to="/operator" class="operator-link">Operator</RouterLink>
+          <RouterLink v-if="!signedIn || operator" to="/operator" class="operator-link">Operator</RouterLink>
         </nav>
+        <button v-if="!signedIn" type="button" class="login-btn" @click="login">Sign in with Nimiq</button>
+        <span v-else class="session-chip">
+          <Identicon :address="address" :size="22" />
+          <RouterLink to="/me" class="session-address" :title="address">{{ shortAddress(address) }}</RouterLink>
+          <button type="button" class="signout-btn" @click="logout" aria-label="Sign out">Sign out</button>
+        </span>
         <button
           type="button"
           class="theme-toggle"
@@ -102,6 +112,42 @@ const { theme, toggleTheme } = useTheme()
   background: rgba(255,255,255,.1);
 }
 .nav-links .operator-link { color: var(--nimiq-gold); }
+.login-btn {
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, .22);
+  border-radius: 10px;
+  color: white;
+  background: rgba(255, 255, 255, .08);
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.login-btn:hover { background: rgba(255, 255, 255, .15); }
+.session-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 10px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .08);
+}
+.session-address {
+  color: white;
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: .78rem;
+  font-weight: 600;
+}
+.signout-btn {
+  border: 0;
+  background: none;
+  color: rgba(255, 255, 255, .6);
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.signout-btn:hover { color: white; }
 .theme-toggle {
   width: 40px;
   height: 40px;
