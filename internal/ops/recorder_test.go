@@ -46,7 +46,7 @@ func listEvents(t *testing.T, q *db.Queries) []db.OperatorEvent {
 
 func TestRecorderRedactsSecretContext(t *testing.T) {
 	q := testQueries(t)
-	r := NewRecorder(q)
+	r := NewRecorder(q, "")
 	err := r.RecordEvent(context.Background(), EventInput{
 		Severity: "warning",
 		Category: "payout",

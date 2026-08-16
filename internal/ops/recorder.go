@@ -16,16 +16,8 @@ type Recorder struct {
 	configHash   string
 }
 
-type RecorderOption func(*Recorder)
-
-func WithConfigHash(hash string) RecorderOption { return func(r *Recorder) { r.configHash = hash } }
-
-func NewRecorder(q *db.Queries, options ...RecorderOption) *Recorder {
-	r := &Recorder{q: q}
-	for _, option := range options {
-		option(r)
-	}
-	return r
+func NewRecorder(q *db.Queries, configHash string) *Recorder {
+	return &Recorder{q: q, configHash: configHash}
 }
 
 func (r *Recorder) RecordEvent(ctx context.Context, in EventInput) error {
@@ -99,11 +91,6 @@ func (r *Recorder) RecordSnapshot(ctx context.Context, s Snapshot) error {
 		r.lastSnapshot = s.RecordedAt
 	}
 	return err
-}
-
-func (r *Recorder) Prune(ctx context.Context) error {
-	// Prune implementation omitted for now; placeholder to satisfy interface
-	return nil
 }
 
 func redactAndMarshal(v any) (string, error) {

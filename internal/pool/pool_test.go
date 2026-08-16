@@ -20,22 +20,10 @@ func TestValidatePoolWallet(t *testing.T) {
 		validator  *rpc.Validator
 		wantError  string
 	}{
-		{
-			name: "all identities use one wallet", configured: wallet, derived: wallet,
-			validator: &rpc.Validator{Address: wallet, RewardAddress: wallet},
-		},
-		{
-			name: "configured validator differs", configured: other, derived: wallet,
-			validator: &rpc.Validator{Address: wallet, RewardAddress: wallet}, wantError: "configured validator address",
-		},
-		{
-			name: "live validator differs", configured: wallet, derived: wallet,
-			validator: &rpc.Validator{Address: other, RewardAddress: wallet}, wantError: "on-chain validator address",
-		},
-		{
-			name: "reward wallet differs", configured: wallet, derived: wallet,
-			validator: &rpc.Validator{Address: wallet, RewardAddress: other}, wantError: "reward address",
-		},
+		{name: "all identities use one wallet", configured: wallet, derived: wallet, validator: &rpc.Validator{Address: wallet, RewardAddress: wallet}},
+		{name: "configured validator differs", configured: other, derived: wallet, validator: &rpc.Validator{Address: wallet, RewardAddress: wallet}, wantError: "configured validator address"},
+		{name: "live validator differs", configured: wallet, derived: wallet, validator: &rpc.Validator{Address: other, RewardAddress: wallet}, wantError: "on-chain validator address"},
+		{name: "reward wallet differs", configured: wallet, derived: wallet, validator: &rpc.Validator{Address: wallet, RewardAddress: other}, wantError: "reward address"},
 	}
 
 	for _, tt := range tests {

@@ -75,13 +75,22 @@ func (a *API) handleSetupCheckRPC(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "height": height, "network": body.Network})
 }
 
+// setupDraft decodes the flat setup form: editable settings plus alert secrets.
+type setupDraft struct {
+	config.Editable
+	config.AlertSecrets
+}
+
 func (a *API) handleSetupValidate(w http.ResponseWriter, r *http.Request) {
-	var settings config.Editable
-	if decodeJSON(r.Body, &settings) != nil {
+	var draft setupDraft
+	if decodeJSON(r.Body, &draft) != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid_body", "invalid json")
 		return
 	}
-	fieldErrors := editableFieldErrors(settings)
+	fieldErrors := editableFieldErrors(draft.Editable)
+	if err := config.ValidateAlertSecrets(draft.AlertSecrets); err != nil {
+		fieldErrors["alert_secrets"] = err.Error()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"valid": len(fieldErrors) == 0, "field_errors": fieldErrors})
 }
 
@@ -91,17 +100,17 @@ func (a *API) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Settings config.Editable `json:"settings"`
+		Settings setupDraft `json:"settings"`
 	}
 	if decodeJSON(r.Body, &body) != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid_body", "invalid json")
 		return
 	}
-	if errors := editableFieldErrors(body.Settings); len(errors) != 0 {
+	if errors := editableFieldErrors(body.Settings.Editable); len(errors) != 0 {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"code": "validation_failed", "field_errors": errors})
 		return
 	}
-	revision, err := a.configStore.Save(r.Context(), "setup", "", body.Settings)
+	revision, err := a.configStore.Save(r.Context(), "setup", "", body.Settings.Editable, body.Settings.AlertSecrets)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "write_failed", "saving configuration")
 		return

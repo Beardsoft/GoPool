@@ -17,7 +17,7 @@ const fieldErrors = ref<Record<string, string>>({})
 const busy = ref(false)
 const launched = ref(false)
 const revisionHash = ref('')
-const draft = ref<SetupDraft>({ rpc_url: 'https://rpc-testnet.nimiqscan.com', network: 'test-albatross', pool_fee_wallet: '', pool_fee_percentage: .01, payout_mode: 'delegate', min_payout_luna: 1_000_000, auto_reactivate: true, api_addr: ':8080', validator_address: '', operator_addresses: '', metrics_addr: ':9100', alert_telegram_enabled: false, alert_webhook_enabled: false, alert_email_enabled: false, pool_name: 'GoPool' })
+const draft = ref<SetupDraft>({ rpc_url: 'https://rpc-testnet.nimiqscan.com', network: 'test-albatross', pool_fee_wallet: '', pool_fee_percentage: .01, payout_mode: 'delegate', min_payout_luna: 1_000_000, auto_reactivate: true, api_addr: ':8080', validator_address: '', operator_addresses: '', metrics_addr: ':9100', alert_telegram_enabled: false, alert_webhook_enabled: false, alert_email_enabled: false, pool_name: 'GoPool', alert_telegram_token: '', alert_email_smtp_host: '', alert_email_smtp_port: 0, alert_email_username: '', alert_email_password: '', alert_email_from: '' })
 const step = computed(() => steps[current.value])
 const component = computed(() => [SystemCheck, ValidatorIdentity, PoolEconomics, PublicProfile, AccessAlerts, ReviewLaunch][current.value])
 

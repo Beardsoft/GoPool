@@ -37,11 +37,11 @@ install -m 600 /dev/stdin .secrets/validator-key <<<'<validator-private-key-hex>
 docker compose -f deployments/docker-compose.yml up -d
 ```
 
-Open `http://localhost:52412`, exchange the setup token, and complete the browser assistant. The API writes only non-secret configuration. Restart both services afterward and wait for daemon readiness.
+Open `http://localhost:52412`, exchange the setup token, and complete the browser assistant. The API writes the full configuration, alert credentials included. Restart both services afterward and wait for daemon readiness.
 
 ## Configuration
 
-Configuration is loaded from `CONFIG_FILE` (default `config.json`). Non-secret settings are revisioned and atomically written by the API. Secrets are read from deployment-managed files.
+Configuration is loaded from `CONFIG_FILE` (default `config.json`). Settings — including alert credentials — are revisioned and atomically written by the API. The validator key and session secret remain deployment-managed.
 
 Key fields:
 
@@ -56,7 +56,7 @@ Key fields:
 - `api_addr` and `validator_address` – public API/validator identity
 - `POOL_PRIVATE_KEY_FILE` – daemon-only validator key file
 - `POOL_SETUP_TOKEN_FILE` and `POOL_SESSION_SECRET_FILE` – API-only bootstrap/session files
-- alert destinations are editable; alert tokens/passwords remain deployment-managed
+- alert channels are fully self-service: destinations and credentials (Telegram token, SMTP host/port/username/password/from) are set in the UI and never returned by the API
 
 Example dev config is in `config/config.json-example`. The repo ships `config.json` for local dev.
 

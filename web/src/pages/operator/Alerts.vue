@@ -34,7 +34,7 @@ onMounted(load)
 
 <template>
   <main class="alerts-page">
-    <header><p class="eyebrow">Delivery health</p><h1>Alerts</h1><p class="muted">Deployment-managed credentials are never shown here.</p></header>
+    <header><p class="eyebrow">Delivery health</p><h1>Alerts</h1><p class="muted">Configure channels and credentials in Settings. Stored values are never shown.</p></header>
     <p v-if="error" class="error">{{ error }}</p>
     <section class="channel-grid">
       <article v-for="(channel, name) in channels" :key="name" class="card">

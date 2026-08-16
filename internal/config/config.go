@@ -15,39 +15,39 @@ import (
 
 // Config holds the pool daemon's runtime configuration.
 type Config struct {
-	RPCURL            string  `json:"rpc_url" mapstructure:"rpc_url"`
-	Network           string  `json:"network" mapstructure:"network"`
-	PoolFeeWallet     string  `json:"pool_fee_wallet" mapstructure:"pool_fee_wallet"`
-	PoolFeePercentage float64 `json:"pool_fee_percentage" mapstructure:"pool_fee_percentage"`
-	PrivateKey        string  `json:"private_key,omitempty" mapstructure:"private_key"`
-	PayoutMode        string  `json:"payout_mode" mapstructure:"payout_mode"`
-	MinPayoutLuna     uint64  `json:"min_payout_luna" mapstructure:"min_payout_luna"`
-	StuckPayoutEpochs int     `json:"stuck_payout_epochs" mapstructure:"stuck_payout_epochs"`
-	AutoReactivate    bool    `json:"auto_reactivate" mapstructure:"auto_reactivate"`
-	DryRun            bool    `json:"dry_run,omitempty" mapstructure:"dry_run"`
-	APIAddr           string  `json:"api_addr" mapstructure:"api_addr"`
-	SessionSecret     string  `json:"session_secret,omitempty" mapstructure:"session_secret"`
-	ValidatorAddress  string  `json:"validator_address" mapstructure:"validator_address"`
-	OperatorAddresses string  `json:"operator_addresses" mapstructure:"operator_addresses"`
-	MetricsAddr       string  `json:"metrics_addr" mapstructure:"metrics_addr"`
+	RPCURL            string  `json:"rpc_url"`
+	Network           string  `json:"network"`
+	PoolFeeWallet     string  `json:"pool_fee_wallet"`
+	PoolFeePercentage float64 `json:"pool_fee_percentage"`
+	PrivateKey        string  `json:"private_key,omitempty"`
+	PayoutMode        string  `json:"payout_mode"`
+	MinPayoutLuna     uint64  `json:"min_payout_luna"`
+	StuckPayoutEpochs int     `json:"stuck_payout_epochs"`
+	AutoReactivate    bool    `json:"auto_reactivate"`
+	DryRun            bool    `json:"dry_run,omitempty"`
+	APIAddr           string  `json:"api_addr"`
+	SessionSecret     string  `json:"session_secret,omitempty"`
+	ValidatorAddress  string  `json:"validator_address"`
+	OperatorAddresses string  `json:"operator_addresses"`
+	MetricsAddr       string  `json:"metrics_addr"`
 
-	AlertTelegramEnabled     bool   `json:"alert_telegram_enabled,omitempty" mapstructure:"alert_telegram_enabled"`
-	AlertTelegramDestination string `json:"alert_telegram_destination,omitempty" mapstructure:"alert_telegram_destination"`
-	AlertTelegramToken       string `json:"alert_telegram_token,omitempty" mapstructure:"alert_telegram_token"`
-	AlertWebhookEnabled      bool   `json:"alert_webhook_enabled,omitempty" mapstructure:"alert_webhook_enabled"`
-	AlertWebhookURL          string `json:"alert_webhook_url,omitempty" mapstructure:"alert_webhook_url"`
-	AlertEmailEnabled        bool   `json:"alert_email_enabled,omitempty" mapstructure:"alert_email_enabled"`
-	AlertEmailTo             string `json:"alert_email_to,omitempty" mapstructure:"alert_email_to"`
-	AlertEmailSMTPHost       string `json:"alert_email_smtp_host,omitempty" mapstructure:"alert_email_smtp_host"`
-	AlertEmailSMTPPort       int    `json:"alert_email_smtp_port,omitempty" mapstructure:"alert_email_smtp_port"`
-	AlertEmailUsername       string `json:"alert_email_username,omitempty" mapstructure:"alert_email_username"`
-	AlertEmailPassword       string `json:"alert_email_password,omitempty" mapstructure:"alert_email_password"`
-	AlertEmailFrom           string `json:"alert_email_from,omitempty" mapstructure:"alert_email_from"`
+	AlertTelegramEnabled     bool   `json:"alert_telegram_enabled,omitempty"`
+	AlertTelegramDestination string `json:"alert_telegram_destination,omitempty"`
+	AlertTelegramToken       string `json:"alert_telegram_token,omitempty"`
+	AlertWebhookEnabled      bool   `json:"alert_webhook_enabled,omitempty"`
+	AlertWebhookURL          string `json:"alert_webhook_url,omitempty"`
+	AlertEmailEnabled        bool   `json:"alert_email_enabled,omitempty"`
+	AlertEmailTo             string `json:"alert_email_to,omitempty"`
+	AlertEmailSMTPHost       string `json:"alert_email_smtp_host,omitempty"`
+	AlertEmailSMTPPort       int    `json:"alert_email_smtp_port,omitempty"`
+	AlertEmailUsername       string `json:"alert_email_username,omitempty"`
+	AlertEmailPassword       string `json:"alert_email_password,omitempty"`
+	AlertEmailFrom           string `json:"alert_email_from,omitempty"`
 
-	PoolName        string `json:"pool_name" mapstructure:"pool_name"`
-	PoolDescription string `json:"pool_description,omitempty" mapstructure:"pool_description"`
-	ContactURL      string `json:"contact_url,omitempty" mapstructure:"contact_url"`
-	Disclosure      string `json:"disclosure,omitempty" mapstructure:"disclosure"`
+	PoolName        string `json:"pool_name"`
+	PoolDescription string `json:"pool_description,omitempty"`
+	ContactURL      string `json:"contact_url,omitempty"`
+	Disclosure      string `json:"disclosure,omitempty"`
 }
 
 // Editable is the operator-editable subset of Config exposed via the API.
@@ -73,6 +73,53 @@ type Editable struct {
 	PoolDescription          string  `json:"pool_description,omitempty"`
 	ContactURL               string  `json:"contact_url,omitempty"`
 	Disclosure               string  `json:"disclosure,omitempty"`
+}
+
+// AlertSecrets is the secret subset of alert delivery config. Values are
+// accepted on save (empty means keep current) but never returned by the API.
+type AlertSecrets struct {
+	TelegramToken string `json:"alert_telegram_token,omitempty"`
+	SMTPHost      string `json:"alert_email_smtp_host,omitempty"`
+	SMTPPort      int    `json:"alert_email_smtp_port,omitempty"`
+	SMTPUsername  string `json:"alert_email_username,omitempty"`
+	SMTPPassword  string `json:"alert_email_password,omitempty"`
+	SMTPFrom      string `json:"alert_email_from,omitempty"`
+}
+
+// AlertSecrets extracts the secret subset of the config.
+func (c *Config) AlertSecrets() AlertSecrets {
+	return AlertSecrets{TelegramToken: c.AlertTelegramToken, SMTPHost: c.AlertEmailSMTPHost, SMTPPort: c.AlertEmailSMTPPort,
+		SMTPUsername: c.AlertEmailUsername, SMTPPassword: c.AlertEmailPassword, SMTPFrom: c.AlertEmailFrom}
+}
+
+// ApplySecrets merges provided secrets onto c; empty fields keep the current value.
+func (c *Config) ApplySecrets(s AlertSecrets) {
+	if s.TelegramToken != "" {
+		c.AlertTelegramToken = s.TelegramToken
+	}
+	if s.SMTPHost != "" {
+		c.AlertEmailSMTPHost = s.SMTPHost
+	}
+	if s.SMTPPort != 0 {
+		c.AlertEmailSMTPPort = s.SMTPPort
+	}
+	if s.SMTPUsername != "" {
+		c.AlertEmailUsername = s.SMTPUsername
+	}
+	if s.SMTPPassword != "" {
+		c.AlertEmailPassword = s.SMTPPassword
+	}
+	if s.SMTPFrom != "" {
+		c.AlertEmailFrom = s.SMTPFrom
+	}
+}
+
+// ValidateAlertSecrets checks the operator-editable alert secrets.
+func ValidateAlertSecrets(s AlertSecrets) error {
+	if s.SMTPPort != 0 && (s.SMTPPort < 1 || s.SMTPPort > 65535) {
+		return fmt.Errorf("alert_email_smtp_port must be between 1 and 65535")
+	}
+	return nil
 }
 
 // SecretPresence reports which optional secrets are set, without exposing them.
@@ -114,9 +161,13 @@ func Redact(c *Config) Redacted {
 	return Redacted{Settings: c.Editable(), Secrets: SecretPresence{ValidatorKey: c.PrivateKey != "", SessionSecret: c.SessionSecret != "", TelegramToken: c.AlertTelegramToken != "", EmailPassword: c.AlertEmailPassword != ""}}
 }
 
-// EditableHash returns a stable hash of the editable settings.
-func EditableHash(editable Editable) string {
-	data, _ := json.Marshal(editable)
+// ConfigHash returns a stable hash of the editable settings plus alert
+// secrets, so a secret change also flags the daemon for restart.
+func ConfigHash(editable Editable, secrets AlertSecrets) string {
+	data, _ := json.Marshal(struct {
+		Editable
+		AlertSecrets
+	}{editable, secrets})
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
@@ -221,17 +272,13 @@ func LoadOptional(path string) (*Config, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	var editable Editable
-	if err := json.Unmarshal(data, &editable); err != nil {
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, false, err
 	}
-	cfg := FromEditable(editable)
-	var extras struct {
-		DryRun bool `json:"dry_run"`
-	}
-	_ = json.Unmarshal(data, &extras)
-	cfg.DryRun = extras.DryRun
-	return cfg, true, nil
+	cfg.PrivateKey = ""
+	cfg.SessionSecret = ""
+	return &cfg, true, nil
 }
 
 // LoadDaemon loads and validates the daemon config, applying defaults and env overrides.
@@ -268,6 +315,3 @@ func LoadDaemon(path string) (*Config, error) {
 	}
 	return &cfg, nil
 }
-
-// LoadConfig loads the daemon config from the default location.
-func LoadConfig() (*Config, error) { return LoadDaemon("") }

@@ -2,9 +2,6 @@ package db
 
 import (
 	"database/sql"
-	"log"
-	"os"
-	"strings"
 
 	_ "github.com/mattn/go-sqlite3" // Import the SQLite driver
 )
@@ -28,27 +25,4 @@ func InitDB(dataSourceName string) (*sql.DB, error) {
 	}
 
 	return db, nil
-}
-
-// executeSchema reads and executes SQL schema from a file
-func executeSchema(db *sql.DB, schemaFilePath string) error {
-	schema, err := os.ReadFile(schemaFilePath)
-	if err != nil {
-		return err
-	}
-
-	// Split the schema into individual SQL statements
-	statements := strings.Split(string(schema), ";")
-	for _, stmt := range statements {
-		stmt = strings.TrimSpace(stmt)
-		if stmt != "" {
-			_, err := db.Exec(stmt)
-			if err != nil {
-				log.Printf("Error executing statement: %s\nError: %v", stmt, err)
-				return err
-			}
-		}
-	}
-
-	return nil
 }

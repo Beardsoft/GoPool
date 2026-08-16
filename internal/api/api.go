@@ -40,7 +40,6 @@ func WithConfigStore(store *configstore.Store) Option { return func(a *API) { a.
 func WithSetup(tokenHash string, store *configstore.Store) Option {
 	return func(a *API) { a.setupOnly = true; a.setupTokenHash = tokenHash; a.configStore = store }
 }
-func WithSetupComplete(complete bool) Option { return func(a *API) { a.setupComplete = complete } }
 
 // New builds an API. cfg may be nil in tests that don't exercise auth or the
 // operator health endpoint; rpc may be nil in tests that don't exercise

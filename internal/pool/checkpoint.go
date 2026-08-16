@@ -2,7 +2,6 @@ package pool
 
 import (
 	"context"
-	"time"
 
 	nimiq "github.com/NimMiniApps/nimiq-go"
 
@@ -71,21 +70,6 @@ func (m *Manager) handleCheckpoint(ctx context.Context, height uint32) error {
 		Amount: int64(afterFee), PoolFee: int64(fee), NumStakers: int64(len(stakers)),
 	}); err != nil {
 		return err
-	}
-	if m.broadcaster != nil {
-		m.broadcaster.Publish(PoolEvent{
-			Type:      "checkpoint_reward",
-			Timestamp: time.Now().UnixMilli(),
-			Data: mustMarshal(map[string]any{
-				"batch":      rewardBatch,
-				"epoch":      epoch,
-				"height":     height,
-				"rewardLuna": int64(reward),
-				"afterFee":   int64(afterFee),
-				"poolFee":    int64(fee),
-				"numStakers": len(stakers),
-			}),
-		})
 	}
 	metrics.RewardsTotal.Add(float64(reward))
 	metrics.PoolFeeTotal.Add(float64(fee))

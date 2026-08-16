@@ -3,7 +3,6 @@ package pool
 import (
 	"context"
 	"fmt"
-	"time"
 
 	nimiq "github.com/NimMiniApps/nimiq-go"
 
@@ -75,17 +74,6 @@ func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 		if m.notifier != nil {
 			m.notifier.Send(ctx, notifier.Alert{Level: "warning", Type: "validator_state", Title: "Validator state", Message: "Validator is " + status + " for epoch " + fmt.Sprintf("%d", nextEpoch)})
 		}
-		if m.broadcaster != nil {
-			m.broadcaster.Publish(PoolEvent{
-				Type:      "validator_state_change",
-				Timestamp: time.Now().UnixMilli(),
-				Data: mustMarshal(map[string]any{
-					"epoch":  nextEpoch,
-					"height": height,
-					"status": status,
-				}),
-			})
-		}
 		if m.recorder != nil {
 			_ = m.recorder.RecordEvent(ctx, ops.EventInput{
 				Severity: "warning",
@@ -112,19 +100,6 @@ func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 		Number: int64(nextEpoch), NumStakers: int64(len(stakers)), Balance: int64(validator.Balance), Status: "in_progress",
 	}); err != nil {
 		return err
-	}
-
-	if m.broadcaster != nil {
-		m.broadcaster.Publish(PoolEvent{
-			Type:      "epoch_started",
-			Timestamp: time.Now().UnixMilli(),
-			Data: mustMarshal(map[string]any{
-				"epoch":      nextEpoch,
-				"height":     height,
-				"numStakers": len(stakers),
-				"balance":    int64(validator.Balance),
-			}),
-		})
 	}
 
 	for _, s := range stakers {

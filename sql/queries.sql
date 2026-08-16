@@ -99,7 +99,7 @@ UPDATE payslips SET status = 'pending' WHERE address = ? AND status = 'out_for_p
 INSERT INTO transactions (hash, address, amount, status, submitted_height) VALUES (?, ?, ?, ?, ?);
 
 -- name: GetPendingTransactions :many
-SELECT hash, address, amount, submitted_height FROM transactions WHERE status = 'awaiting_confirmation';
+SELECT hash, address, amount, submitted_height, submitted_at FROM transactions WHERE status = 'awaiting_confirmation';
 
 -- name: SetTransactionStatus :exec
 UPDATE transactions SET status = ? WHERE hash = ?;
@@ -360,7 +360,7 @@ WHERE NOT EXISTS (
 RETURNING id;
 
 -- name: ListPayoutTransactions :many
-SELECT hash, address, amount, status, submitted_at FROM transactions WHERE (? IS NULL OR status = ?) ORDER BY submitted_at DESC LIMIT ? OFFSET ?;
+SELECT hash, address, amount, status, submitted_at, submitted_height FROM transactions WHERE (? IS NULL OR status = ?) ORDER BY submitted_at DESC LIMIT ? OFFSET ?;
 
 -- name: CountPayoutTransactions :one
 SELECT COUNT(*) FROM transactions WHERE (? IS NULL OR status = ?);

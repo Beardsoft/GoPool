@@ -211,18 +211,6 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 			continue
 		}
 
-		if m.broadcaster != nil {
-			m.broadcaster.Publish(PoolEvent{
-				Type:      "payout_scheduled",
-				Timestamp: time.Now().UnixMilli(),
-				Data: mustMarshal(map[string]any{
-					"address": row.Address,
-					"amount":  int64(amount),
-					"fee":     int64(fee),
-					"kind":    payoutKindLabel(kind),
-				}),
-			})
-		}
 	}
 
 	pruneFeeFloorHolds(held, m.feeFloorAlerted)
@@ -324,19 +312,6 @@ func (m *Manager) processApprovedPayouts(ctx context.Context) error {
 			metrics.PayoutLatency.Observe(latency)
 		}
 
-		if m.broadcaster != nil {
-			m.broadcaster.Publish(PoolEvent{
-				Type:      "payout_sent",
-				Timestamp: time.Now().UnixMilli(),
-				Data: mustMarshal(map[string]any{
-					"address": log.Address,
-					"amount":  log.Amount,
-					"fee":     log.Fee,
-					"txHash":  hash,
-					"kind":    log.Kind,
-				}),
-			})
-		}
 		if m.recorder != nil {
 			_ = m.recorder.RecordEvent(ctx, ops.EventInput{
 				Severity: "info",

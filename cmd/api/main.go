@@ -22,7 +22,6 @@ import (
 )
 
 func main() {
-	logger.InitLogger()
 	defer logger.Sync()
 
 	dbPath := os.Getenv("SQLITE_DB")

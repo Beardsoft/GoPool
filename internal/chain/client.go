@@ -27,8 +27,6 @@ func networkFromString(s string) (nimiq.NetworkID, error) {
 		return nimiq.NetworkTestAlbatross, nil
 	case "dev-albatross":
 		return nimiq.NetworkDevAlbatross, nil
-	case "unit-albatross":
-		return nimiq.NetworkUnitAlbatross, nil
 	}
 	return 0, fmt.Errorf("chain: unknown network %q", s)
 }

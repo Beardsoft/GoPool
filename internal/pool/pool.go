@@ -35,13 +35,12 @@ const chainGaugeInterval = 30 * time.Second
 
 // Manager is the pool daemon: it replays chain heights and runs payouts.
 type Manager struct {
-	chain       *chain.Chain
-	queries     *db.Queries
-	cfg         *config.Config
-	policy      *rpc.Policy
-	broadcaster *Broadcaster
-	notifier    *notifier.Notifier
-	recorder    *ops.Recorder
+	chain    *chain.Chain
+	queries  *db.Queries
+	cfg      *config.Config
+	policy   *rpc.Policy
+	notifier *notifier.Notifier
+	recorder *ops.Recorder
 	// feeFloorAlerted tracks stakers currently in a fee-floor hold so the
 	// operator gets one alert per hold episode, not one per ~2s tick.
 	feeFloorAlerted map[string]bool
@@ -53,19 +52,11 @@ type Manager struct {
 }
 
 // NewManager builds a Manager. Policy is loaded on Run.
-func NewManager(c *chain.Chain, q *db.Queries, cfg *config.Config, opts ...func(*Manager)) *Manager {
-	m := &Manager{
-		chain: c, queries: q, cfg: cfg, broadcaster: GetBroadcaster(), notifier: notifier.New(cfg),
-		feeFloorAlerted: make(map[string]bool, 1), balanceHoldAlerted: make(map[string]bool, 1),
+func NewManager(c *chain.Chain, q *db.Queries, cfg *config.Config, recorder *ops.Recorder) *Manager {
+	return &Manager{
+		chain: c, queries: q, cfg: cfg, notifier: notifier.New(cfg, nil), recorder: recorder,
+		feeFloorAlerted: make(map[string]bool), balanceHoldAlerted: make(map[string]bool),
 	}
-	for _, o := range opts {
-		o(m)
-	}
-	return m
-}
-
-func WithRecorder(r *ops.Recorder) func(*Manager) {
-	return func(m *Manager) { m.recorder = r }
 }
 
 // classify reports what kind of block a height is, relative to the cached

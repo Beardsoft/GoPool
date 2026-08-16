@@ -2,10 +2,13 @@
 import { computed, onMounted, ref } from 'vue'
 import { apiGet, apiPut } from '../../api'
 import HoldConfirmButton from '../../components/ui/HoldConfirmButton.vue'
-import type { EditableConfig, SettingsResponse } from '../../types/api'
+import type { AlertSecrets, EditableConfig, SettingsResponse } from '../../types/api'
+
+const emptySecrets = (): AlertSecrets => ({ alert_telegram_token: '', alert_email_smtp_host: '', alert_email_smtp_port: 0, alert_email_username: '', alert_email_password: '', alert_email_from: '' })
 
 const response = ref<SettingsResponse | null>(null)
 const settings = ref<EditableConfig | null>(null)
+const secrets = ref<AlertSecrets>(emptySecrets())
 const original = ref<EditableConfig | null>(null)
 const review = ref(false)
 const error = ref('')
@@ -27,12 +30,17 @@ async function load() {
   }
 }
 
+const changedSecrets = computed(() => Object.entries(secrets.value).filter(([, value]) => value !== '' && value !== 0).map(([name]) => name))
+
 async function save() {
   if (!response.value || !settings.value) return
   try {
+    const payloadSecrets = { ...secrets.value }
+    if (!payloadSecrets.alert_email_smtp_port) delete payloadSecrets.alert_email_smtp_port
     const revision = await apiPut<{ hash: string }>('/api/operator/settings', {
       expected_hash: response.value.active_hash,
       settings: settings.value,
+      secrets: payloadSecrets,
     })
     savedHash.value = revision.hash
     review.value = false
@@ -116,14 +124,51 @@ onMounted(() => queueMicrotask(load))
             <input v-model="settings.alert_telegram_enabled" type="checkbox" />
             <span>Telegram</span>
           </label>
+          <label>
+            Telegram destination (chat ID)
+            <input v-model="settings.alert_telegram_destination" class="input" placeholder="e.g. 123456789" />
+          </label>
+          <label>
+            Telegram bot token
+            <input v-model="secrets.alert_telegram_token" class="input" type="password" placeholder="••• configured — leave blank to keep" autocomplete="new-password" />
+          </label>
           <label class="check-field">
             <input v-model="settings.alert_webhook_enabled" type="checkbox" />
             <span>Webhook</span>
+          </label>
+          <label>
+            Webhook URL
+            <input v-model="settings.alert_webhook_url" class="input" type="url" placeholder="https://…" />
           </label>
           <label class="check-field">
             <input v-model="settings.alert_email_enabled" type="checkbox" />
             <span>Email</span>
           </label>
+          <label>
+            Email destination
+            <input v-model="settings.alert_email_to" class="input" type="email" placeholder="ops@example.com" />
+          </label>
+          <label>
+            SMTP host
+            <input v-model="secrets.alert_email_smtp_host" class="input" placeholder="e.g. smtp.example.com" />
+          </label>
+          <label>
+            SMTP port
+            <input v-model.number="secrets.alert_email_smtp_port" class="input" type="number" placeholder="587" />
+          </label>
+          <label>
+            SMTP username
+            <input v-model="secrets.alert_email_username" class="input" placeholder="optional" />
+          </label>
+          <label>
+            SMTP password
+            <input v-model="secrets.alert_email_password" class="input" type="password" placeholder="••• configured — leave blank to keep" autocomplete="new-password" />
+          </label>
+          <label>
+            SMTP from address
+            <input v-model="secrets.alert_email_from" class="input" type="email" placeholder="pool@example.com" />
+          </label>
+          <p class="secret-hint">Leave a secret blank to keep its current value. Secret values are never shown after saving.</p>
         </fieldset>
 
         <div v-if="response?.secrets" class="secret-states span-2">
@@ -145,6 +190,7 @@ onMounted(() => queueMicrotask(load))
         <h2>Review before saving</h2>
         <p>Minimum payout: {{ original.min_payout_luna / 100_000 }} NIM → {{ settings.min_payout_luna / 100_000 }} NIM</p>
         <p>Pool fee: {{ (original.pool_fee_percentage * 100).toFixed(2) }}% → {{ (settings.pool_fee_percentage * 100).toFixed(2) }}%</p>
+        <p v-if="changedSecrets.length">Secrets updated: {{ changedSecrets.join(', ') }}. Values are stored and never shown again.</p>
         <HoldConfirmButton @confirm="save" />
       </section>
     </template>
@@ -199,14 +245,24 @@ onMounted(() => queueMicrotask(load))
   flex-shrink: 0;
 }
 .alert-channels {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
   margin: 0;
   padding: 14px 16px;
   border: 1px solid var(--app-border);
   border-radius: 10px;
   background: var(--surface-2);
+}
+.alert-channels legend {
+  grid-column: 1 / -1;
+}
+.alert-channels .secret-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--app-muted);
+  font-size: .8rem;
+  font-weight: 500;
 }
 .alert-channels legend {
   padding: 0 6px;
@@ -257,8 +313,7 @@ onMounted(() => queueMicrotask(load))
     grid-template-columns: 1fr;
   }
   .alert-channels {
-    flex-direction: column;
-    gap: 4px;
+    grid-template-columns: 1fr;
   }
 }
 </style>

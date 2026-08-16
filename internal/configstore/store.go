@@ -44,11 +44,29 @@ func (s *Store) current() (*config.Config, string, error) {
 	if !configured {
 		return config.FromEditable(config.Editable{}), "", nil
 	}
-	return cfg, config.EditableHash(cfg.Editable()), nil
+	return cfg, config.ConfigHash(cfg.Editable(), cfg.AlertSecrets()), nil
 }
 
-func (s *Store) Save(ctx context.Context, actor, expectedHash string, editable config.Editable) (Revision, error) {
+// carriedFields are config fields the operator UI does not manage; Save
+// preserves them verbatim so a settings write never drops them.
+type carriedFields struct {
+	PrivateKey    string `json:"private_key"`
+	SessionSecret string `json:"session_secret"`
+}
+
+func (s *Store) carried() carriedFields {
+	var carried carriedFields
+	if raw, err := os.ReadFile(s.path); err == nil {
+		_ = json.Unmarshal(raw, &carried)
+	}
+	return carried
+}
+
+func (s *Store) Save(ctx context.Context, actor, expectedHash string, editable config.Editable, secrets config.AlertSecrets) (Revision, error) {
 	if err := s.Validate(editable); err != nil {
+		return Revision{}, err
+	}
+	if err := config.ValidateAlertSecrets(secrets); err != nil {
 		return Revision{}, err
 	}
 	current, currentHash, err := s.current()
@@ -59,7 +77,15 @@ func (s *Store) Save(ctx context.Context, actor, expectedHash string, editable c
 		return Revision{}, ErrRevisionConflict
 	}
 
-	data, err := json.MarshalIndent(editable, "", "  ")
+	merged := config.FromEditable(editable)
+	merged.StuckPayoutEpochs = current.StuckPayoutEpochs
+	merged.DryRun = current.DryRun
+	merged.PrivateKey = s.carried().PrivateKey
+	merged.SessionSecret = s.carried().SessionSecret
+	merged.ApplySecrets(current.AlertSecrets())
+	merged.ApplySecrets(secrets)
+
+	data, err := json.MarshalIndent(merged, "", "  ")
 	if err != nil {
 		return Revision{}, err
 	}
@@ -68,12 +94,11 @@ func (s *Store) Save(ctx context.Context, actor, expectedHash string, editable c
 		return Revision{}, err
 	}
 
-	afterCfg := config.FromEditable(editable)
 	before := config.Redact(current)
-	after := config.Redact(afterCfg)
+	after := config.Redact(merged)
 	beforeJSON, _ := json.Marshal(before)
 	afterJSON, _ := json.Marshal(after)
-	hash := config.EditableHash(editable)
+	hash := config.ConfigHash(merged.Editable(), merged.AlertSecrets())
 	id, err := s.queries.InsertConfigRevision(ctx, db.InsertConfigRevisionParams{
 		ActorAddress: sql.NullString{String: actor, Valid: strings.TrimSpace(actor) != ""},
 		BeforeJson:   sql.NullString{String: string(beforeJSON), Valid: true}, AfterJson: sql.NullString{String: string(afterJSON), Valid: true},
@@ -113,7 +138,8 @@ func (s *Store) Restore(ctx context.Context, actor, expectedHash string, id int6
 	if err := json.Unmarshal([]byte(row.AfterJson.String), &snapshot); err != nil {
 		return Revision{}, err
 	}
-	return s.Save(ctx, actor, expectedHash, snapshot.Settings)
+	// Revisions store redacted snapshots, so a restore keeps the current secrets.
+	return s.Save(ctx, actor, expectedHash, snapshot.Settings, config.AlertSecrets{})
 }
 
 func atomicWrite(path string, data []byte) error {

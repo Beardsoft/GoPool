@@ -43,6 +43,45 @@ func TestLoadOptionalDoesNotMaterializeSecrets(t *testing.T) {
 	}
 }
 
+func TestLoadOptionalKeepsAlertSecrets(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	seed := `{"rpc_url":"https://rpc.example","network":"main","alert_telegram_token":"tg-value","alert_email_smtp_host":"smtp.example","alert_email_smtp_port":465,"alert_email_password":"pw-value","stuck_payout_epochs":9}`
+	if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, configured, err := LoadOptional(path)
+	if err != nil || !configured {
+		t.Fatalf("configured=%v err=%v", configured, err)
+	}
+	if cfg.AlertTelegramToken != "tg-value" || cfg.AlertEmailSMTPHost != "smtp.example" || cfg.AlertEmailSMTPPort != 465 || cfg.AlertEmailPassword != "pw-value" || cfg.StuckPayoutEpochs != 9 {
+		t.Fatalf("alert secrets lost on load: %+v", cfg.AlertSecrets())
+	}
+}
+
+func TestConfigHashChangesWithSecrets(t *testing.T) {
+	editable := Editable{PoolName: "GoPool"}
+	base := ConfigHash(editable, AlertSecrets{})
+	if ConfigHash(editable, AlertSecrets{}) != base {
+		t.Fatal("hash must be stable")
+	}
+	if ConfigHash(editable, AlertSecrets{TelegramToken: "x"}) == base {
+		t.Fatal("secret change must change the hash")
+	}
+}
+
+func TestValidateAlertSecrets(t *testing.T) {
+	for _, port := range []int{0, 1, 587, 65535} {
+		if err := ValidateAlertSecrets(AlertSecrets{SMTPPort: port}); err != nil {
+			t.Errorf("port %d: %v", port, err)
+		}
+	}
+	for _, port := range []int{-1, 65536} {
+		if err := ValidateAlertSecrets(AlertSecrets{SMTPPort: port}); err == nil {
+			t.Errorf("port %d: wanted error", port)
+		}
+	}
+}
+
 func TestRedactedConfigNeverContainsSecrets(t *testing.T) {
 	cfg := Config{PrivateKey: "private-value-7f8c", SessionSecret: "session-value-5a2d", AlertTelegramToken: "telegram-value-9b1e"}
 	got, _ := json.Marshal(Redact(&cfg))

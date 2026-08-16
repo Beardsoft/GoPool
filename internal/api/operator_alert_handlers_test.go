@@ -29,7 +29,9 @@ func TestOperatorAlertsNeverExposeSecrets(t *testing.T) {
 
 func TestOperatorAlertTestIsRateLimited(t *testing.T) {
 	a, cookie := configuredOperatorAPI(t)
+	a.cfg.AlertEmailEnabled = true
 	a.cfg.AlertEmailTo = "ops@example.com"
+	a.cfg.AlertEmailFrom = "pool@example.com"
 	first := postJSON(t, a.Mux(), "/api/operator/alerts/email/test", map[string]any{}, cookie)
 	if first.Code != http.StatusOK {
 		t.Fatalf("first status %d: %s", first.Code, first.Body.String())
@@ -40,7 +42,7 @@ func TestOperatorAlertTestIsRateLimited(t *testing.T) {
 	}
 	var body map[string]any
 	_ = json.Unmarshal(first.Body.Bytes(), &body)
-	if body["state"] != "unavailable" {
+	if body["state"] != "failed" || !strings.Contains(body["response_summary"].(string), "smtp host") {
 		t.Fatalf("state = %v", body["state"])
 	}
 }

@@ -11,7 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NimMiniApps/nimiq-go/rpc"
+
 	"github.com/Beardsoft/GoPool/internal/db"
+	"github.com/Beardsoft/GoPool/internal/pool"
 )
 
 func (a *API) registerOperatorOperationsRoutes(mux *http.ServeMux) {
@@ -34,11 +37,13 @@ type operatorActionResponse struct {
 }
 
 type operatorPayoutResponse struct {
-	Hash        string `json:"hash"`
-	Address     string `json:"address"`
-	Amount      int64  `json:"amount"`
-	Status      string `json:"status"`
-	SubmittedAt string `json:"submitted_at,omitempty"`
+	Hash            string `json:"hash"`
+	Address         string `json:"address"`
+	Amount          int64  `json:"amount"`
+	Status          string `json:"status"`
+	SubmittedAt     string `json:"submitted_at,omitempty"`
+	SubmittedHeight int64  `json:"submitted_height"`
+	Stuck           bool   `json:"stuck"`
 }
 
 var errDuplicateValidatorAction = errors.New("validator action already requested or in flight")
@@ -303,18 +308,39 @@ func (a *API) handleOperatorPayouts(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "db_error", "loading payouts")
 		return
 	}
+
+	var head uint32
+	var policy *rpc.Policy
+	if a.rpc != nil {
+		head, _ = a.rpc.BlockNumber(ctx)
+		policy, _ = a.rpc.GetPolicy(ctx)
+	}
+	now := time.Now()
+	stuckEpochs := 0
+	if a.cfg != nil {
+		stuckEpochs = a.cfg.StuckPayoutEpochs
+	}
+
 	items := make([]operatorPayoutResponse, len(rows))
 	for i, r := range rows {
-		submittedAt := ""
+		submittedAt := time.Time{}
+		submittedAtStr := ""
 		if r.SubmittedAt.Valid {
-			submittedAt = r.SubmittedAt.Time.UTC().Format(time.RFC3339)
+			submittedAt = r.SubmittedAt.Time
+			submittedAtStr = submittedAt.UTC().Format(time.RFC3339)
+		}
+		stuck := false
+		if policy != nil && r.Status != "completed" && r.Status != "failed" {
+			stuck = pool.IsStuck(r.SubmittedHeight, head, stuckEpochs, policy.BlocksPerEpoch, policy.BlockSeparationTime, submittedAt, now)
 		}
 		items[i] = operatorPayoutResponse{
-			Hash:        r.Hash,
-			Address:     r.Address,
-			Amount:      r.Amount,
-			Status:      r.Status,
-			SubmittedAt: submittedAt,
+			Hash:            r.Hash,
+			Address:         r.Address,
+			Amount:          r.Amount,
+			Status:          r.Status,
+			SubmittedAt:     submittedAtStr,
+			SubmittedHeight: r.SubmittedHeight,
+			Stuck:           stuck,
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

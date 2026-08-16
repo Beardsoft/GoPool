@@ -48,6 +48,27 @@ async function retryPayout(hash: string) {
   await load()
 }
 
+function isPending(status: string): boolean {
+  return status === 'awaiting_confirmation'
+}
+
+function elapsed(ts?: string): string {
+  if (!ts) return ''
+  const ms = Date.now() - new Date(ts).getTime()
+  if (Number.isNaN(ms) || ms < 0) return ''
+  const h = Math.floor(ms / 3_600_000)
+  const m = Math.floor((ms % 3_600_000) / 60_000)
+  const s = Math.floor((ms % 60_000) / 1000)
+  if (h > 0) return `waiting ${h}h ${m}m`
+  if (m > 0) return `waiting ${m}m ${s}s`
+  return `waiting ${s}s`
+}
+
+function waitingLabel(item: OperatorPayout): string {
+  if (!isPending(item.status)) return ''
+  return elapsed(item.submitted_at) || 'waiting…'
+}
+
 onMounted(load)
 </script>
 
@@ -65,15 +86,18 @@ onMounted(load)
       <div class="section-heading"><h2>Payout queue</h2><span>{{ filteredPayouts.length }} shown</span></div>
       <div class="filters">
         <select v-model="statusFilter" class="input" aria-label="Payout status">
-          <option value="">All states</option><option>failed</option><option>pending</option><option>submitted</option><option>confirmed</option>
+          <option value="">All states</option><option>failed</option><option>awaiting_confirmation</option><option>completed</option>
         </select>
         <input v-model="addressFilter" class="input" placeholder="Filter address" aria-label="Filter payout address" />
       </div>
       <div v-if="filteredPayouts.length" class="table-wrap">
-        <table><thead><tr><th>Status</th><th>Recipient</th><th>Amount</th><th>Transaction</th><th></th></tr></thead>
+        <table><thead><tr><th>Status</th><th>Recipient</th><th>Amount</th><th>Transaction</th><th>Waiting</th><th></th></tr></thead>
           <tbody><tr v-for="item in filteredPayouts" :key="item.hash">
-            <td><StatusBadge :status="item.status || 'unknown'" /></td><td class="address"><ExplorerLink kind="account" :value="item.address" /></td>
-            <td><NimAmount :luna="item.amount ?? 0" /></td><td class="hash"><ExplorerLink kind="transaction" :value="item.hash" /></td>
+            <td><StatusBadge :status="item.status || 'unknown'" /><span v-if="item.stuck" class="stuck-badge">stuck</span></td>
+            <td class="address"><ExplorerLink kind="account" :value="item.address" /></td>
+            <td><NimAmount :luna="item.amount ?? 0" /></td>
+            <td class="hash"><ExplorerLink kind="transaction" :value="item.hash" /><span v-if="item.submitted_height" class="height">h{{ item.submitted_height }}</span></td>
+            <td class="waiting"><span v-if="waitingLabel(item)">{{ waitingLabel(item) }}</span><span v-else class="muted">—</span></td>
             <td><button v-if="item.status === 'failed'" class="btn" @click="retryPayout(item.hash)">Retry</button></td>
           </tr></tbody></table>
       </div>
@@ -102,5 +126,7 @@ onMounted(load)
 .operations-page{display:grid;gap:24px}.eyebrow{text-transform:uppercase;letter-spacing:.08em;font-size:.75rem;font-weight:700;color:var(--nimiq-light-blue)}
 .section-heading,.filters,.action-buttons{display:flex;gap:12px;align-items:center;justify-content:space-between}.filters{margin-bottom:16px}.filters>*{max-width:280px}
 .table-wrap{overflow:auto}.address,.hash{max-width:240px;overflow:hidden;text-overflow:ellipsis}.action-list{display:grid;gap:8px;list-style:none;padding:0}.danger-zone{border-color:var(--nimiq-red)}
+.stuck-badge{margin-left:8px;padding:2px 8px;border-radius:999px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:var(--nimiq-red);color:#fff}
+.height{margin-left:8px;font-size:.75rem;color:var(--nimiq-light-blue);white-space:nowrap}.waiting{white-space:nowrap}
 .destructive{background:var(--nimiq-red)}.review-panel{margin-top:16px;padding:16px;background:var(--bg-muted);border-radius:10px}@media(max-width:640px){.filters,.action-buttons{align-items:stretch;flex-direction:column}.filters>*{max-width:none}}
 </style>

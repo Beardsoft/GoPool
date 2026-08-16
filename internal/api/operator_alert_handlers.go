@@ -6,14 +6,25 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Beardsoft/GoPool/internal/config"
 	"github.com/Beardsoft/GoPool/internal/db"
 	"github.com/Beardsoft/GoPool/internal/notifier"
 )
+
+// diskConfig returns the config as written to disk (what the daemon will load
+// after a restart), falling back to the API's startup config.
+func (a *API) diskConfig() *config.Config {
+	if a.configStore != nil {
+		if cfg, configured, err := config.LoadOptional(a.configStore.Path()); err == nil && configured {
+			return cfg
+		}
+	}
+	return a.cfg
+}
 
 type alertDeliveryRecorder struct{ q *db.Queries }
 
@@ -55,13 +66,18 @@ func webhookHint(raw string) string {
 }
 
 func (a *API) handleOperatorAlerts(w http.ResponseWriter, _ *http.Request) {
-	telegramConfigured := a.cfg.AlertTelegramToken != ""
-	webhookConfigured := a.cfg.AlertWebhookURL != ""
-	emailConfigured := a.cfg.AlertEmailTo != ""
+	cfg := a.diskConfig()
+	if cfg == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "config_unavailable", "loading configuration")
+		return
+	}
+	telegramConfigured := cfg.AlertTelegramEnabled && cfg.AlertTelegramToken != ""
+	webhookConfigured := cfg.AlertWebhookEnabled && cfg.AlertWebhookURL != ""
+	emailConfigured := cfg.AlertEmailEnabled && cfg.AlertEmailTo != ""
 	writeJSON(w, http.StatusOK, map[string]any{"channels": map[string]any{
-		"telegram": map[string]any{"enabled": telegramConfigured, "configured": telegramConfigured, "destination_hint": destinationHint(os.Getenv("TELEGRAM_CHAT_ID")), "state": configuredState(telegramConfigured, false)},
-		"webhook":  map[string]any{"enabled": webhookConfigured, "configured": webhookConfigured, "destination_hint": webhookHint(a.cfg.AlertWebhookURL), "state": configuredState(webhookConfigured, false)},
-		"email":    map[string]any{"enabled": emailConfigured, "configured": emailConfigured, "destination_hint": destinationHint(a.cfg.AlertEmailTo), "state": configuredState(emailConfigured, true)},
+		"telegram": map[string]any{"enabled": telegramConfigured, "configured": telegramConfigured, "destination_hint": destinationHint(cfg.AlertTelegramDestination), "state": configuredState(telegramConfigured, false)},
+		"webhook":  map[string]any{"enabled": webhookConfigured, "configured": webhookConfigured, "destination_hint": webhookHint(cfg.AlertWebhookURL), "state": configuredState(webhookConfigured, false)},
+		"email":    map[string]any{"enabled": emailConfigured, "configured": emailConfigured, "destination_hint": destinationHint(cfg.AlertEmailTo), "state": configuredState(emailConfigured, false)},
 	}})
 }
 
@@ -100,7 +116,7 @@ func (a *API) handleOperatorAlertTest(w http.ResponseWriter, r *http.Request) {
 	a.alertTestAt[channel] = time.Now()
 	a.alertTestMu.Unlock()
 
-	cfgCopy := *a.cfg
+	cfgCopy := *a.diskConfig()
 	if channel != "telegram" {
 		cfgCopy.AlertTelegramToken = ""
 	}
@@ -110,7 +126,7 @@ func (a *API) handleOperatorAlertTest(w http.ResponseWriter, r *http.Request) {
 	if channel != "email" {
 		cfgCopy.AlertEmailTo = ""
 	}
-	n := notifier.New(&cfgCopy, notifier.WithDeliveryRecorder(alertDeliveryRecorder{q: a.queries}))
+	n := notifier.New(&cfgCopy, alertDeliveryRecorder{q: a.queries})
 	correlationID := operationCorrelationID(r, "alert-test")
 	results := n.Send(r.Context(), notifier.Alert{Level: "info", Type: "test", Title: "GoPool test alert", Message: "Operator requested a delivery test", CorrelationID: correlationID})
 	if len(results) == 0 {

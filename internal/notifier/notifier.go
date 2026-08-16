@@ -3,12 +3,15 @@ package notifier
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/smtp"
 	"net/url"
-	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,25 +34,15 @@ type DeliveryRecorder interface {
 	RecordDelivery(context.Context, DeliveryResult) error
 }
 
-type Option func(*Notifier)
-
-func WithDeliveryRecorder(recorder DeliveryRecorder) Option {
-	return func(n *Notifier) { n.recorder = recorder }
-}
-func WithHTTPClient(client *http.Client) Option { return func(n *Notifier) { n.client = client } }
-
 type Notifier struct {
 	cfg      *config.Config
 	client   *http.Client
 	recorder DeliveryRecorder
 }
 
-func New(cfg *config.Config, options ...Option) *Notifier {
-	n := &Notifier{cfg: cfg, client: &http.Client{Timeout: 10 * time.Second}}
-	for _, option := range options {
-		option(n)
-	}
-	return n
+// New builds a Notifier. recorder may be nil to skip delivery recording.
+func New(cfg *config.Config, recorder DeliveryRecorder) *Notifier {
+	return &Notifier{cfg: cfg, client: &http.Client{Timeout: 10 * time.Second}, recorder: recorder}
 }
 
 type Alert struct {
@@ -66,14 +59,14 @@ func (n *Notifier) Send(ctx context.Context, alert Alert) []DeliveryResult {
 		alert.Time = time.Now().UTC().Format(time.RFC3339)
 	}
 	results := make([]DeliveryResult, 0, 3)
-	if n.cfg.AlertTelegramToken != "" {
+	if n.cfg.AlertTelegramEnabled && n.cfg.AlertTelegramToken != "" {
 		results = append(results, n.sendTelegram(ctx, alert))
 	}
-	if n.cfg.AlertWebhookURL != "" {
+	if n.cfg.AlertWebhookEnabled && n.cfg.AlertWebhookURL != "" {
 		results = append(results, n.sendWebhook(ctx, alert))
 	}
-	if n.cfg.AlertEmailTo != "" {
-		results = append(results, n.unavailableEmail(alert))
+	if n.cfg.AlertEmailEnabled && n.cfg.AlertEmailTo != "" {
+		results = append(results, n.sendEmail(ctx, alert))
 	}
 	for _, result := range results {
 		if n.recorder != nil {
@@ -89,7 +82,7 @@ func (n *Notifier) result(alert Alert, channel, destination, state, summary stri
 }
 
 func (n *Notifier) sendTelegram(ctx context.Context, alert Alert) DeliveryResult {
-	chatID := getEnv("TELEGRAM_CHAT_ID", "")
+	chatID := strings.TrimSpace(n.cfg.AlertTelegramDestination)
 	if chatID == "" {
 		return n.result(alert, "telegram", "", "failed", "chat destination is not configured")
 	}
@@ -126,8 +119,78 @@ func (n *Notifier) sendHTTP(ctx context.Context, alert Alert, channel, destinati
 	return n.result(alert, channel, destination, "sent", summary)
 }
 
-func (n *Notifier) unavailableEmail(alert Alert) DeliveryResult {
-	return n.result(alert, "email", redactDestination(n.cfg.AlertEmailTo), "unavailable", "email delivery is unavailable")
+func (n *Notifier) sendEmail(ctx context.Context, alert Alert) DeliveryResult {
+	destination := redactDestination(n.cfg.AlertEmailTo)
+	fail := func(err error) DeliveryResult {
+		return n.result(alert, "email", destination, "failed", sanitizeSummary(err.Error(), n.cfg))
+	}
+	from := n.cfg.AlertEmailFrom
+	if from == "" {
+		from = n.cfg.AlertEmailUsername
+	}
+	if from == "" {
+		return n.result(alert, "email", destination, "failed", "smtp from address is not configured")
+	}
+	host := n.cfg.AlertEmailSMTPHost
+	if host == "" {
+		return n.result(alert, "email", destination, "failed", "smtp host is not configured")
+	}
+	port := n.cfg.AlertEmailSMTPPort
+	if port == 0 {
+		port = 587
+	}
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	var client *smtp.Client
+	if port == 465 {
+		dialer := net.Dialer{Timeout: 10 * time.Second}
+		conn, err := dialer.DialContext(ctx, "tcp", addr)
+		if err != nil {
+			return fail(err)
+		}
+		tlsConn := tls.Client(conn, &tls.Config{ServerName: host})
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			return fail(err)
+		}
+		client, err = smtp.NewClient(tlsConn, host)
+		if err != nil {
+			return fail(err)
+		}
+	} else {
+		var err error
+		client, err = smtp.Dial(addr)
+		if err != nil {
+			return fail(err)
+		}
+		if port == 587 {
+			if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {
+				return fail(err)
+			}
+		}
+	}
+	defer client.Close()
+	if n.cfg.AlertEmailUsername != "" {
+		if err := client.Auth(smtp.PlainAuth("", n.cfg.AlertEmailUsername, n.cfg.AlertEmailPassword, host)); err != nil {
+			return fail(err)
+		}
+	}
+	if err := client.Mail(from); err != nil {
+		return fail(err)
+	}
+	if err := client.Rcpt(n.cfg.AlertEmailTo); err != nil {
+		return fail(err)
+	}
+	w, err := client.Data()
+	if err != nil {
+		return fail(err)
+	}
+	message := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: [%s] %s\r\n\r\n%s\r\n", from, n.cfg.AlertEmailTo, strings.ToUpper(alert.Level), alert.Title, alert.Message)
+	if _, err := w.Write([]byte(message)); err != nil {
+		return fail(err)
+	}
+	if err := w.Close(); err != nil {
+		return fail(err)
+	}
+	return n.result(alert, "email", destination, "sent", "message accepted by smtp server")
 }
 
 func redactURL(raw string) string {
@@ -178,18 +241,4 @@ func capSummary(summary string) string {
 		return summary[:maxResponseSummary]
 	}
 	return summary
-}
-
-func buildEmail(a Alert, from, to string) (subject, msg string) {
-	subject = "[GoPool " + a.Level + "] " + a.Title
-	body := a.Message + "\n\nLevel: " + a.Level + "\nTime:  " + a.Time + "\n"
-	msg = "From: " + from + "\r\nTo: " + to + "\r\nSubject: " + subject + "\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + body
-	return subject, msg
-}
-
-func getEnv(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return fallback
 }

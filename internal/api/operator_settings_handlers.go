@@ -29,7 +29,7 @@ func (a *API) handleOperatorSettings(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "config_unavailable", "loading configuration")
 		return
 	}
-	hash := config.EditableHash(cfg.Editable())
+	hash := config.ConfigHash(cfg.Editable(), cfg.AlertSecrets())
 	runtimeHash := ""
 	validatorPresent := false
 	if runtime, err := a.queries.GetRuntimeStatus(r.Context()); err == nil {
@@ -40,7 +40,8 @@ func (a *API) handleOperatorSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"active_hash": hash, "daemon_hash": runtimeHash, "restart_required": runtimeHash != hash,
-		"settings": cfg.Editable(), "secrets": map[string]string{"validator_key": presenceState(validatorPresent), "session_secret": presenceState(a.cfg != nil && a.cfg.SessionSecret != ""), "telegram_token": presenceState(a.cfg != nil && a.cfg.AlertTelegramToken != "")}})
+		"settings": cfg.Editable(), "secrets": map[string]string{"validator_key": presenceState(validatorPresent), "session_secret": presenceState(a.cfg != nil && a.cfg.SessionSecret != ""),
+			"telegram_token": presenceState(cfg.AlertTelegramToken != ""), "email_password": presenceState(cfg.AlertEmailPassword != "")}})
 }
 
 func presenceState(present bool) string {
@@ -52,13 +53,17 @@ func presenceState(present bool) string {
 
 func (a *API) handleOperatorSettingsValidate(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Settings config.Editable `json:"settings"`
+		Settings config.Editable     `json:"settings"`
+		Secrets  config.AlertSecrets `json:"secrets"`
 	}
 	if decodeJSON(r.Body, &body) != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid_body", "invalid json")
 		return
 	}
 	errors := editableFieldErrors(body.Settings)
+	if err := config.ValidateAlertSecrets(body.Secrets); err != nil {
+		errors["alert_secrets"] = err.Error()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"valid": len(errors) == 0, "field_errors": errors})
 }
 
@@ -68,15 +73,16 @@ func (a *API) handleOperatorSettingsSave(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var body struct {
-		ExpectedHash string          `json:"expected_hash"`
-		Settings     config.Editable `json:"settings"`
+		ExpectedHash string              `json:"expected_hash"`
+		Settings     config.Editable     `json:"settings"`
+		Secrets      config.AlertSecrets `json:"secrets"`
 	}
 	if decodeJSON(r.Body, &body) != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid_body", "invalid json")
 		return
 	}
 	addr, _ := addressFromContext(r.Context())
-	revision, err := a.configStore.Save(r.Context(), addr.String(), body.ExpectedHash, body.Settings)
+	revision, err := a.configStore.Save(r.Context(), addr.String(), body.ExpectedHash, body.Settings, body.Secrets)
 	if errors.Is(err, configstore.ErrRevisionConflict) {
 		writeAPIError(w, http.StatusConflict, "revision_conflict", "settings changed; reload before saving")
 		return

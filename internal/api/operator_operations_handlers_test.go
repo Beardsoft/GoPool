@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/NimMiniApps/nimiq-go/rpc"
+
 	"github.com/Beardsoft/GoPool/internal/db"
 )
 
@@ -153,5 +155,72 @@ func seedFailedPayoutGroup(t *testing.T, q *db.Queries, hash, address string) {
 	}
 	if err := q.InsertTransaction(t.Context(), db.InsertTransactionParams{Hash: hash, Address: address, Amount: 1, Status: "failed"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOperatorPayoutsIncludeHeightAndStuckFlag(t *testing.T) {
+	a, cookie, _ := operatorTestAPI(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Method string `json:"method"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		switch req.Method {
+		case "getBlockNumber":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":540}`))
+		case "getPolicyConstants":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"blocksPerBatch":60,"batchesPerEpoch":4,"blocksPerEpoch":100,"blockSeparationTime":1000,"genesisBlockNumber":0}}`))
+		default:
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":null}`))
+		}
+	}))
+	defer srv.Close()
+	client, err := rpc.New(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.rpc = client
+	a.cfg.StuckPayoutEpochs = 3
+
+	const address = "NQ00 0000 0000 0000 0000 0000 0000 0001"
+	const freshAddress = "NQ32 EGL6 H9C8 0JJB PH4S 7RYY ULRC 5B6N 56RE"
+	for _, tx := range []db.InsertTransactionParams{
+		{Hash: "old-pending", Address: address, Amount: 1, Status: "awaiting_confirmation", SubmittedHeight: 100},
+		{Hash: "fresh-pending", Address: freshAddress, Amount: 1, Status: "awaiting_confirmation", SubmittedHeight: 500},
+		{Hash: "done", Address: address, Amount: 1, Status: "completed", SubmittedHeight: 100},
+	} {
+		if err := a.queries.InsertTransaction(t.Context(), tx); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/operator/payouts?limit=10", nil)
+	req.AddCookie(cookie)
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("payouts status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Items []operatorPayoutResponse `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Items) != 3 {
+		t.Fatalf("items = %+v, want 3", got.Items)
+	}
+	byHash := map[string]operatorPayoutResponse{}
+	for _, it := range got.Items {
+		byHash[it.Hash] = it
+	}
+	if old := byHash["old-pending"]; !old.Stuck || old.SubmittedHeight != 100 {
+		t.Errorf("old-pending = %+v, want stuck=true height=100", old)
+	}
+	if fresh := byHash["fresh-pending"]; fresh.Stuck || fresh.SubmittedHeight != 500 {
+		t.Errorf("fresh-pending = %+v, want stuck=false height=500", fresh)
+	}
+	if done := byHash["done"]; done.Stuck {
+		t.Errorf("done = %+v, want stuck=false (terminal)", done)
 	}
 }

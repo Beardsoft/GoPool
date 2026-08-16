@@ -84,14 +84,6 @@ export interface TelemetryPoint {
   value: number;
 }
 
-export interface OperatorActivityFilters {
-  severity?: string;
-  category?: string;
-  from?: string;
-  to?: string;
-  cursor?: string;
-  limit?: number;
-}
 
 export interface OperatorActivityResponse {
   items: OperatorEvent[];
@@ -116,6 +108,8 @@ export interface OperatorPayout {
   amount: number;
   status: string;
   submitted_at?: string;
+  submitted_height: number;
+  stuck: boolean;
 }
 
 export interface PageResponse<T> {
@@ -165,7 +159,16 @@ export interface EditableConfig {
   disclosure?: string;
 }
 
-export type SetupDraft = EditableConfig
+export interface AlertSecrets {
+  alert_telegram_token?: string;
+  alert_email_smtp_host?: string;
+  alert_email_smtp_port?: number;
+  alert_email_username?: string;
+  alert_email_password?: string;
+  alert_email_from?: string;
+}
+
+export type SetupDraft = EditableConfig & AlertSecrets
 
 export interface SettingsResponse {
   active_hash: string;

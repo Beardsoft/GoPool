@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/NimMiniApps/nimiq-go/rpc"
 
@@ -49,14 +50,20 @@ func (m *Manager) runConfirmations(ctx context.Context) error {
 		return err
 	}
 	head, _ := m.chain.RPC.BlockNumber(ctx)
+	now := time.Now()
 
 	for _, tx := range pending {
+		submittedAt := time.Time{}
+		if tx.SubmittedAt.Valid {
+			submittedAt = tx.SubmittedAt.Time
+		}
+		stuck := IsStuck(tx.SubmittedHeight, head, m.cfg.StuckPayoutEpochs, m.policy.BlocksPerEpoch, m.policy.BlockSeparationTime, submittedAt, now)
 		conf, err := m.chain.RPC.CheckTransaction(ctx, tx.Hash)
 		if err != nil {
 			// Broadcast txs are often not indexed until they land in a block.
 			// nimiq-go documents ErrNotFound as "not yet", not failure.
 			if errors.Is(err, rpc.ErrNotFound) {
-				if isStuck(tx.SubmittedHeight, head, m.cfg.StuckPayoutEpochs, m.policy.BlocksPerEpoch) {
+				if stuck {
 					if ferr := m.failStuckPayout(ctx, tx.Hash, tx.Address); ferr != nil {
 						logger.Logger.Error("failing stuck payout", zap.String("hash", tx.Hash), zap.Error(ferr))
 					}
@@ -69,7 +76,7 @@ func (m *Manager) runConfirmations(ctx context.Context) error {
 		}
 		switch confirmationOutcome(conf) {
 		case outcomePending:
-			if isStuck(tx.SubmittedHeight, head, m.cfg.StuckPayoutEpochs, m.policy.BlocksPerEpoch) {
+			if stuck {
 				if ferr := m.failStuckPayout(ctx, tx.Hash, tx.Address); ferr != nil {
 					logger.Logger.Error("failing stuck payout", zap.String("hash", tx.Hash), zap.Error(ferr))
 				}

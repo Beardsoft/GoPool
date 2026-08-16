@@ -9,7 +9,6 @@ export function useLiveStatus() {
   let es: EventSource | null = null
   let backoff = 1000
   let reconnectTimer: number | null = null
-  let pollTimer: number | null = null
 
   function start() {
     if (es) es.close()
@@ -45,16 +44,11 @@ export function useLiveStatus() {
 
   onMounted(() => {
     start()
-    // periodic refetch to keep data fresh
-    pollTimer = window.setInterval(() => {
-      // no-op placeholder for refetch trigger
-    }, 30000)
   })
 
   onUnmounted(() => {
     es?.close()
     if (reconnectTimer) clearTimeout(reconnectTimer)
-    if (pollTimer) clearInterval(pollTimer)
   })
 
   return { state, lastEventAt, reconnect }

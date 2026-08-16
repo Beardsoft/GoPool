@@ -444,14 +444,15 @@ func (q *Queries) GetPayslipsForAddress(ctx context.Context, address string) ([]
 }
 
 const GetPendingTransactions = `-- name: GetPendingTransactions :many
-SELECT hash, address, amount, submitted_height FROM transactions WHERE status = 'awaiting_confirmation'
+SELECT hash, address, amount, submitted_height, submitted_at FROM transactions WHERE status = 'awaiting_confirmation'
 `
 
 type GetPendingTransactionsRow struct {
-	Hash            string `json:"hash"`
-	Address         string `json:"address"`
-	Amount          int64  `json:"amount"`
-	SubmittedHeight int64  `json:"submitted_height"`
+	Hash            string       `json:"hash"`
+	Address         string       `json:"address"`
+	Amount          int64        `json:"amount"`
+	SubmittedHeight int64        `json:"submitted_height"`
+	SubmittedAt     sql.NullTime `json:"submitted_at"`
 }
 
 func (q *Queries) GetPendingTransactions(ctx context.Context) ([]GetPendingTransactionsRow, error) {
@@ -468,6 +469,7 @@ func (q *Queries) GetPendingTransactions(ctx context.Context) ([]GetPendingTrans
 			&i.Address,
 			&i.Amount,
 			&i.SubmittedHeight,
+			&i.SubmittedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1407,7 +1409,7 @@ func (q *Queries) ListOperatorEvents(ctx context.Context, arg ListOperatorEvents
 }
 
 const ListPayoutTransactions = `-- name: ListPayoutTransactions :many
-SELECT hash, address, amount, status, submitted_at FROM transactions WHERE (? IS NULL OR status = ?) ORDER BY submitted_at DESC LIMIT ? OFFSET ?
+SELECT hash, address, amount, status, submitted_at, submitted_height FROM transactions WHERE (? IS NULL OR status = ?) ORDER BY submitted_at DESC LIMIT ? OFFSET ?
 `
 
 type ListPayoutTransactionsParams struct {
@@ -1418,11 +1420,12 @@ type ListPayoutTransactionsParams struct {
 }
 
 type ListPayoutTransactionsRow struct {
-	Hash        string       `json:"hash"`
-	Address     string       `json:"address"`
-	Amount      int64        `json:"amount"`
-	Status      string       `json:"status"`
-	SubmittedAt sql.NullTime `json:"submitted_at"`
+	Hash            string       `json:"hash"`
+	Address         string       `json:"address"`
+	Amount          int64        `json:"amount"`
+	Status          string       `json:"status"`
+	SubmittedAt     sql.NullTime `json:"submitted_at"`
+	SubmittedHeight int64        `json:"submitted_height"`
 }
 
 func (q *Queries) ListPayoutTransactions(ctx context.Context, arg ListPayoutTransactionsParams) ([]ListPayoutTransactionsRow, error) {
@@ -1445,6 +1448,7 @@ func (q *Queries) ListPayoutTransactions(ctx context.Context, arg ListPayoutTran
 			&i.Amount,
 			&i.Status,
 			&i.SubmittedAt,
+			&i.SubmittedHeight,
 		); err != nil {
 			return nil, err
 		}

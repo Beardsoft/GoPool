@@ -21,7 +21,6 @@ import (
 )
 
 func main() {
-	logger.InitLogger()
 	defer logger.Sync()
 
 	cfg, err := config.LoadDaemon("")
@@ -45,8 +44,8 @@ func main() {
 	defer sqlDB.Close()
 	queries := db.New(sqlDB)
 
-	recorder := ops.NewRecorder(queries, ops.WithConfigHash(config.EditableHash(cfg.Editable())))
-	manager := pool.NewManager(c, queries, cfg, pool.WithRecorder(recorder))
+	recorder := ops.NewRecorder(queries, config.ConfigHash(cfg.Editable(), cfg.AlertSecrets()))
+	manager := pool.NewManager(c, queries, cfg, recorder)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
