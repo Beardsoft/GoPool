@@ -26,6 +26,25 @@ func (q *Queries) CancelRequestedValidatorAction(ctx context.Context, id int64) 
 	return id_2, err
 }
 
+const ClaimApprovedAuditLog = `-- name: ClaimApprovedAuditLog :execrows
+UPDATE audit_logs
+SET status = 'executed', tx_hash = ?, approved_at = CURRENT_TIMESTAMP
+WHERE id = ? AND status = 'approved'
+`
+
+type ClaimApprovedAuditLogParams struct {
+	TxHash sql.NullString `json:"tx_hash"`
+	ID     int64          `json:"id"`
+}
+
+func (q *Queries) ClaimApprovedAuditLog(ctx context.Context, arg ClaimApprovedAuditLogParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, ClaimApprovedAuditLog, arg.TxHash, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const CompleteSubmittedValidatorAction = `-- name: CompleteSubmittedValidatorAction :one
 UPDATE validator_actions
 SET state = ?, updated_at = CURRENT_TIMESTAMP, error_summary = ?

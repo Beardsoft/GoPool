@@ -198,6 +198,43 @@ func TestEligiblePayoutExcludesActiveAttempt(t *testing.T) {
 	}
 }
 
+func TestPersistPayoutSubmissionClaimsAuditExactlyOnce(t *testing.T) {
+	q := newLifecycleTestQueries(t)
+	ctx := t.Context()
+	if err := q.InsertReward(ctx, db.InsertRewardParams{BatchNumber: 1, EpochNumber: 1, Amount: 100, PoolFee: 0, NumStakers: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.InsertPayslip(ctx, db.InsertPayslipParams{BatchNumber: 1, Address: "A", Amount: 100, Status: "pending"}); err != nil {
+		t.Fatal(err)
+	}
+	id, err := q.InsertAuditLog(ctx, db.InsertAuditLogParams{ActionType: "payout", Address: "A", Amount: 100, Kind: "delegate", Status: "approved"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &Manager{queries: q}
+	log := db.ListApprovedAuditLogsRow{ID: id, Address: "A", Amount: 100, Kind: "delegate", Status: "approved"}
+	if err := m.persistPayoutSubmission(ctx, log, "hash-a", 123); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.persistPayoutSubmission(ctx, log, "hash-b", 124); err == nil {
+		t.Fatal("second claim unexpectedly succeeded")
+	}
+	pending, err := q.GetPendingTransactions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].Hash != "hash-a" || pending[0].SubmittedHeight != 123 {
+		t.Fatalf("pending = %+v, want one atomically tracked hash-a", pending)
+	}
+	approved, err := q.ListApprovedAuditLogs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(approved) != 0 {
+		t.Fatalf("approved logs = %+v, want claimed audit removed from retry queue", approved)
+	}
+}
+
 func TestRunConfirmationsFailsStuckPayout(t *testing.T) {
 	q := newLifecycleTestQueries(t)
 	const blocksPerEpoch = uint32(43200)

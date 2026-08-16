@@ -257,6 +257,13 @@ func validatePoolWallet(configured, derived string, validator *rpc.Validator) er
 	return nil
 }
 
+func poolWalletReadinessHeartbeat(derived string, readinessErr error) ops.Heartbeat {
+	return ops.Heartbeat{
+		HeartbeatAt: time.Now().UTC(), DerivedValidatorAddress: derived,
+		ValidatorState: "unready", RPCOk: true, ReadinessError: readinessErr.Error(),
+	}
+}
+
 // Run is the daemon's main loop: replay every height between the last
 // processed cursor and the current chain head, in order, then sleep.
 func (m *Manager) Run(ctx context.Context) error {
@@ -273,6 +280,7 @@ func (m *Manager) Run(ctx context.Context) error {
 	}
 	if err := validatePoolWallet(m.cfg.ValidatorAddress, derived, validator); err != nil {
 		if m.recorder != nil {
+			_ = m.recorder.RecordHeartbeat(ctx, poolWalletReadinessHeartbeat(derived, err))
 			_ = m.recorder.RecordEvent(ctx, ops.EventInput{
 				Severity: "error",
 				Category: "readiness",

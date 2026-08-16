@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 up=$PWD
 export NETWORK_NAME=nimiq.local
 export DOCKER_BUILDKIT=1

@@ -209,6 +209,11 @@ UPDATE audit_logs
 SET status = ?, approved_at = CURRENT_TIMESTAMP
 WHERE id = ?;
 
+-- name: ClaimApprovedAuditLog :execrows
+UPDATE audit_logs
+SET status = 'executed', tx_hash = ?, approved_at = CURRENT_TIMESTAMP
+WHERE id = ? AND status = 'approved';
+
 -- name: UpsertRuntimeStatus :exec
 INSERT INTO runtime_status (id, heartbeat_at, daemon_version, config_hash, derived_validator_address, validator_state, last_processed_height, chain_head, last_tick_ms, rpc_ok, readiness_error)
 VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

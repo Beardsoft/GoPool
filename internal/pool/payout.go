@@ -175,10 +175,6 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 				zap.Uint64("amount", uint64(amount)), zap.Uint64("fee", uint64(fee)))
 			continue
 		}
-		total, _ := amount.Add(fee)
-		available -= total
-		delete(m.balanceHoldAlerted, row.Address)
-
 		// Build intent for audit log
 		intent := map[string]any{
 			"address": row.Address,
@@ -206,6 +202,9 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 			logger.Logger.Error("inserting audit log", zap.String("address", row.Address), zap.Error(err))
 			continue
 		}
+		total, _ := amount.Add(fee)
+		available -= total
+		delete(m.balanceHoldAlerted, row.Address)
 
 		if m.cfg.DryRun {
 			logger.Logger.Info("dry-run payout logged", zap.String("staker", row.Address), zap.Uint64("amount", uint64(amount)))
@@ -282,50 +281,41 @@ func (m *Manager) processApprovedPayouts(ctx context.Context) error {
 			continue
 		}
 
-		// Mark payslips out for payment before signing
-		if err := m.queries.MarkPayslipsOutForPayment(ctx, log.Address); err != nil {
-			logger.Logger.Error("mark payslips out", zap.Int64("id", log.ID), zap.Error(err))
+		if err := m.signPayout(ctx, tx, kind); err != nil {
+			logger.Logger.Error("sign approved payout", zap.Int64("id", log.ID), zap.Error(err))
 			continue
 		}
-
-		hash, err := m.signAndSend(ctx, tx, kind)
-		if err != nil {
-			logger.Logger.Error("sign and send approved payout", zap.Int64("id", log.ID), zap.Error(err))
-			_ = m.queries.ResetPayslipsOutForPayment(ctx, log.Address)
-			if m.recorder != nil {
-				_ = m.recorder.RecordEvent(ctx, ops.EventInput{
-					Severity: "error",
-					Category: "payout",
-					Source:   "daemon",
-					Type:     "payout_failed",
-					Summary:  "Payout submission failed",
-					Context: map[string]any{
-						"address": log.Address,
-						"amount":  log.Amount,
-						"error":   err.Error(),
-					},
-				})
-			}
+		hash := tx.Hash().String()
+		if err := m.persistPayoutSubmission(ctx, log, hash, head); err != nil {
+			logger.Logger.Error("persist payout before broadcast", zap.Int64("id", log.ID), zap.Error(err))
 			continue
 		}
 		total, _ := amount.Add(fee)
 		available -= total
 		delete(m.balanceHoldAlerted, log.Address)
 
-		// Update audit log
-		if err := m.queries.UpdateAuditLogStatus(ctx, db.UpdateAuditLogStatusParams{
-			Status: "executed",
-			ID:     log.ID,
-		}); err != nil {
-			logger.Logger.Error("update audit log status", zap.Int64("id", log.ID), zap.Error(err))
+		if _, err := m.chain.RPC.SendTransaction(ctx, tx); err != nil {
+			// The node may have accepted the transaction even if the response was
+			// lost. Keep the locally-computed hash awaiting confirmation rather
+			// than rebuilding and risking a second payment.
+			logger.Logger.Error("broadcast approved payout; tracking for confirmation", zap.Int64("id", log.ID), zap.String("tx", hash), zap.Error(err))
+			if m.recorder != nil {
+				_ = m.recorder.RecordEvent(ctx, ops.EventInput{
+					Severity: "error",
+					Category: "payout",
+					Source:   "daemon",
+					Type:     "payout_broadcast_uncertain",
+					Summary:  "Payout broadcast result is uncertain; tracking hash without automatic retry",
+					Context: map[string]any{
+						"address": log.Address,
+						"amount":  log.Amount,
+						"txHash":  hash,
+						"error":   err.Error(),
+					},
+				})
+			}
+			continue
 		}
-
-		// Update payslips and transactions
-		_ = m.queries.SetPayslipsTransaction(ctx, db.SetPayslipsTransactionParams{
-			TxHash:  sql.NullString{String: hash, Valid: true},
-			Address: log.Address,
-		})
-		_ = m.queries.InsertTransaction(ctx, newPayoutTransaction(hash, log.Address, log.Amount, head))
 
 		logger.Logger.Info("approved payout executed", zap.Int64("audit_id", log.ID), zap.String("address", log.Address), zap.String("tx", hash))
 		metrics.PayoutsSubmitted.WithLabelValues(log.Kind).Inc()
@@ -373,6 +363,27 @@ func newPayoutTransaction(hash, address string, amount int64, head uint32) db.In
 	}
 }
 
+func (m *Manager) persistPayoutSubmission(ctx context.Context, log db.ListApprovedAuditLogsRow, hash string, head uint32) error {
+	return m.queries.InTx(ctx, func(q *db.Queries) error {
+		claimed, err := q.ClaimApprovedAuditLog(ctx, db.ClaimApprovedAuditLogParams{TxHash: sql.NullString{String: hash, Valid: true}, ID: log.ID})
+		if err != nil {
+			return err
+		}
+		if claimed != 1 {
+			return fmt.Errorf("audit log %d is no longer approved", log.ID)
+		}
+		if err := q.MarkPayslipsOutForPayment(ctx, log.Address); err != nil {
+			return err
+		}
+		if err := q.SetPayslipsTransaction(ctx, db.SetPayslipsTransactionParams{
+			TxHash: sql.NullString{String: hash, Valid: true}, Address: log.Address,
+		}); err != nil {
+			return err
+		}
+		return q.InsertTransaction(ctx, newPayoutTransaction(hash, log.Address, log.Amount, head))
+	})
+}
+
 func (m *Manager) buildPayoutTx(recipient nimiq.Address, amount, fee nimiq.Luna, kind payoutKind, head uint32) (*nimiq.Transaction, error) {
 	sender := m.chain.Address()
 	if kind == payoutDelegate {
@@ -381,13 +392,13 @@ func (m *Manager) buildPayoutTx(recipient nimiq.Address, amount, fee nimiq.Luna,
 	return nimiq.NewBasicTransaction(sender, recipient, amount, fee, head, m.chain.Network)
 }
 
-func (m *Manager) signAndSend(ctx context.Context, tx *nimiq.Transaction, kind payoutKind) (string, error) {
+func (m *Manager) signPayout(ctx context.Context, tx *nimiq.Transaction, kind payoutKind) error {
 	if kind == payoutDelegate {
 		if err := nimiq.SignStakingTransaction(ctx, tx, m.chain.Signer, m.chain.Signer); err != nil {
-			return "", err
+			return err
 		}
 	} else if err := nimiq.SignTransaction(ctx, m.chain.Signer, tx); err != nil {
-		return "", err
+		return err
 	}
-	return m.chain.RPC.SendTransaction(ctx, tx)
+	return nil
 }

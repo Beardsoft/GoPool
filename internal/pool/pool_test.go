@@ -1,6 +1,7 @@
 package pool
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -50,6 +51,14 @@ func TestValidatePoolWallet(t *testing.T) {
 				t.Fatalf("validatePoolWallet() error = %v, want text %q", err, tt.wantError)
 			}
 		})
+	}
+}
+
+func TestPoolWalletReadinessHeartbeatPersistsFailure(t *testing.T) {
+	err := fmt.Errorf("reward wallet mismatch")
+	hb := poolWalletReadinessHeartbeat("NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E", err)
+	if hb.ReadinessError != err.Error() || hb.ValidatorState != "unready" || !hb.RPCOk {
+		t.Fatalf("heartbeat = %+v", hb)
 	}
 }
 

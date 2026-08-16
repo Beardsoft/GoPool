@@ -98,6 +98,9 @@ func TestDevnetFirstValidatorUsesOneWallet(t *testing.T) {
 	if !strings.Contains(string(runScript), "one-wallet-genesis.patch") {
 		t.Fatal("run.sh does not apply the tracked one-wallet genesis patch")
 	}
+	if !strings.Contains(string(runScript), "set -e") {
+		t.Fatal("run.sh must stop when the one-wallet genesis patch cannot be applied")
+	}
 }
 
 func TestPrepareMigratesConsensusSigningKey(t *testing.T) {
