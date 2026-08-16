@@ -80,6 +80,20 @@ type verifyRequest struct {
 func (a *API) registerAuthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/challenge", a.handleAuthChallenge)
 	mux.HandleFunc("POST /api/auth/verify", a.handleAuthVerify)
+	mux.HandleFunc("GET /api/session", a.requireSession(a.handleSession))
+}
+
+type sessionResponse struct {
+	Address  string `json:"address"`
+	Operator bool   `json:"operator"`
+}
+
+func (a *API) handleSession(w http.ResponseWriter, r *http.Request) {
+	addr, _ := addressFromContext(r.Context())
+	writeJSON(w, http.StatusOK, sessionResponse{
+		Address:  addr.String(),
+		Operator: addr.String() == a.cfg.ValidatorAddress || a.isOperatorAllowed(addr.String()),
+	})
 }
 
 func (a *API) handleAuthChallenge(w http.ResponseWriter, r *http.Request) {

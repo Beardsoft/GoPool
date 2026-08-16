@@ -85,6 +85,46 @@ func TestAuthChallengeVerifyRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSessionEndpoint(t *testing.T) {
+	a, operatorCookie, stakerCookie := operatorTestAPI(t)
+
+	rec := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/session", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("signed out: status = %d, want 401", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/session", nil)
+	req.AddCookie(operatorCookie)
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("operator: status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var body sessionResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Address != testAddr || !body.Operator {
+		t.Errorf("operator session = %+v, want address %s operator true", body, testAddr)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/session", nil)
+	req.AddCookie(stakerCookie)
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("staker: status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	body = sessionResponse{}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Operator {
+		t.Errorf("staker session = %+v, want operator false", body)
+	}
+}
+
 func TestRequireSessionRejectsMissingCookie(t *testing.T) {
 	a := &API{cfg: &config.Config{SessionSecret: "test-secret"}}
 	protected := a.requireSession(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
