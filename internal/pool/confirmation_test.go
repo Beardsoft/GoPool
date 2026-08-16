@@ -144,3 +144,20 @@ func newLifecycleTestQueries(t *testing.T) *db.Queries {
 	}
 	return db.New(sqlDB)
 }
+
+func TestInsertAndReadSubmittedHeight(t *testing.T) {
+	q := newLifecycleTestQueries(t)
+	if err := q.InsertTransaction(t.Context(), db.InsertTransactionParams{
+		Hash: "h1", Address: "A", Amount: 100, Status: "awaiting_confirmation",
+		SubmittedHeight: 1000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := q.GetPendingTransactions(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].SubmittedHeight != 1000 {
+		t.Fatalf("pending = %+v, want one row with submitted_height 1000", pending)
+	}
+}

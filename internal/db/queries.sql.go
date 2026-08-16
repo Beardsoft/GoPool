@@ -355,7 +355,11 @@ func (q *Queries) GetPayslipStats(ctx context.Context) (GetPayslipStatsRow, erro
 }
 
 const GetPayslipsForAddress = `-- name: GetPayslipsForAddress :many
-SELECT batch_number, amount, status, tx_hash FROM payslips WHERE address = ? ORDER BY batch_number DESC
+SELECT p.batch_number, p.amount, p.status, p.tx_hash, r.epoch_number
+FROM payslips p
+JOIN rewards r ON r.batch_number = p.batch_number
+WHERE p.address = ?
+ORDER BY p.batch_number DESC
 `
 
 type GetPayslipsForAddressRow struct {
@@ -363,6 +367,7 @@ type GetPayslipsForAddressRow struct {
 	Amount      int64          `json:"amount"`
 	Status      string         `json:"status"`
 	TxHash      sql.NullString `json:"tx_hash"`
+	EpochNumber int64          `json:"epoch_number"`
 }
 
 func (q *Queries) GetPayslipsForAddress(ctx context.Context, address string) ([]GetPayslipsForAddressRow, error) {
@@ -379,6 +384,7 @@ func (q *Queries) GetPayslipsForAddress(ctx context.Context, address string) ([]
 			&i.Amount,
 			&i.Status,
 			&i.TxHash,
+			&i.EpochNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -394,13 +400,14 @@ func (q *Queries) GetPayslipsForAddress(ctx context.Context, address string) ([]
 }
 
 const GetPendingTransactions = `-- name: GetPendingTransactions :many
-SELECT hash, address, amount FROM transactions WHERE status = 'awaiting_confirmation'
+SELECT hash, address, amount, submitted_height FROM transactions WHERE status = 'awaiting_confirmation'
 `
 
 type GetPendingTransactionsRow struct {
-	Hash    string `json:"hash"`
-	Address string `json:"address"`
-	Amount  int64  `json:"amount"`
+	Hash            string `json:"hash"`
+	Address         string `json:"address"`
+	Amount          int64  `json:"amount"`
+	SubmittedHeight int64  `json:"submitted_height"`
 }
 
 func (q *Queries) GetPendingTransactions(ctx context.Context) ([]GetPendingTransactionsRow, error) {
@@ -412,7 +419,7 @@ func (q *Queries) GetPendingTransactions(ctx context.Context) ([]GetPendingTrans
 	items := []GetPendingTransactionsRow{}
 	for rows.Next() {
 		var i GetPendingTransactionsRow
-		if err := rows.Scan(&i.Hash, &i.Address, &i.Amount); err != nil {
+		if err := rows.Scan(&i.Hash, &i.Address, &i.Amount, &i.SubmittedHeight); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -484,6 +491,39 @@ func (q *Queries) GetRuntimeStatus(ctx context.Context) (RuntimeStatus, error) {
 	return i, err
 }
 
+const GetStakerEpochs = `-- name: GetStakerEpochs :many
+SELECT epoch_number, stake, percentage FROM stakers WHERE address = ? ORDER BY epoch_number DESC
+`
+
+type GetStakerEpochsRow struct {
+	EpochNumber int64   `json:"epoch_number"`
+	Stake       int64   `json:"stake"`
+	Percentage  float64 `json:"percentage"`
+}
+
+func (q *Queries) GetStakerEpochs(ctx context.Context, address string) ([]GetStakerEpochsRow, error) {
+	rows, err := q.db.QueryContext(ctx, GetStakerEpochs, address)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetStakerEpochsRow{}
+	for rows.Next() {
+		var i GetStakerEpochsRow
+		if err := rows.Scan(&i.EpochNumber, &i.Stake, &i.Percentage); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const GetStakerLatest = `-- name: GetStakerLatest :one
 SELECT epoch_number, stake, percentage FROM stakers WHERE address = ? ORDER BY epoch_number DESC LIMIT 1
 `
@@ -499,6 +539,43 @@ func (q *Queries) GetStakerLatest(ctx context.Context, address string) (GetStake
 	var i GetStakerLatestRow
 	err := row.Scan(&i.EpochNumber, &i.Stake, &i.Percentage)
 	return i, err
+}
+
+const GetStakerRewardsByEpoch = `-- name: GetStakerRewardsByEpoch :many
+SELECT r.epoch_number, CAST(COALESCE(SUM(p.amount), 0) AS INTEGER) AS reward
+FROM payslips p
+JOIN rewards r ON r.batch_number = p.batch_number
+WHERE p.address = ?
+GROUP BY r.epoch_number
+ORDER BY r.epoch_number DESC
+`
+
+type GetStakerRewardsByEpochRow struct {
+	EpochNumber int64 `json:"epoch_number"`
+	Reward      int64 `json:"reward"`
+}
+
+func (q *Queries) GetStakerRewardsByEpoch(ctx context.Context, address string) ([]GetStakerRewardsByEpochRow, error) {
+	rows, err := q.db.QueryContext(ctx, GetStakerRewardsByEpoch, address)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetStakerRewardsByEpochRow{}
+	for rows.Next() {
+		var i GetStakerRewardsByEpochRow
+		if err := rows.Scan(&i.EpochNumber, &i.Reward); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const GetStakersForEpoch = `-- name: GetStakersForEpoch :many
@@ -991,14 +1068,15 @@ func (q *Queries) InsertStaker(ctx context.Context, arg InsertStakerParams) erro
 }
 
 const InsertTransaction = `-- name: InsertTransaction :exec
-INSERT INTO transactions (hash, address, amount, status) VALUES (?, ?, ?, ?)
+INSERT INTO transactions (hash, address, amount, status, submitted_height) VALUES (?, ?, ?, ?, ?)
 `
 
 type InsertTransactionParams struct {
-	Hash    string `json:"hash"`
-	Address string `json:"address"`
-	Amount  int64  `json:"amount"`
-	Status  string `json:"status"`
+	Hash            string `json:"hash"`
+	Address         string `json:"address"`
+	Amount          int64  `json:"amount"`
+	Status          string `json:"status"`
+	SubmittedHeight int64  `json:"submitted_height"`
 }
 
 func (q *Queries) InsertTransaction(ctx context.Context, arg InsertTransactionParams) error {
@@ -1007,6 +1085,7 @@ func (q *Queries) InsertTransaction(ctx context.Context, arg InsertTransactionPa
 		arg.Address,
 		arg.Amount,
 		arg.Status,
+		arg.SubmittedHeight,
 	)
 	return err
 }
@@ -1409,11 +1488,13 @@ func (q *Queries) ListRewardBatchesByEpoch(ctx context.Context, epochNumber int6
 }
 
 const ListRewardsByEpochRange = `-- name: ListRewardsByEpochRange :many
-SELECT epoch_number, SUM(amount) AS total_amount, SUM(pool_fee) AS total_fee, COUNT(*) AS batches
-FROM rewards
-WHERE epoch_number BETWEEN ? AND ?
-GROUP BY epoch_number
-ORDER BY epoch_number ASC
+SELECT r.epoch_number, SUM(r.amount) AS total_amount, SUM(r.pool_fee) AS total_fee, COUNT(*) AS batches,
+       COALESCE(e.num_stakers, 0) AS num_stakers, COALESCE(e.balance, 0) AS total_stake_luna
+FROM rewards r
+LEFT JOIN epochs e ON e.number = r.epoch_number
+WHERE r.epoch_number BETWEEN ? AND ?
+GROUP BY r.epoch_number
+ORDER BY r.epoch_number ASC
 `
 
 type ListRewardsByEpochRangeParams struct {
@@ -1422,10 +1503,12 @@ type ListRewardsByEpochRangeParams struct {
 }
 
 type ListRewardsByEpochRangeRow struct {
-	EpochNumber int64           `json:"epoch_number"`
-	TotalAmount sql.NullFloat64 `json:"total_amount"`
-	TotalFee    sql.NullFloat64 `json:"total_fee"`
-	Batches     int64           `json:"batches"`
+	EpochNumber    int64           `json:"epoch_number"`
+	TotalAmount    sql.NullFloat64 `json:"total_amount"`
+	TotalFee       sql.NullFloat64 `json:"total_fee"`
+	Batches        int64           `json:"batches"`
+	NumStakers     int64           `json:"num_stakers"`
+	TotalStakeLuna int64           `json:"total_stake_luna"`
 }
 
 func (q *Queries) ListRewardsByEpochRange(ctx context.Context, arg ListRewardsByEpochRangeParams) ([]ListRewardsByEpochRangeRow, error) {
@@ -1442,6 +1525,8 @@ func (q *Queries) ListRewardsByEpochRange(ctx context.Context, arg ListRewardsBy
 			&i.TotalAmount,
 			&i.TotalFee,
 			&i.Batches,
+			&i.NumStakers,
+			&i.TotalStakeLuna,
 		); err != nil {
 			return nil, err
 		}

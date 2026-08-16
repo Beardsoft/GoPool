@@ -85,10 +85,10 @@ UPDATE payslips SET tx_hash = NULL, status = 'pending' WHERE tx_hash = ?;
 UPDATE payslips SET status = 'pending' WHERE address = ? AND status = 'out_for_payment';
 
 -- name: InsertTransaction :exec
-INSERT INTO transactions (hash, address, amount, status) VALUES (?, ?, ?, ?);
+INSERT INTO transactions (hash, address, amount, status, submitted_height) VALUES (?, ?, ?, ?, ?);
 
 -- name: GetPendingTransactions :many
-SELECT hash, address, amount FROM transactions WHERE status = 'awaiting_confirmation';
+SELECT hash, address, amount, submitted_height FROM transactions WHERE status = 'awaiting_confirmation';
 
 -- name: SetTransactionStatus :exec
 UPDATE transactions SET status = ? WHERE hash = ?;
@@ -138,7 +138,11 @@ SELECT EXISTS(SELECT 1 FROM stakers WHERE address = ?);
 SELECT epoch_number, stake, percentage FROM stakers WHERE address = ? ORDER BY epoch_number DESC LIMIT 1;
 
 -- name: GetPayslipsForAddress :many
-SELECT batch_number, amount, status, tx_hash FROM payslips WHERE address = ? ORDER BY batch_number DESC;
+SELECT p.batch_number, p.amount, p.status, p.tx_hash, r.epoch_number
+FROM payslips p
+JOIN rewards r ON r.batch_number = p.batch_number
+WHERE p.address = ?
+ORDER BY p.batch_number DESC;
 
 -- name: GetTransactionsForAddress :many
 SELECT hash, amount, status, submitted_at FROM transactions WHERE address = ? ORDER BY submitted_at DESC;
@@ -164,11 +168,13 @@ ORDER BY number DESC
 LIMIT 1;
 
 -- name: ListRewardsByEpochRange :many
-SELECT epoch_number, SUM(amount) AS total_amount, SUM(pool_fee) AS total_fee, COUNT(*) AS batches
-FROM rewards
-WHERE epoch_number BETWEEN ? AND ?
-GROUP BY epoch_number
-ORDER BY epoch_number ASC;
+SELECT r.epoch_number, SUM(r.amount) AS total_amount, SUM(r.pool_fee) AS total_fee, COUNT(*) AS batches,
+       COALESCE(e.num_stakers, 0) AS num_stakers, COALESCE(e.balance, 0) AS total_stake_luna
+FROM rewards r
+LEFT JOIN epochs e ON e.number = r.epoch_number
+WHERE r.epoch_number BETWEEN ? AND ?
+GROUP BY r.epoch_number
+ORDER BY r.epoch_number ASC;
 
 -- name: InsertAuditLog :one
 INSERT INTO audit_logs (action_type, address, amount, fee, kind, status, intent_data)
@@ -360,6 +366,17 @@ RETURNING id;
 
 -- name: UpdatePayslipStatusFailed :exec
 UPDATE payslips SET status='failed' WHERE tx_hash=?;
+
+-- name: GetStakerEpochs :many
+SELECT epoch_number, stake, percentage FROM stakers WHERE address = ? ORDER BY epoch_number DESC;
+
+-- name: GetStakerRewardsByEpoch :many
+SELECT r.epoch_number, CAST(COALESCE(SUM(p.amount), 0) AS INTEGER) AS reward
+FROM payslips p
+JOIN rewards r ON r.batch_number = p.batch_number
+WHERE p.address = ?
+GROUP BY r.epoch_number
+ORDER BY r.epoch_number DESC;
 
 -- name: ListRewardBatchesByEpoch :many
 SELECT batch_number, epoch_number, amount, pool_fee, num_stakers
