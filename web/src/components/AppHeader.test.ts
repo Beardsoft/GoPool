@@ -65,6 +65,27 @@ describe('AppHeader', () => {
     expect(wrapper.find('.operator-link').exists()).toBe(false)
   })
 
+  it('moves sign out into the account menu dropdown', async () => {
+    const wrapper = await mountHeader({ address: ADDR, operator: true })
+    expect(wrapper.find('.session-menu-panel').exists()).toBe(false)
+    await wrapper.get('.session-chip').trigger('click')
+    expect(wrapper.get('.session-menu-panel').text()).toContain('Sign out')
+    mockFetch('/api/auth/logout', { ok: true })
+    await wrapper.get('.session-menu-item-danger').trigger('click')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/auth/logout', expect.objectContaining({ method: 'POST' }))
+    expect(wrapper.find('.session-menu-panel').exists()).toBe(false)
+  })
+
+  it('closes the account menu on outside click', async () => {
+    const wrapper = await mountHeader({ address: ADDR, operator: true })
+    await wrapper.get('.session-chip').trigger('click')
+    expect(wrapper.find('.session-menu-panel').exists()).toBe(true)
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(wrapper.find('.session-menu-panel').exists()).toBe(false)
+  })
+
   it('switches the complete application theme and persists the choice', async () => {
     const wrapper = await mountHeader()
     const toggle = wrapper.get('[aria-label="Switch to dark theme"]')

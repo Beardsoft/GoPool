@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useTheme } from '../composables/useTheme'
 import { useSession } from '../composables/useSession'
@@ -7,6 +8,33 @@ import { shortAddress } from '../utils/format'
 
 const { theme, toggleTheme } = useTheme()
 const { signedIn, address, operator, login, logout } = useSession()
+
+const sessionMenuOpen = ref(false)
+const sessionMenuRef = ref<HTMLElement | null>(null)
+
+function onGlobalPointerDown(e: MouseEvent) {
+  if (!sessionMenuOpen.value) return
+  const root = sessionMenuRef.value
+  if (root && !root.contains(e.target as Node)) sessionMenuOpen.value = false
+}
+
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') sessionMenuOpen.value = false
+}
+
+async function signOut() {
+  sessionMenuOpen.value = false
+  await logout()
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', onGlobalPointerDown)
+  document.addEventListener('keydown', onGlobalKeydown)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onGlobalPointerDown)
+  document.removeEventListener('keydown', onGlobalKeydown)
+})
 </script>
 
 <template>
@@ -27,11 +55,27 @@ const { signedIn, address, operator, login, logout } = useSession()
           <RouterLink v-if="!signedIn || operator" to="/operator" class="operator-link">Operator</RouterLink>
         </nav>
         <button v-if="!signedIn" type="button" class="login-btn" @click="login">Sign in with Nimiq</button>
-        <span v-else class="session-chip">
-          <Identicon :address="address" :size="22" />
-          <RouterLink to="/me" class="session-address" :title="address">{{ shortAddress(address) }}</RouterLink>
-          <button type="button" class="signout-btn" @click="logout" aria-label="Sign out">Sign out</button>
-        </span>
+        <div v-else ref="sessionMenuRef" class="session-menu">
+          <button
+            type="button"
+            class="session-chip"
+            :aria-expanded="sessionMenuOpen"
+            aria-haspopup="menu"
+            :aria-label="`Account menu — ${address}`"
+            @click="sessionMenuOpen = !sessionMenuOpen"
+          >
+            <Identicon :address="address" :size="22" />
+            <span class="session-address" :title="address">{{ shortAddress(address) }}</span>
+            <svg class="session-chevron" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <div v-if="sessionMenuOpen" class="session-menu-panel" role="menu">
+            <RouterLink to="/me" class="session-menu-item" role="menuitem" @click="sessionMenuOpen = false">My dashboard</RouterLink>
+            <div class="session-menu-sep" />
+            <button type="button" class="session-menu-item session-menu-item-danger" role="menuitem" @click="signOut">Sign out</button>
+          </div>
+        </div>
         <button
           type="button"
           class="theme-toggle"
@@ -123,6 +167,7 @@ const { signedIn, address, operator, login, logout } = useSession()
   cursor: pointer;
 }
 .login-btn:hover { background: rgba(255, 255, 255, .15); }
+.session-menu { position: relative; }
 .session-chip {
   display: inline-flex;
   align-items: center;
@@ -131,23 +176,55 @@ const { signedIn, address, operator, login, logout } = useSession()
   border: 1px solid rgba(255, 255, 255, .14);
   border-radius: 999px;
   background: rgba(255, 255, 255, .08);
+  cursor: pointer;
+  font: inherit;
 }
+.session-chip:hover { background: rgba(255, 255, 255, .15); }
 .session-address {
   color: white;
-  text-decoration: none;
   font-family: var(--font-mono);
   font-size: .78rem;
   font-weight: 600;
 }
-.signout-btn {
-  border: 0;
-  background: none;
+.session-chevron {
+  width: 12px;
+  height: 12px;
   color: rgba(255, 255, 255, .6);
-  font-size: .75rem;
+}
+.session-menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  min-width: 200px;
+  padding: 6px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-elevated);
+}
+.session-menu-item {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--app-text);
+  font-size: .85rem;
   font-weight: 600;
+  text-align: left;
+  text-decoration: none;
   cursor: pointer;
 }
-.signout-btn:hover { color: white; }
+.session-menu-item:hover { background: var(--bg-muted); }
+.session-menu-item-danger { color: var(--danger-text); }
+.session-menu-item-danger:hover { background: var(--danger-soft); }
+.session-menu-sep {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--app-border);
+}
 .theme-toggle {
   width: 40px;
   height: 40px;

@@ -1,5 +1,11 @@
+declare module '*?url' {
+  const url: string
+  export default url
+}
+
 declare module '@nimiq/identicons' {
   const Identicons: {
+    svgPath: string
     svg(text: string): Promise<string>
     toDataUrl(text: string): Promise<string>
     render(text: string, element: HTMLElement): Promise<void>
