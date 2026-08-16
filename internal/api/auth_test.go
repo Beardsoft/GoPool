@@ -125,6 +125,19 @@ func TestSessionEndpoint(t *testing.T) {
 	}
 }
 
+func TestAuthLogoutClearsCookie(t *testing.T) {
+	a := &API{cfg: &config.Config{SessionSecret: "test-secret"}}
+	rec := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != sessionCookieName || cookies[0].MaxAge != -1 {
+		t.Fatalf("cookies = %+v, want expired %s cookie", cookies, sessionCookieName)
+	}
+}
+
 func TestRequireSessionRejectsMissingCookie(t *testing.T) {
 	a := &API{cfg: &config.Config{SessionSecret: "test-secret"}}
 	protected := a.requireSession(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })

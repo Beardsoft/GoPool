@@ -81,6 +81,15 @@ func (a *API) registerAuthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/challenge", a.handleAuthChallenge)
 	mux.HandleFunc("POST /api/auth/verify", a.handleAuthVerify)
 	mux.HandleFunc("GET /api/session", a.requireSession(a.handleSession))
+	mux.HandleFunc("POST /api/auth/logout", a.handleAuthLogout)
+}
+
+func (a *API) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1,
+		HttpOnly: true, SameSite: http.SameSiteLaxMode,
+	})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 type sessionResponse struct {
