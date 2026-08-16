@@ -1,0 +1,42 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "GoPool Overview",
+    "tags": ["gopool"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "type": "stat",
+        "title": "Stakers",
+        "targets": [{"expr": "gopool_stakers"}],
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "type": "stat",
+        "title": "Pending Payslips Luna",
+        "targets": [{"expr": "gopool_payslips_pending_luna"}],
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+      },
+      {
+        "type": "stat",
+        "title": "Live Stake Luna",
+        "targets": [{"expr": "gopool_live_stake_luna"}],
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+      },
+      {
+        "type": "graph",
+        "title": "Rewards Total",
+        "targets": [{"expr": "rate(gopool_rewards_luna_total[5m])"}],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+      },
+      {
+        "type": "graph",
+        "title": "Payout Latency",
+        "targets": [{"expr": "histogram_quantile(0.95, rate(gopool_payout_latency_seconds_bucket[5m]))"}],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+      }
+    ],
+    "time": {"from": "now-7d", "to": "now"},
+    "refresh": "30s"
+  }
+}

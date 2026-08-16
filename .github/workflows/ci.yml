@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Install sqlc
+        run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+      - name: Generate sqlc
+        run: $HOME/go/bin/sqlc generate
+      - name: Test
+        run: go test ./...
+      - name: Build binaries
+        run: |
+          CGO_ENABLED=1 go build -o gopool ./cmd
+          CGO_ENABLED=1 go build -o gopool-api ./cmd/api
+          test -f gopool && test -f gopool-api
+      - name: Lint
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5
+          $HOME/go/bin/golangci-lint run ./...
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install deps
+        working-directory: web
+        run: npm ci
+      - name: Typecheck & Build
+        working-directory: web
+        run: npm run build

@@ -1,5 +1,5 @@
 {
-    "rpc_url": "http://127.0.0.1:8647",
+    "rpc_url": "https://rpc-testnet.nimiqscan.com/",
     "network": "dev-albatross",
     "pool_fee_wallet": "NQ46 U66M JNLD 0DJ7 0E9P Q7XR V9KV H976 813A",
     "pool_fee_percentage": 0.01,
@@ -7,5 +7,9 @@
     "payout_mode": "delegate",
     "min_payout_luna": 1,
     "auto_reactivate": true,
-    "metrics_addr": ":9100"
+    "metrics_addr": ":9100",
+    "api_addr": ":8080",
+    "session_secret": "change-me-to-a-long-random-string",
+    "validator_address": "NQ46 U66M JNLD 0DJ7 0E9P Q7XR V9KV H976 813A",
+    "operator_addresses": "NQ17 VERV F3MQ 283T NRSR FPJG 55BJ PMHC N8MD"
 }

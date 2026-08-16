@@ -21,8 +21,10 @@ async function verifyAccess() {
   } catch (cause) {
     const error = cause as ApiError
     if (error.status === 401) access.value = 'signed-out'
-    else if (error.status === 403) access.value = 'denied'
-    else {
+    else if (error.status === 403) {
+      access.value = 'denied'
+      message.value = error.message || 'This address is not configured as an operator for this pool.'
+    } else {
       access.value = 'error'
       message.value = error.message || 'The operator API could not be reached.'
     }

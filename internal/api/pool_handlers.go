@@ -17,13 +17,16 @@ type poolResponse struct {
 	PoolDescription   string  `json:"pool_description"`
 	ContactURL        string  `json:"contact_url"`
 	Disclosure        string  `json:"disclosure"`
+	Network           string  `json:"network"`
 }
 
 type rewardPointResponse struct {
-	EpochNumber int64 `json:"epoch_number"`
-	TotalAmount int64 `json:"total_amount"`
-	TotalFee    int64 `json:"total_fee"`
-	Batches     int64 `json:"batches"`
+	EpochNumber    int64 `json:"epoch_number"`
+	TotalAmount    int64 `json:"total_amount"`
+	TotalFee       int64 `json:"total_fee"`
+	Batches        int64 `json:"batches"`
+	NumStakers     int64 `json:"num_stakers"`
+	TotalStakeLuna int64 `json:"total_stake_luna"`
 }
 
 func (a *API) handlePool(w http.ResponseWriter, r *http.Request) {
@@ -39,13 +42,14 @@ func (a *API) handlePool(w http.ResponseWriter, r *http.Request) {
 	}
 	feePct := 0.0
 	poolName := "GoPool"
-	poolDescription, contactURL, disclosure := "", "", ""
+	poolDescription, contactURL, disclosure, network := "", "", "", ""
 	if a.cfg != nil {
 		feePct = a.cfg.PoolFeePercentage
 		if a.cfg.PoolName != "" {
 			poolName = a.cfg.PoolName
 		}
 		poolDescription, contactURL, disclosure = a.cfg.PoolDescription, a.cfg.ContactURL, a.cfg.Disclosure
+		network = a.cfg.Network
 	}
 	writeJSON(w, http.StatusOK, poolResponse{
 		CurrentEpoch:      epoch.Number,
@@ -55,6 +59,7 @@ func (a *API) handlePool(w http.ResponseWriter, r *http.Request) {
 		TotalRewardsLuna:  totalRewards,
 		PoolFeePercentage: feePct,
 		PoolName:          poolName, PoolDescription: poolDescription, ContactURL: contactURL, Disclosure: disclosure,
+		Network: network,
 	})
 }
 
@@ -71,10 +76,12 @@ func (a *API) handlePoolRewards(w http.ResponseWriter, r *http.Request) {
 	points := make([]rewardPointResponse, len(rows))
 	for i, row := range rows {
 		points[i] = rewardPointResponse{
-			EpochNumber: row.EpochNumber,
-			TotalAmount: int64(row.TotalAmount.Float64),
-			TotalFee:    int64(row.TotalFee.Float64),
-			Batches:     row.Batches,
+			EpochNumber:    row.EpochNumber,
+			TotalAmount:    int64(row.TotalAmount.Float64),
+			TotalFee:       int64(row.TotalFee.Float64),
+			Batches:        row.Batches,
+			NumStakers:     row.NumStakers,
+			TotalStakeLuna: row.TotalStakeLuna,
 		}
 	}
 	writeJSON(w, http.StatusOK, points)

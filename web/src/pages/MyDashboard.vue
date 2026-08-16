@@ -2,13 +2,25 @@
 import { onMounted, ref } from 'vue'
 import { apiGet } from '../api'
 import { loginWithHub } from '../hub'
+import ExplorerLink from '../components/ui/ExplorerLink.vue'
+import NimAmount from '../components/ui/NimAmount.vue'
+import StatusBadge from '../components/ui/StatusBadge.vue'
+import EmptyState from '../components/ui/EmptyState.vue'
 import StakerPosition from '../components/StakerPosition.vue'
+
+interface Payslip {
+  batch_number: number
+  epoch_number: number
+  amount_luna: number
+  status: string
+  tx_hash?: string
+}
 
 interface StakerDetail {
   address: string
   stake_luna: number
   percentage: number
-  payslips: { batch_number: number; amount_luna: number; status: string }[]
+  payslips: Payslip[]
 }
 
 interface StakerHistory {
@@ -57,7 +69,7 @@ onMounted(load)
     <button v-if="!loggedIn" @click="login" class="btn">Log in with Nimiq Hub</button>
     <p v-if="error" class="error">{{ error }}</p>
     <div v-if="me">
-      <p class="muted">Address: <span class="address">{{ me.address }}</span></p>
+      <p class="muted">Address: <span class="address"><ExplorerLink kind="account" :value="me.address" /></span></p>
       <StakerPosition
         :position="{ address: me.address, stake_luna: me.stake_luna, percentage: me.percentage }"
         :history="history"
@@ -67,11 +79,22 @@ onMounted(load)
       <div style="display:flex; gap:8px; margin-bottom:12px">
         <button class="btn" @click="downloadPdf">Download PDF</button>
       </div>
-      <ul>
-        <li v-for="p in me.payslips" :key="p.batch_number">
-          batch {{ p.batch_number }}: {{ p.amount_luna }} luna — <span class="badge">{{ p.status }}</span>
-        </li>
-      </ul>
+      <table v-if="me.payslips.length">
+        <thead><tr><th>Batch</th><th>Epoch</th><th>Amount</th><th>Status</th><th>Transaction</th></tr></thead>
+        <tbody>
+          <tr v-for="p in me.payslips" :key="p.batch_number">
+            <td>{{ p.batch_number }}</td>
+            <td>{{ p.epoch_number }}</td>
+            <td><NimAmount :luna="p.amount_luna" /></td>
+            <td><StatusBadge :status="p.status" /></td>
+            <td>
+              <ExplorerLink v-if="p.tx_hash" kind="transaction" :value="p.tx_hash" label="View on explorer" />
+              <span v-else class="muted">Not sent yet</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <EmptyState v-else title="No payouts yet" description="Payouts appear here once your accumulated rewards cross the pool's minimum payout threshold." />
     </div>
   </div>
 </template>
@@ -81,7 +104,4 @@ onMounted(load)
 .stat { padding: var(--space-16); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); }
 .label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-60); margin-bottom: var(--space-8); }
 .value { font-size: 1.25rem; font-weight: 700; }
-ul { list-style: none; padding: 0; margin: 0; }
-li { padding: var(--space-12) 0; border-bottom: 1px solid var(--border); }
-li:last-child { border-bottom: none; }
 </style>

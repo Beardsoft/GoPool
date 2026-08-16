@@ -145,7 +145,7 @@ func (m *Manager) runPayouts(ctx context.Context) error {
 			"head":    head,
 		}
 		intentBytes, _ := json.Marshal(intent)
-		status := "pending"
+		status := "approved"
 		if m.cfg.DryRun {
 			status = "dry_run"
 		}
@@ -272,6 +272,10 @@ func (m *Manager) processApprovedPayouts(ctx context.Context) error {
 
 		logger.Logger.Info("approved payout executed", zap.Int64("audit_id", log.ID), zap.String("address", log.Address), zap.String("tx", hash))
 		metrics.PayoutsSubmitted.WithLabelValues(log.Kind).Inc()
+		if log.CreatedAt.Valid {
+			latency := time.Since(log.CreatedAt.Time).Seconds()
+			metrics.PayoutLatency.Observe(latency)
+		}
 
 		if m.broadcaster != nil {
 			m.broadcaster.Publish(PoolEvent{

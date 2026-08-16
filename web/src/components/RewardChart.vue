@@ -35,11 +35,13 @@ function render() {
     rewards: dark ? '#0CA6FE' : '#0582CA',
     cumulative: '#21BCA5',
     cumulativeFill: dark ? 'rgba(33, 188, 165, 0.14)' : 'rgba(33, 188, 165, 0.10)',
+    stake: dark ? '#F7C948' : '#E9B213',
   }
   const labels = filteredPoints.value.map(p => `Epoch ${p.epoch_number}`)
   const data = filteredPoints.value.map(p => p.total_amount)
   let running = 0
   const cumulative = filteredPoints.value.map(p => (running += p.total_amount))
+  const stake = filteredPoints.value.map(p => p.total_stake_luna ?? 0)
 
   chart = new Chart(chartRef.value, {
     type: 'line',
@@ -67,6 +69,16 @@ function render() {
           fill: 'origin',
           borderDash: [4, 4],
           yAxisID: 'y'
+        },
+        {
+          label: 'Total stake',
+          data: stake,
+          tension: 0.3,
+          borderColor: palette.stake,
+          backgroundColor: palette.stake,
+          pointBackgroundColor: palette.stake,
+          borderWidth: 2,
+          yAxisID: 'y2'
         }
       ]
     },
@@ -82,6 +94,13 @@ function render() {
           beginAtZero: true,
           title: { display: true, text: 'NIM', color: palette.text },
           grid: { color: palette.grid },
+          ticks: { color: palette.text, callback: (v) => formatNim(Number(v)) }
+        },
+        y2: {
+          position: 'right',
+          beginAtZero: true,
+          title: { display: true, text: 'Stake (NIM)', color: palette.text },
+          grid: { drawOnChartArea: false },
           ticks: { color: palette.text, callback: (v) => formatNim(Number(v)) }
         }
       },

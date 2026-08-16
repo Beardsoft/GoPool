@@ -55,16 +55,21 @@ func TestRedactedConfigNeverContainsSecrets(t *testing.T) {
 
 func TestValidateAPICanonicalizesAddress(t *testing.T) {
 	const canonical = "NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E"
+	const operator = "NQ17 VERV F3MQ 283T NRSR FPJG 55BJ PMHC N8MD"
 	cfg := Config{
-		APIAddr:          ":8080",
-		SessionSecret:    "s3cr3t",
-		ValidatorAddress: "nq20tsb0dfsmuh9c15gqgagjtte4d3ma859e",
+		APIAddr:           ":8080",
+		SessionSecret:     "s3cr3t",
+		ValidatorAddress:  "nq20tsb0dfsmuh9c15gqgagjtte4d3ma859e",
+		OperatorAddresses: "nq17vervf3mq283tnrsrfpjg55bjpmhcn8md",
 	}
 	if err := ValidateAPI(&cfg); err != nil {
 		t.Fatalf("ValidateAPI() error = %v, want nil", err)
 	}
 	if cfg.ValidatorAddress != canonical {
 		t.Errorf("ValidatorAddress = %q, want canonical %q", cfg.ValidatorAddress, canonical)
+	}
+	if cfg.OperatorAddresses != operator {
+		t.Errorf("OperatorAddresses = %q, want canonical %q", cfg.OperatorAddresses, operator)
 	}
 }
 

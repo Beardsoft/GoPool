@@ -1,0 +1,44 @@
+{
+  "alerts": [
+    {
+      "name": "GoPool Payout Latency High",
+      "expr": "histogram_quantile(0.95, rate(gopool_payout_latency_seconds_bucket[5m])) > 86400",
+      "for": "10m",
+      "labels": {"severity": "warning"},
+      "annotations": {
+        "summary": "Payout latency > 24h",
+        "description": "95th percentile payout latency is above 24 hours."
+      }
+    },
+    {
+      "name": "GoPool Pending Payslips Growing",
+      "expr": "gopool_payslips_pending > 1000",
+      "for": "15m",
+      "labels": {"severity": "critical"},
+      "annotations": {
+        "summary": "Too many pending payslips",
+        "description": "Pending payslips count is {{ $value }}."
+      }
+    },
+    {
+      "name": "GoPool Validator Jailed",
+      "expr": "gopool_validator_state{state=\"jailed\"} == 1",
+      "for": "0m",
+      "labels": {"severity": "critical"},
+      "annotations": {
+        "summary": "Validator is jailed",
+        "description": "Validator state is jailed."
+      }
+    },
+    {
+      "name": "GoPool RPC Errors",
+      "expr": "rate(gopool_rpc_errors_total[5m]) > 0.1",
+      "for": "5m",
+      "labels": {"severity": "warning"},
+      "annotations": {
+        "summary": "RPC error rate elevated",
+        "description": "RPC errors per second is {{ $value }}."
+      }
+    }
+  ]
+}

@@ -98,6 +98,16 @@ describe('OperatorLayout authentication boundary', () => {
     wrapper.unmount()
   })
 
+  it('surfaces a clear denied state when the session is authenticated but not an operator', async () => {
+    const wrapper = await mountOperator(403, { error: 'operator only' })
+
+    expect(wrapper.get('[data-operator-gateway]').text()).toContain('This address is not an operator')
+    expect(wrapper.get('[role="alert"]').text()).toContain('operator only')
+    expect(wrapper.find('[data-operator-nav]').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
   it('mounts the console and live connection only after the operator session is accepted', async () => {
     const wrapper = await mountOperator(200, overviewResponse())
 

@@ -1,0 +1,95 @@
+<style>
+  .direction-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; margin-top:24px; }
+  .direction { border:1px solid var(--border); border-radius:16px; overflow:hidden; background:var(--surface); cursor:pointer; transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease; }
+  .direction:hover { transform:translateY(-3px); box-shadow:0 18px 45px rgba(11,16,38,.12); }
+  .direction.selected { border-color:#16a88b; box-shadow:0 0 0 3px rgba(22,168,139,.12),0 18px 45px rgba(11,16,38,.12); }
+  .preview { min-height:325px; padding:14px; color:#f5f7ff; background:#111632; font-family:system-ui,sans-serif; }
+  .preview-nav { display:flex; justify-content:space-between; align-items:center; font-size:8px; color:#aab2d0; margin-bottom:22px; }
+  .preview-brand { color:white; font-weight:800; font-size:12px; letter-spacing:-.03em; }
+  .preview-links { display:flex; gap:9px; }
+  .eyebrow { color:#45d7b7; font-size:7px; text-transform:uppercase; letter-spacing:.12em; font-weight:700; }
+  .hero-title { margin:7px 0 8px; color:white; font-size:25px; line-height:.98; letter-spacing:-.055em; max-width:230px; }
+  .hero-copy { margin:0; color:#aab2d0; font-size:8px; line-height:1.5; max-width:220px; }
+  .preview-btn { display:inline-block; margin-top:12px; border-radius:7px; background:#45d7b7; color:#0c2030; font-size:8px; font-weight:800; padding:8px 11px; }
+  .metric-strip { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; border-radius:9px; overflow:hidden; margin-top:20px; background:#303653; }
+  .metric { background:#191f3f; padding:11px 9px; }
+  .metric span { display:block; color:#7983a5; font-size:6px; text-transform:uppercase; letter-spacing:.08em; }
+  .metric strong { display:block; margin-top:5px; color:white; font-size:11px; font-variant-numeric:tabular-nums; }
+  .data-head { display:flex; justify-content:space-between; align-items:end; margin-bottom:14px; }
+  .data-title { color:white; font-size:18px; font-weight:750; letter-spacing:-.04em; }
+  .live { color:#45d7b7; font-size:7px; }
+  .data-grid { display:grid; grid-template-columns:1.2fr .8fr; gap:8px; }
+  .panel { background:#191f3f; border:1px solid #2c3459; border-radius:10px; padding:11px; }
+  .panel-label { color:#7f89aa; font-size:6px; text-transform:uppercase; letter-spacing:.08em; }
+  .panel-value { margin-top:6px; color:white; font-size:17px; font-weight:750; }
+  .bar { height:5px; margin-top:15px; background:#2a3152; border-radius:5px; overflow:hidden; }
+  .bar:after { content:""; display:block; width:76%; height:100%; background:#45d7b7; border-radius:5px; }
+  .rows { margin-top:8px; }
+  .row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #2a3152; color:#aab2d0; font-size:7px; }
+  .hybrid-hero { display:grid; grid-template-columns:1.12fr .88fr; gap:10px; align-items:stretch; }
+  .live-card { position:relative; padding:13px; background:linear-gradient(145deg,#1b2347,#171d3c); border:1px solid #303961; border-radius:12px; overflow:hidden; }
+  .live-card:before { content:""; position:absolute; width:90px; height:90px; right:-35px; top:-35px; background:#45d7b7; opacity:.12; filter:blur(12px); border-radius:50%; }
+  .epoch { color:white; font-size:26px; font-weight:800; letter-spacing:-.06em; margin-top:14px; }
+  .epoch-caption { color:#929bbb; font-size:7px; }
+  .lookup { display:flex; gap:6px; margin-top:13px; padding:7px; background:#f7f8fc; border-radius:9px; }
+  .lookup-field { flex:1; color:#7d849d; background:white; border:1px solid #dce1ec; border-radius:5px; padding:6px; font-size:6px; }
+  .lookup-go { padding:6px 8px; background:#172047; color:white; border-radius:5px; font-size:6px; font-weight:700; }
+  .direction-copy { padding:15px 16px 17px; }
+  .direction-copy h3 { margin:0 0 5px; font-size:16px; }
+  .direction-copy p { margin:0; font-size:13px; line-height:1.45; color:var(--text-secondary); }
+  .recommended { display:inline-block; margin-bottom:8px; color:#0e806c; font-size:10px; text-transform:uppercase; letter-spacing:.1em; font-weight:800; }
+  @media(max-width:900px){ .direction-grid{grid-template-columns:1fr}.preview{min-height:300px} }
+</style>
+
+<h2>How should GoPool greet people?</h2>
+<p class="subtitle">All three support stakers and operators. The choice is which story the homepage tells first.</p>
+
+<div class="direction-grid">
+  <div class="direction" data-choice="showcase" onclick="toggleSelect(this)">
+    <div class="preview">
+      <div class="preview-nav"><span class="preview-brand">GoPool</span><span class="preview-links"><span>Performance</span><span>Epochs</span><span>My stake</span></span></div>
+      <div class="eyebrow">Nimiq staking, made visible</div>
+      <div class="hero-title">Stake with confidence.</div>
+      <p class="hero-copy">Transparent rewards, simple fees and live validator performance—without handing over custody.</p>
+      <span class="preview-btn">Check my stake</span>
+      <div class="metric-strip">
+        <div class="metric"><span>Delegated</span><strong>18.42M NIM</strong></div>
+        <div class="metric"><span>Stakers</span><strong>284</strong></div>
+        <div class="metric"><span>Pool fee</span><strong>2.50%</strong></div>
+      </div>
+    </div>
+    <div class="direction-copy"><h3>A · Trust first</h3><p>Strongest for acquisition and explaining why the pool deserves confidence. Existing stakers need one extra step to reach detail.</p></div>
+  </div>
+
+  <div class="direction" data-choice="data" onclick="toggleSelect(this)">
+    <div class="preview">
+      <div class="preview-nav"><span class="preview-brand">GoPool</span><span class="preview-links"><span>Overview</span><span>Epochs</span><span>Operator</span></span></div>
+      <div class="data-head"><div><div class="eyebrow">Pool overview</div><div class="data-title">Live performance</div></div><div class="live">● Synced</div></div>
+      <div class="data-grid">
+        <div class="panel"><div class="panel-label">Current epoch</div><div class="panel-value">#1,248</div><div class="bar"></div></div>
+        <div class="panel"><div class="panel-label">Chain lag</div><div class="panel-value">2 blocks</div></div>
+        <div class="panel"><div class="panel-label">Delegated stake</div><div class="panel-value">18.42M</div></div>
+        <div class="panel"><div class="panel-label">Rewards paid</div><div class="panel-value">436.8K</div></div>
+      </div>
+      <div class="panel rows"><div class="panel-label">Recent activity</div><div class="row"><span>Reward batch 184</span><span>2m ago</span></div><div class="row"><span>Epoch 1,248 started</span><span>18m ago</span></div></div>
+    </div>
+    <div class="direction-copy"><h3>B · Data first</h3><p>Fastest for returning stakers and operators. It feels capable, but asks newcomers to understand pool terminology immediately.</p></div>
+  </div>
+
+  <div class="direction" data-choice="hybrid" onclick="toggleSelect(this)">
+    <div class="preview">
+      <div class="preview-nav"><span class="preview-brand">GoPool</span><span class="preview-links"><span>Pool</span><span>Rewards</span><span>My stake</span><span>Sign in</span></span></div>
+      <div class="hybrid-hero">
+        <div><div class="eyebrow">Open, non-custodial staking</div><div class="hero-title" style="font-size:21px">Your stake. Fully accounted for.</div><p class="hero-copy">See exactly how the pool performs and what you earned.</p><span class="preview-btn">View my position</span></div>
+        <div class="live-card"><div class="live">● Pool healthy</div><div class="epoch">1,248</div><div class="epoch-caption">Current epoch · 76% complete</div><div class="bar"></div></div>
+      </div>
+      <div class="metric-strip">
+        <div class="metric"><span>Delegated</span><strong>18.42M</strong></div><div class="metric"><span>Rewards paid</span><strong>436.8K</strong></div><div class="metric"><span>Fee</span><strong>2.50%</strong></div>
+      </div>
+      <div class="lookup"><div class="lookup-field">NQ12 8D4K … check an address</div><div class="lookup-go">Look up</div></div>
+    </div>
+    <div class="direction-copy"><span class="recommended">Recommended</span><h3>C · Trust + live proof</h3><p>A concise promise sits beside real pool health, followed immediately by useful metrics and staker lookup. Operator tools remain a separate workspace.</p></div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:22px">Click the direction that feels closest. We can combine details after choosing the overall hierarchy.</p>

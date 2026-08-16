@@ -120,9 +120,10 @@ func (a *API) handleAuthVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	secure := r.TLS != nil
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookieName, Value: a.issueSession(addr), Path: "/",
-		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: true, MaxAge: int(sessionTTL.Seconds()),
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: secure, MaxAge: int(sessionTTL.Seconds()),
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"address": addr.String()})
 }

@@ -47,6 +47,26 @@ func TestRequireOperatorRejectsNonOperator(t *testing.T) {
 	}
 }
 
+func TestRequireOperatorAllowsConfiguredOperatorAddresses(t *testing.T) {
+	a, _, stakerCookie := operatorTestAPI(t)
+	stakerAddr, err := nimiq.ParseAddress("NQ32 EGL6 H9C8 0JJB PH4S 7RYY ULRC 5B6N 56RE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.cfg.OperatorAddresses = stakerAddr.String()
+	if err := a.queries.UpsertCursor(context.Background(), db.UpsertCursorParams{Name: pool.CursorName, Height: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/operator/health", nil)
+	req.AddCookie(stakerCookie)
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleOperatorDeactivate(t *testing.T) {
 	a, operatorCookie, _ := operatorTestAPI(t)
 

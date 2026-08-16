@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { apiGet } from '../../api'
+import ExplorerLink from '../../components/ui/ExplorerLink.vue'
+import { useExplorer } from '../../composables/useExplorer'
 import type { OperatorActivityResponse, OperatorEvent } from '../../types/api'
 
 const items = ref<OperatorEvent[]>([])
@@ -16,13 +18,25 @@ const categories = computed(() => {
   return Array.from(set).sort()
 })
 
-function formatContext(e: OperatorEvent): string {
-  if (!e.context_json) return ''
+const { explorerUrlFor } = useExplorer()
+
+interface ContextEntry {
+  key: string
+  value: string
+  link: { kind: 'account' | 'transaction'; url: string } | null
+}
+
+function contextEntries(e: OperatorEvent): ContextEntry[] {
+  if (!e.context_json) return []
   try {
     const parsed = JSON.parse(e.context_json)
-    return JSON.stringify(parsed, null, 2)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return []
+    return Object.entries(parsed).map(([key, value]) => {
+      const text = typeof value === 'string' ? value : JSON.stringify(value)
+      return { key, value: text, link: explorerUrlFor(text) }
+    })
   } catch {
-    return e.context_json
+    return []
   }
 }
 
@@ -89,9 +103,14 @@ onMounted(() => load())
               <strong>{{ e.summary }}</strong>
               <span class="meta">{{ e.category }}<template v-if="e.created_at"> · {{ new Date(e.created_at).toLocaleString() }}</template></span>
             </div>
-            <details class="context" v-if="formatContext(e)">
+            <details class="context" v-if="contextEntries(e).length">
               <summary>Context</summary>
-              <pre>{{ formatContext(e) }}</pre>
+              <dl class="context-rows">
+                <div v-for="entry in contextEntries(e)" :key="entry.key">
+                  <dt>{{ entry.key }}</dt>
+                  <dd><ExplorerLink v-if="entry.link" :kind="entry.link.kind" :value="entry.value" /><template v-else>{{ entry.value }}</template></dd>
+                </div>
+              </dl>
             </details>
             <p v-else class="empty-context">No structured context recorded for this event.</p>
           </div>
@@ -131,7 +150,10 @@ onMounted(() => load())
 
 .context { margin-top: 4px; }
 .context summary { cursor: pointer; color: var(--nimiq-light-blue); font-weight: 700; font-size: .86rem; }
-.context pre { margin: 8px 0 0; padding: 12px; border-radius: 10px; background: var(--surface-2); color: var(--app-text); font-family: var(--font-mono); font-size: .78rem; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.context-rows { margin: 8px 0 0; padding: 12px; border-radius: 10px; background: var(--surface-2); display: grid; gap: 6px; }
+.context-rows div { display: flex; justify-content: space-between; gap: 16px; }
+.context-rows dt { color: var(--app-faint); font-weight: 700; font-size: .8rem; }
+.context-rows dd { margin: 0; font-family: var(--font-mono); font-size: .78rem; overflow: auto; white-space: pre-wrap; word-break: break-word; text-align: right; }
 
 .empty-context { margin: 0; color: var(--app-faint); font-size: .86rem; }
 .empty-state { padding: 48px 0; text-align: center; color: var(--app-faint); }

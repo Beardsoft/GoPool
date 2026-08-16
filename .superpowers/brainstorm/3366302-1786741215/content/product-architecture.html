@@ -1,0 +1,33 @@
+<style>
+  .flow{display:grid;grid-template-columns:1fr auto 1.25fr;gap:16px;align-items:stretch;margin-top:24px}.stage{border:1px solid var(--border);border-radius:16px;background:var(--surface);padding:18px}.stage.setup{border-top:4px solid #e9b213}.stage.live{border-top:4px solid #21bca5}.stage-label{font-size:10px;text-transform:uppercase;letter-spacing:.107em;font-weight:800;color:var(--text-secondary)}.stage h3{margin:7px 0 5px;font-size:19px}.stage>p{margin:0 0 16px;color:var(--text-secondary);font-size:13px;line-height:1.45}.step{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-top:1px solid var(--border)}.num{width:23px;height:23px;display:grid;place-items:center;flex:0 0 auto;border-radius:50%;background:rgba(31,35,72,.07);color:#1f2348;font-size:10px;font-weight:800}.step strong{display:block;font-size:12px}.step span{display:block;margin-top:2px;font-size:11px;color:var(--text-secondary);line-height:1.35}.arrow{display:grid;place-items:center;color:#0582ca;font-size:24px;font-weight:300}.surfaces{display:grid;grid-template-columns:1fr 1fr;gap:12px}.surface{padding:14px;border-radius:12px;background:rgba(31,35,72,.045)}.surface.operator{background:radial-gradient(100% 100% at bottom right,#260133,#1f2348);color:white}.surface h4{margin:0 0 10px;font-size:13px}.navitem{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid rgba(31,35,72,.09);font-size:11px}.operator .navitem{border-color:rgba(255,255,255,.1)}.navitem span{opacity:.56;font-size:9px}.boundary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}.access{padding:12px;border-radius:10px;background:rgba(5,130,202,.07);border:1px solid rgba(5,130,202,.12)}.access strong{display:block;font-size:11px}.access span{display:block;margin-top:4px;font-size:10px;color:var(--text-secondary);line-height:1.35}.principles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px}.principle{padding:12px;border-radius:10px;background:rgba(33,188,165,.08);font-size:11px;color:rgba(31,35,72,.75);font-weight:700;text-align:center}.approval{margin-top:22px}@media(max-width:900px){.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.surfaces,.boundary,.principles{grid-template-columns:1fr}}
+</style>
+
+<h2>From first boot to daily operation</h2>
+<p class="subtitle">GoPool becomes a guided product with one setup path and two clearly separated everyday surfaces.</p>
+
+<div class="flow">
+  <section class="stage setup">
+    <div class="stage-label">First boot</div><h3>Setup assistant</h3><p>Only shown until the pool passes its readiness check.</p>
+    <div class="step"><span class="num">1</span><div><strong>System check</strong><span>Database, RPC reachability, secret presence and network.</span></div></div>
+    <div class="step"><span class="num">2</span><div><strong>Validator identity</strong><span>Detect the mounted key and verify its public address.</span></div></div>
+    <div class="step"><span class="num">3</span><div><strong>Pool economics</strong><span>Fee, payout mode, minimum payout and plain-language impact.</span></div></div>
+    <div class="step"><span class="num">4</span><div><strong>Public profile</strong><span>Pool name, short description, contact and operator disclosure.</span></div></div>
+    <div class="step"><span class="num">5</span><div><strong>Access and alerts</strong><span>Hub operator addresses and notification channels.</span></div></div>
+    <div class="step"><span class="num">6</span><div><strong>Review and launch</strong><span>Validated config, restart instructions and readiness summary.</span></div></div>
+  </section>
+
+  <div class="arrow">→</div>
+
+  <section class="stage live">
+    <div class="stage-label">Configured pool</div><h3>One product, two surfaces</h3><p>Public trust and operator control share data and design, but never compete in the same navigation.</p>
+    <div class="surfaces">
+      <div class="surface"><h4>Public pool</h4><div class="navitem"><b>Overview</b><span>health + trust</span></div><div class="navitem"><b>Performance</b><span>epochs + rewards</span></div><div class="navitem"><b>Staker lookup</b><span>any address</span></div><div class="navitem"><b>My stake</b><span>Hub sign-in</span></div></div>
+      <div class="surface operator"><h4>Operator console</h4><div class="navitem"><b>Overview</b><span>health + attention</span></div><div class="navitem"><b>Operations</b><span>payouts + actions</span></div><div class="navitem"><b>Activity</b><span>audit + logs</span></div><div class="navitem"><b>Alerts</b><span>channels + delivery</span></div><div class="navitem"><b>Settings</b><span>validated config</span></div></div>
+    </div>
+    <div class="boundary"><div class="access"><strong>Public</strong><span>Pool facts, epochs, rewards and address lookup.</span></div><div class="access"><strong>Staker session</strong><span>Hub identity resolves directly to personal stake.</span></div><div class="access"><strong>Operator session</strong><span>Hub allowlist gates configuration and actions.</span></div></div>
+  </section>
+</div>
+
+<div class="principles"><div class="principle">Explain before asking</div><div class="principle">Health before detail</div><div class="principle">Exceptions before logs</div><div class="principle">Review before mutation</div></div>
+
+<div class="options approval"><div class="option" data-choice="approve-product-architecture" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>Approve this product architecture</h3><p>Use this setup journey, public information architecture and operator console structure.</p></div></div></div>

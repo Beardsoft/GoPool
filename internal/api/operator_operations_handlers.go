@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -98,13 +99,18 @@ func operationCorrelationID(r *http.Request, prefix string) string {
 	return fmt.Sprintf("%s-%d", prefix, time.Now().UTC().UnixNano())
 }
 
-func operatorOperationEvent(eventType, summary, actor, correlationID string) db.InsertOperatorEventParams {
+func operatorOperationEvent(eventType, summary, actor, correlationID string, eventCtx map[string]any) db.InsertOperatorEventParams {
+	ctxJSON := ""
+	if b, err := json.Marshal(eventCtx); err == nil {
+		ctxJSON = string(b)
+	}
 	return db.InsertOperatorEventParams{
 		Severity:      "info",
 		Category:      "operator",
 		Source:        "api",
 		EventType:     eventType,
 		Summary:       summary,
+		ContextJson:   sql.NullString{String: ctxJSON, Valid: ctxJSON != ""},
 		ActorAddress:  sql.NullString{String: actor, Valid: actor != ""},
 		CorrelationID: sql.NullString{String: correlationID, Valid: correlationID != ""},
 	}
@@ -136,7 +142,7 @@ func (a *API) queueAndAuditValidatorAction(ctx context.Context, action, actor, c
 		if err != nil {
 			return err
 		}
-		_, err = q.InsertOperatorEvent(ctx, operatorOperationEvent("validator_action_requested", "Validator action requested", actor, correlationID))
+		_, err = q.InsertOperatorEvent(ctx, operatorOperationEvent("validator_action_requested", "Validator action requested", actor, correlationID, map[string]any{"action": action}))
 		return err
 	})
 	return queued, err
@@ -249,7 +255,7 @@ func (a *API) handleOperatorActionSub(w http.ResponseWriter, r *http.Request) {
 			if stored.CorrelationID.Valid {
 				correlationID = stored.CorrelationID.String
 			}
-			_, err = q.InsertOperatorEvent(ctx, operatorOperationEvent("validator_action_cancelled", "Validator action cancelled", addr.String(), correlationID))
+			_, err = q.InsertOperatorEvent(ctx, operatorOperationEvent("validator_action_cancelled", "Validator action cancelled", addr.String(), correlationID, map[string]any{"action_id": id, "action": stored.Action}))
 			return err
 		})
 		if err != nil {
@@ -347,7 +353,7 @@ func (a *API) handleOperatorPayoutSub(w http.ResponseWriter, r *http.Request) {
 		if len(retried) == 0 {
 			return errInvalidPayoutRetry
 		}
-		_, err = q.InsertOperatorEvent(ctx, operatorOperationEvent("payout_retry_requested", "Failed payout group returned to pending", addr.String(), correlationID))
+		_, err = q.InsertOperatorEvent(ctx, operatorOperationEvent("payout_retry_requested", "Failed payout group returned to pending", addr.String(), correlationID, map[string]any{"txHash": idStr, "payslips_retried": len(retried)}))
 		return err
 	})
 	if errors.Is(err, errInvalidPayoutRetry) {

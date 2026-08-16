@@ -80,6 +80,11 @@ var (
 		Name: "gopool_payouts_failed_total",
 		Help: "Payout transactions that failed execution.",
 	})
+	PayoutLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "gopool_payout_latency_seconds",
+		Help:    "Latency from audit log creation to payout submission.",
+		Buckets: prometheus.ExponentialBuckets(60, 2, 15),
+	})
 	RPCErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "gopool_rpc_errors_total",
 		Help: "RPC failures in the daemon loop.",
@@ -94,6 +99,7 @@ func init() {
 		LiveStake, LiveStakers, ValidatorState, WalletBalance,
 		RewardsTotal, PoolFeeTotal,
 		PayoutsSubmitted, PayoutsConfirmed, PayoutsFailed,
+		PayoutLatency,
 		RPCErrors,
 	)
 }

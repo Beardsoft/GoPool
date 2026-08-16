@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { apiGet, apiPost } from '../../api'
+import ExplorerLink from '../../components/ui/ExplorerLink.vue'
 import HoldConfirmButton from '../../components/ui/HoldConfirmButton.vue'
 import NimAmount from '../../components/ui/NimAmount.vue'
 import StatusBadge from '../../components/ui/StatusBadge.vue'
@@ -71,8 +72,8 @@ onMounted(load)
       <div v-if="filteredPayouts.length" class="table-wrap">
         <table><thead><tr><th>Status</th><th>Recipient</th><th>Amount</th><th>Transaction</th><th></th></tr></thead>
           <tbody><tr v-for="item in filteredPayouts" :key="item.hash">
-            <td><StatusBadge :status="item.status || 'unknown'" /></td><td class="address">{{ item.address }}</td>
-            <td><NimAmount :luna="item.amount ?? 0" /></td><td class="hash">{{ item.hash }}</td>
+            <td><StatusBadge :status="item.status || 'unknown'" /></td><td class="address"><ExplorerLink kind="account" :value="item.address" /></td>
+            <td><NimAmount :luna="item.amount ?? 0" /></td><td class="hash"><ExplorerLink kind="transaction" :value="item.hash" /></td>
             <td><button v-if="item.status === 'failed'" class="btn" @click="retryPayout(item.hash)">Retry</button></td>
           </tr></tbody></table>
       </div>
@@ -81,7 +82,7 @@ onMounted(load)
 
     <section class="card">
       <h2>Validator action history</h2>
-      <ul v-if="actions.length" class="action-list"><li v-for="item in actions" :key="item.id"><StatusBadge :status="item.state" /> {{ item.action }} <span class="muted">{{ item.error_summary }}</span></li></ul>
+      <ul v-if="actions.length" class="action-list"><li v-for="item in actions" :key="item.id"><StatusBadge :status="item.state" /> {{ item.action }} <ExplorerLink v-if="item.tx_hash" kind="transaction" :value="item.tx_hash" label="tx" /><span v-if="item.error_summary" class="muted">{{ item.error_summary }}</span></li></ul>
       <p v-else class="muted">No validator actions have been requested.</p>
     </section>
 

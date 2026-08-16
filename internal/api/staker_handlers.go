@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
 	"net/http"
+	"strconv"
 
 	nimiq "github.com/NimMiniApps/nimiq-go"
 
@@ -12,6 +14,7 @@ import (
 
 type payslipResponse struct {
 	BatchNumber int64  `json:"batch_number"`
+	EpochNumber int64  `json:"epoch_number"`
 	AmountLuna  int64  `json:"amount_luna"`
 	Status      string `json:"status"`
 	TxHash      string `json:"tx_hash,omitempty"`
@@ -31,6 +34,19 @@ type stakerDetailResponse struct {
 	Transactions []transactionResponse `json:"transactions"`
 }
 
+type stakerHistoryEpoch struct {
+	EpochNumber int64   `json:"epoch_number"`
+	StakeLuna   int64   `json:"stake_luna"`
+	Percentage  float64 `json:"percentage"`
+	RewardLuna  int64   `json:"reward_luna"`
+}
+
+type stakerHistoryResponse struct {
+	Address              string               `json:"address"`
+	Epochs               []stakerHistoryEpoch `json:"epochs"`
+	CumulativeRewardLuna int64                `json:"cumulative_reward_luna"`
+}
+
 var errStakerNotFound = errors.New("api: staker not found")
 
 // stakerDetail fans out the reads GET /api/stakers/{address} and GET /api/me
@@ -43,7 +59,7 @@ func stakerDetail(ctx context.Context, q *db.Queries, addr nimiq.Address) (stake
 	if err != nil {
 		return stakerDetailResponse{}, err
 	}
-	if exists == 0 {
+	if !exists {
 		return stakerDetailResponse{}, errStakerNotFound
 	}
 
@@ -58,7 +74,7 @@ func stakerDetail(ctx context.Context, q *db.Queries, addr nimiq.Address) (stake
 	}
 	payslips := make([]payslipResponse, len(payslipRows))
 	for i, p := range payslipRows {
-		payslips[i] = payslipResponse{BatchNumber: p.BatchNumber, AmountLuna: p.Amount, Status: p.Status, TxHash: p.TxHash.String}
+		payslips[i] = payslipResponse{BatchNumber: p.BatchNumber, EpochNumber: p.EpochNumber, AmountLuna: p.Amount, Status: p.Status, TxHash: p.TxHash.String}
 	}
 
 	txRows, err := q.GetTransactionsForAddress(ctx, lookup)
@@ -78,7 +94,11 @@ func stakerDetail(ctx context.Context, q *db.Queries, addr nimiq.Address) (stake
 
 func (a *API) registerStakerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stakers/{address}", a.handleGetStaker)
+	mux.HandleFunc("GET /api/stakers/{address}/history", a.handleGetStakerHistory)
+	mux.HandleFunc("GET /api/stakers/{address}/payslips.csv", a.handleStakerPayslipsCSV)
 	mux.HandleFunc("GET /api/me", a.requireSession(a.handleMe))
+	mux.HandleFunc("GET /api/me/history", a.requireSession(a.handleMeHistory))
+	mux.HandleFunc("GET /api/me/payslips.csv", a.requireSession(a.handleMePayslipsCSV))
 }
 
 func (a *API) handleGetStaker(w http.ResponseWriter, r *http.Request) {
@@ -116,4 +136,134 @@ func (a *API) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
+}
+
+func stakerHistory(ctx context.Context, q *db.Queries, addr nimiq.Address) (stakerHistoryResponse, error) {
+	lookup := addr.String()
+	exists, err := q.StakerExists(ctx, lookup)
+	if err != nil {
+		return stakerHistoryResponse{}, err
+	}
+	if !exists {
+		return stakerHistoryResponse{}, errStakerNotFound
+	}
+
+	epochRows, err := q.GetStakerEpochs(ctx, lookup)
+	if err != nil {
+		return stakerHistoryResponse{}, err
+	}
+	rewardRows, err := q.GetStakerRewardsByEpoch(ctx, lookup)
+	if err != nil {
+		return stakerHistoryResponse{}, err
+	}
+
+	rewardsMap := make(map[int64]int64, len(rewardRows))
+	var cumulative int64
+	for _, r := range rewardRows {
+		rewardsMap[r.EpochNumber] = r.Reward
+		cumulative += r.Reward
+	}
+
+	epochs := make([]stakerHistoryEpoch, 0, len(epochRows))
+	for _, e := range epochRows {
+		reward := rewardsMap[e.EpochNumber]
+		epochs = append(epochs, stakerHistoryEpoch{
+			EpochNumber: e.EpochNumber,
+			StakeLuna:   e.Stake,
+			Percentage:  e.Percentage,
+			RewardLuna:  reward,
+		})
+	}
+
+	return stakerHistoryResponse{
+		Address:              lookup,
+		Epochs:               epochs,
+		CumulativeRewardLuna: cumulative,
+	}, nil
+}
+
+func (a *API) handleGetStakerHistory(w http.ResponseWriter, r *http.Request) {
+	addr, err := nimiq.ParseAddress(r.PathValue("address"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid address")
+		return
+	}
+	hist, err := stakerHistory(r.Context(), a.queries, addr)
+	if errors.Is(err, errStakerNotFound) {
+		writeError(w, http.StatusNotFound, "no staker with this address in this pool")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "loading staker history")
+		return
+	}
+	writeJSON(w, http.StatusOK, hist)
+}
+
+func (a *API) handleMeHistory(w http.ResponseWriter, r *http.Request) {
+	addr, ok := addressFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not logged in")
+		return
+	}
+	hist, err := stakerHistory(r.Context(), a.queries, addr)
+	if errors.Is(err, errStakerNotFound) {
+		writeError(w, http.StatusNotFound, "this address has never staked with this pool")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "loading staker history")
+		return
+	}
+	writeJSON(w, http.StatusOK, hist)
+}
+
+// writePayslipsCSV streams a staker's payslips as a downloadable CSV, joining
+// each batch to its epoch so stakers can reconcile payouts against the record.
+func writePayslipsCSV(w http.ResponseWriter, r *http.Request, q *db.Queries, addr string) {
+	rows, err := q.GetPayslipsForAddress(r.Context(), addr)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "loading payslips")
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", `attachment; filename="payslips.csv"`)
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"epoch_number", "batch_number", "amount_luna", "amount_nim", "status", "tx_hash"})
+	for _, p := range rows {
+		_ = cw.Write([]string{
+			strconv.FormatInt(p.EpochNumber, 10),
+			strconv.FormatInt(p.BatchNumber, 10),
+			strconv.FormatInt(p.Amount, 10),
+			strconv.FormatFloat(float64(p.Amount)/100000, 'f', -1, 64),
+			p.Status,
+			p.TxHash.String,
+		})
+	}
+	cw.Flush()
+}
+
+func (a *API) handleStakerPayslipsCSV(w http.ResponseWriter, r *http.Request) {
+	addr, err := nimiq.ParseAddress(r.PathValue("address"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid address")
+		return
+	}
+	if exists, err := a.queries.StakerExists(r.Context(), addr.String()); err != nil {
+		writeError(w, http.StatusInternalServerError, "loading staker")
+		return
+	} else if !exists {
+		writeError(w, http.StatusNotFound, "no staker with this address in this pool")
+		return
+	}
+	writePayslipsCSV(w, r, a.queries, addr.String())
+}
+
+func (a *API) handleMePayslipsCSV(w http.ResponseWriter, r *http.Request) {
+	addr, ok := addressFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not logged in")
+		return
+	}
+	writePayslipsCSV(w, r, a.queries, addr.String())
 }

@@ -5,7 +5,7 @@ services:
     ports: ["9100:9100"]
     volumes:
       - ../data:/root/data
-      - ../data/config:/root/config:ro
+      - ./.runtime/config:/root/config:ro
     environment:
       SERVICE: daemon
       SQLITE_DB: /root/data/pool.db
@@ -22,7 +22,7 @@ services:
     ports: ["52413:8080"]
     volumes:
       - ../data:/root/data
-      - ../data/config:/root/config:rw
+      - ./.runtime/config:/root/config:rw
     environment:
       SERVICE: api
       SQLITE_DB: /root/data/pool.db

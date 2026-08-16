@@ -198,19 +198,19 @@ func (m *Manager) recordSnapshot(ctx context.Context, head uint32, processed int
 		validatorState = validatorLiveState(v, head)
 	}
 	s := ops.Snapshot{
-		RecordedAt:          time.Now().UTC(),
-		ChainHead:           int64(head),
-		ProcessedHeight:     processed,
-		TickMs:              int64(time.Since(tickStart).Milliseconds()),
-		ValidatorState:      validatorState,
-		LiveStake:           0,
-		StakerCount:         snap.NumStakers,
-		PendingPayoutCount:  stats.PendingCount,
-		PendingPayoutLuna:   stats.PendingLuna,
-		StuckPayoutCount:    stats.StuckCount,
-		StuckPayoutLuna:     0,
-		WalletBalance:       int64(bal),
-		RPCOk:               true,
+		RecordedAt:         time.Now().UTC(),
+		ChainHead:          int64(head),
+		ProcessedHeight:    processed,
+		TickMs:             int64(time.Since(tickStart).Milliseconds()),
+		ValidatorState:     validatorState,
+		LiveStake:          0,
+		StakerCount:        snap.NumStakers,
+		PendingPayoutCount: stats.PendingCount,
+		PendingPayoutLuna:  stats.PendingLuna,
+		StuckPayoutCount:   stats.StuckCount,
+		StuckPayoutLuna:    0,
+		WalletBalance:      int64(bal),
+		RPCOk:              true,
 	}
 	return m.recorder.RecordSnapshot(ctx, s)
 }

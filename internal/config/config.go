@@ -173,6 +173,20 @@ func ValidateAPI(c *Config) error {
 		return fmt.Errorf("config: validator_address: %w", err)
 	}
 	c.ValidatorAddress = addr.String()
+
+	var operators []string
+	for _, value := range strings.Split(c.OperatorAddresses, ",") {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		op, err := nimiq.ParseAddress(value)
+		if err != nil {
+			return fmt.Errorf("config: operator_addresses: %w", err)
+		}
+		operators = append(operators, op.String())
+	}
+	c.OperatorAddresses = strings.Join(operators, ",")
 	return nil
 }
 
@@ -228,6 +242,9 @@ func LoadDaemon(path string) (*Config, error) {
 			return nil, fmt.Errorf("read validator key: %w", err)
 		}
 		cfg.PrivateKey = strings.TrimSpace(string(key))
+	}
+	if dry := os.Getenv("POOL_DRY_RUN"); dry != "" {
+		cfg.DryRun = dry == "1" || dry == "true" || dry == "TRUE"
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { apiGet } from '../../api'
 import { useLiveStatus } from '../../composables/useLiveStatus'
 import type { OperatorOverview, PoolStatus, TelemetryPoint } from '../../types/api'
+import ExplorerLink from '../../components/ui/ExplorerLink.vue'
 import NimAmount from '../../components/ui/NimAmount.vue'
 import AddressIdentity from '../../components/ui/AddressIdentity.vue'
 import TelemetryChart from '../../components/TelemetryChart.vue'
@@ -129,6 +130,7 @@ onMounted(load)
             <span class="state-pill">{{ overview.validator_summary.state || 'unknown' }}</span>
           </div>
           <AddressIdentity :address="overview.validator_summary.address" copyable />
+          <ExplorerLink kind="account" :value="overview.validator_summary.address" label="View on explorer" />
           <dl>
             <div><dt>Processed height</dt><dd>{{ overview.validator_summary.last_processed_height.toLocaleString() }}</dd></div>
             <div><dt>Last tick</dt><dd>{{ overview.validator_summary.last_tick_ms.toLocaleString() }} ms</dd></div>

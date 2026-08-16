@@ -50,3 +50,49 @@ func TestPayoutKindLabel(t *testing.T) {
 		t.Errorf("transfer label = %q", got)
 	}
 }
+
+func TestMarkFeeFloorHold(t *testing.T) {
+	alerted := map[string]bool{}
+	if !markFeeFloorHold(alerted, "A") {
+		t.Error("first hold for A must alert")
+	}
+	if markFeeFloorHold(alerted, "A") {
+		t.Error("repeat hold for A must not re-alert")
+	}
+	if !markFeeFloorHold(alerted, "B") {
+		t.Error("first hold for B must alert")
+	}
+}
+
+func TestPruneFeeFloorHolds(t *testing.T) {
+	held := map[string]bool{"A": true}
+	alerted := map[string]bool{"A": true, "B": true}
+	pruneFeeFloorHolds(held, alerted)
+	if !alerted["A"] {
+		t.Error("A still held, must stay alerted")
+	}
+	if alerted["B"] {
+		t.Error("B no longer held, must be pruned so a future hold re-alerts")
+	}
+}
+
+func TestFeeFloorHoldReAlertsAfterResolution(t *testing.T) {
+	alerted := map[string]bool{}
+	// Tick 1: A held -> alert.
+	if !markFeeFloorHold(alerted, "A") {
+		t.Fatal("tick 1 must alert")
+	}
+	// Tick 2: A still held -> no alert.
+	if markFeeFloorHold(alerted, "A") {
+		t.Fatal("tick 2 must not re-alert")
+	}
+	// Tick 3: A resolved (not held) -> pruned.
+	pruneFeeFloorHolds(map[string]bool{}, alerted)
+	if alerted["A"] {
+		t.Fatal("resolved staker must be pruned")
+	}
+	// Tick 4: A held again -> re-alert.
+	if !markFeeFloorHold(alerted, "A") {
+		t.Fatal("tick 4 must re-alert after resolution")
+	}
+}

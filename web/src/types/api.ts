@@ -9,6 +9,7 @@ export interface PoolStatus {
   pool_description?: string;
   contact_url?: string;
   disclosure?: string;
+  network?: string;
 }
 
 export interface EpochSummary {
@@ -37,6 +38,8 @@ export interface RewardPoint {
   total_amount: number;
   total_fee: number;
   batches: number;
+  num_stakers: number;
+  total_stake_luna: number;
 }
 
 export interface RewardBatch {

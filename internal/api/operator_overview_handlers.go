@@ -49,11 +49,12 @@ type attentionItem struct {
 }
 
 type eventSummary struct {
-	ID       int64  `json:"id"`
-	Severity string `json:"severity"`
-	Category string `json:"category"`
-	Summary  string `json:"summary"`
-	CreatedAt string `json:"created_at"`
+	ID          int64  `json:"id"`
+	Severity    string `json:"severity"`
+	Category    string `json:"category"`
+	Summary     string `json:"summary"`
+	ContextJson string `json:"context_json,omitempty"`
+	CreatedAt   string `json:"created_at"`
 }
 
 func (a *API) handleOperatorOverview(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +88,7 @@ func (a *API) handleOperatorOverview(w http.ResponseWriter, r *http.Request) {
 			created = e.CreatedAt.Time.Format(time.RFC3339)
 		}
 		events = append(events, eventSummary{
-			ID: e.ID, Severity: e.Severity, Category: e.Category, Summary: e.Summary, CreatedAt: created,
+			ID: e.ID, Severity: e.Severity, Category: e.Category, Summary: e.Summary, ContextJson: e.ContextJson.String, CreatedAt: created,
 		})
 		if e.Severity == "error" || e.Severity == "warning" {
 			attention = append(attention, attentionItem{
@@ -132,10 +133,10 @@ func (a *API) handleOperatorReadiness(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := map[string]any{
-		"rpc_ok": statusRow.RpcOk == 1,
+		"rpc_ok":          statusRow.RpcOk == 1,
 		"readiness_error": nil,
 		"validator_state": statusRow.ValidatorState,
-		"chain_lag": int64(statusRow.ChainHead) - int64(statusRow.LastProcessedHeight),
+		"chain_lag":       int64(statusRow.ChainHead) - int64(statusRow.LastProcessedHeight),
 	}
 	if statusRow.ReadinessError.Valid {
 		resp["readiness_error"] = statusRow.ReadinessError.String
@@ -153,11 +154,11 @@ func (a *API) handleOperatorTelemetry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	allowed := map[string]bool{
-		"wallet_balance": true,
-		"live_stake": true,
-		"staker_count": true,
+		"wallet_balance":      true,
+		"live_stake":          true,
+		"staker_count":        true,
 		"pending_payout_luna": true,
-		"chain_lag": true,
+		"chain_lag":           true,
 	}
 	if !allowed[metric] {
 		writeAPIError(w, http.StatusBadRequest, "unknown_metric", "unknown metric")
@@ -222,11 +223,11 @@ func (a *API) handleOperatorActivity(w http.ResponseWriter, r *http.Request) {
 			created = e.CreatedAt.Time.Format(time.RFC3339)
 		}
 		filtered = append(filtered, eventSummary{
-			ID: e.ID, Severity: e.Severity, Category: e.Category, Summary: e.Summary, CreatedAt: created,
+			ID: e.ID, Severity: e.Severity, Category: e.Category, Summary: e.Summary, ContextJson: e.ContextJson.String, CreatedAt: created,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"items": filtered,
+		"items":       filtered,
 		"next_cursor": cursor + len(filtered),
 	})
 }
@@ -245,14 +246,14 @@ func (a *API) handleOperatorActivityExport(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", `attachment; filename="activity.csv"`)
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"id","severity","category","source","event_type","summary","created_at"})
+	_ = cw.Write([]string{"id", "severity", "category", "source", "event_type", "summary", "created_at"})
 	for _, e := range events {
 		created := ""
 		if e.CreatedAt.Valid {
 			created = e.CreatedAt.Time.Format(time.RFC3339)
 		}
 		_ = cw.Write([]string{
-			strconv.FormatInt(e.ID,10),
+			strconv.FormatInt(e.ID, 10),
 			e.Severity,
 			e.Category,
 			e.Source,
