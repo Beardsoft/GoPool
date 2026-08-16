@@ -3,11 +3,17 @@ package pool
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/NimMiniApps/nimiq-go/rpc"
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/Beardsoft/GoPool/internal/chain"
+	"github.com/Beardsoft/GoPool/internal/config"
 	"github.com/Beardsoft/GoPool/internal/db"
 )
 
@@ -159,5 +165,72 @@ func TestInsertAndReadSubmittedHeight(t *testing.T) {
 	}
 	if len(pending) != 1 || pending[0].SubmittedHeight != 1000 {
 		t.Fatalf("pending = %+v, want one row with submitted_height 1000", pending)
+	}
+}
+
+func TestRunConfirmationsFailsStuckPayout(t *testing.T) {
+	q := newLifecycleTestQueries(t)
+	const blocksPerEpoch = uint32(43200)
+	const submitted = int64(1000)
+	const head = submitted + 4*int64(blocksPerEpoch) // 4 epochs behind -> stuck (threshold 3)
+
+	if err := q.InsertReward(t.Context(), db.InsertRewardParams{BatchNumber: 1, EpochNumber: 1, Amount: 100, PoolFee: 0, NumStakers: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.InsertPayslip(t.Context(), db.InsertPayslipParams{BatchNumber: 1, Address: "A", Amount: 100, Status: "out_for_payment"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.SetPayslipsTransaction(t.Context(), db.SetPayslipsTransactionParams{TxHash: sql.NullString{String: "stuck1", Valid: true}, Address: "A"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.InsertTransaction(t.Context(), db.InsertTransactionParams{Hash: "stuck1", Address: "A", Amount: 100, Status: "awaiting_confirmation", SubmittedHeight: submitted}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.InsertTransaction(t.Context(), db.InsertTransactionParams{Hash: "fresh1", Address: "B", Amount: 50, Status: "awaiting_confirmation", SubmittedHeight: head}); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Method string `json:"method"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		switch req.Method {
+		case "getBlockNumber":
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"result":%d}`, head)))
+		case "getTransactionByHash":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"not found"}}`))
+		default:
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":null}`))
+		}
+	}))
+	defer srv.Close()
+	client, err := rpc.New(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &Manager{
+		queries: q,
+		chain:   &chain.Chain{RPC: client},
+		cfg:     &config.Config{StuckPayoutEpochs: 3},
+		policy:  &rpc.Policy{BlocksPerEpoch: blocksPerEpoch},
+	}
+	if err := m.runConfirmations(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	pending, err := q.GetPendingTransactions(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].Hash != "fresh1" {
+		t.Fatalf("pending = %+v, want only fresh1 (stuck1 failed)", pending)
+	}
+	payslips, err := q.GetPayslipsForAddress(t.Context(), "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payslips) != 1 || payslips[0].Status != "failed" {
+		t.Fatalf("payslips = %+v, want one failed", payslips)
 	}
 }
