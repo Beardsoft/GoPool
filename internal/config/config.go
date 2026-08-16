@@ -13,6 +13,7 @@ import (
 	nimiq "github.com/NimMiniApps/nimiq-go"
 )
 
+// Config holds the pool daemon's runtime configuration.
 type Config struct {
 	RPCURL            string  `json:"rpc_url" mapstructure:"rpc_url"`
 	Network           string  `json:"network" mapstructure:"network"`
@@ -21,6 +22,7 @@ type Config struct {
 	PrivateKey        string  `json:"private_key,omitempty" mapstructure:"private_key"`
 	PayoutMode        string  `json:"payout_mode" mapstructure:"payout_mode"`
 	MinPayoutLuna     uint64  `json:"min_payout_luna" mapstructure:"min_payout_luna"`
+	StuckPayoutEpochs int     `json:"stuck_payout_epochs" mapstructure:"stuck_payout_epochs"`
 	AutoReactivate    bool    `json:"auto_reactivate" mapstructure:"auto_reactivate"`
 	DryRun            bool    `json:"dry_run,omitempty" mapstructure:"dry_run"`
 	APIAddr           string  `json:"api_addr" mapstructure:"api_addr"`
@@ -36,8 +38,8 @@ type Config struct {
 	AlertWebhookURL          string `json:"alert_webhook_url,omitempty" mapstructure:"alert_webhook_url"`
 	AlertEmailEnabled        bool   `json:"alert_email_enabled,omitempty" mapstructure:"alert_email_enabled"`
 	AlertEmailTo             string `json:"alert_email_to,omitempty" mapstructure:"alert_email_to"`
-	AlertEmailSmtpHost       string `json:"alert_email_smtp_host,omitempty" mapstructure:"alert_email_smtp_host"`
-	AlertEmailSmtpPort       int    `json:"alert_email_smtp_port,omitempty" mapstructure:"alert_email_smtp_port"`
+	AlertEmailSMTPHost       string `json:"alert_email_smtp_host,omitempty" mapstructure:"alert_email_smtp_host"`
+	AlertEmailSMTPPort       int    `json:"alert_email_smtp_port,omitempty" mapstructure:"alert_email_smtp_port"`
 	AlertEmailUsername       string `json:"alert_email_username,omitempty" mapstructure:"alert_email_username"`
 	AlertEmailPassword       string `json:"alert_email_password,omitempty" mapstructure:"alert_email_password"`
 	AlertEmailFrom           string `json:"alert_email_from,omitempty" mapstructure:"alert_email_from"`
@@ -48,6 +50,7 @@ type Config struct {
 	Disclosure      string `json:"disclosure,omitempty" mapstructure:"disclosure"`
 }
 
+// Editable is the operator-editable subset of Config exposed via the API.
 type Editable struct {
 	RPCURL                   string  `json:"rpc_url"`
 	Network                  string  `json:"network"`
@@ -72,6 +75,7 @@ type Editable struct {
 	Disclosure               string  `json:"disclosure,omitempty"`
 }
 
+// SecretPresence reports which optional secrets are set, without exposing them.
 type SecretPresence struct {
 	ValidatorKey  bool `json:"validator_key"`
 	SessionSecret bool `json:"session_secret"`
@@ -79,11 +83,13 @@ type SecretPresence struct {
 	EmailPassword bool `json:"email_password"`
 }
 
+// Redacted is the API-safe view of config: editable settings plus secret presence.
 type Redacted struct {
 	Settings Editable       `json:"settings"`
 	Secrets  SecretPresence `json:"secrets"`
 }
 
+// Editable returns the operator-editable subset of the config.
 func (c *Config) Editable() Editable {
 	return Editable{RPCURL: c.RPCURL, Network: c.Network, PoolFeeWallet: c.PoolFeeWallet, PoolFeePercentage: c.PoolFeePercentage,
 		PayoutMode: c.PayoutMode, MinPayoutLuna: c.MinPayoutLuna, AutoReactivate: c.AutoReactivate, APIAddr: c.APIAddr,
@@ -93,6 +99,7 @@ func (c *Config) Editable() Editable {
 		AlertEmailTo: c.AlertEmailTo, PoolName: c.PoolName, PoolDescription: c.PoolDescription, ContactURL: c.ContactURL, Disclosure: c.Disclosure}
 }
 
+// FromEditable builds a Config from an editable subset.
 func FromEditable(e Editable) *Config {
 	return &Config{RPCURL: e.RPCURL, Network: e.Network, PoolFeeWallet: e.PoolFeeWallet, PoolFeePercentage: e.PoolFeePercentage,
 		PayoutMode: e.PayoutMode, MinPayoutLuna: e.MinPayoutLuna, AutoReactivate: e.AutoReactivate, APIAddr: e.APIAddr,
@@ -102,16 +109,19 @@ func FromEditable(e Editable) *Config {
 		AlertEmailTo: e.AlertEmailTo, PoolName: e.PoolName, PoolDescription: e.PoolDescription, ContactURL: e.ContactURL, Disclosure: e.Disclosure}
 }
 
+// Redact builds the API-safe representation of a config.
 func Redact(c *Config) Redacted {
 	return Redacted{Settings: c.Editable(), Secrets: SecretPresence{ValidatorKey: c.PrivateKey != "", SessionSecret: c.SessionSecret != "", TelegramToken: c.AlertTelegramToken != "", EmailPassword: c.AlertEmailPassword != ""}}
 }
 
+// EditableHash returns a stable hash of the editable settings.
 func EditableHash(editable Editable) string {
 	data, _ := json.Marshal(editable)
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
 
+// Validate checks invariants that must hold for the daemon to run.
 func (c *Config) Validate() error {
 	if c.PayoutMode != "delegate" && c.PayoutMode != "transfer" {
 		return fmt.Errorf("config: payout_mode must be delegate or transfer")
@@ -122,6 +132,7 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// ValidateEditable checks the operator-editable settings before saving.
 func ValidateEditable(e Editable) error {
 	if strings.TrimSpace(e.PoolName) == "" {
 		return fmt.Errorf("pool_name is required")
@@ -158,6 +169,7 @@ func ValidateEditable(e Editable) error {
 	return nil
 }
 
+// ValidateAPI checks API-required settings and normalizes operator addresses.
 func ValidateAPI(c *Config) error {
 	if c.APIAddr == "" {
 		return fmt.Errorf("config: api_addr is required")
@@ -200,6 +212,7 @@ func configPath(path string) string {
 	return "config.json"
 }
 
+// LoadOptional loads config from path if present, returning (nil, false, nil) when absent.
 func LoadOptional(path string) (*Config, bool, error) {
 	data, err := os.ReadFile(configPath(path))
 	if errors.Is(err, os.ErrNotExist) {
@@ -221,6 +234,7 @@ func LoadOptional(path string) (*Config, bool, error) {
 	return cfg, true, nil
 }
 
+// LoadDaemon loads and validates the daemon config, applying defaults and env overrides.
 func LoadDaemon(path string) (*Config, error) {
 	data, err := os.ReadFile(configPath(path))
 	if err != nil {
@@ -235,6 +249,9 @@ func LoadDaemon(path string) (*Config, error) {
 	}
 	if cfg.MetricsAddr == "" {
 		cfg.MetricsAddr = ":9100"
+	}
+	if cfg.StuckPayoutEpochs == 0 {
+		cfg.StuckPayoutEpochs = 3
 	}
 	if keyPath := os.Getenv("POOL_PRIVATE_KEY_FILE"); keyPath != "" {
 		key, err := os.ReadFile(keyPath)
@@ -252,4 +269,5 @@ func LoadDaemon(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// LoadConfig loads the daemon config from the default location.
 func LoadConfig() (*Config, error) { return LoadDaemon("") }
