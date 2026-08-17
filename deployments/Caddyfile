@@ -1,0 +1,3 @@
+{$GOPOOL_DOMAIN} {
+	reverse_proxy gopool-api:8080
+}

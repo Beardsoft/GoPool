@@ -1,5 +1,13 @@
 # syntax=docker/dockerfile:1
 # Multi-stage build for GoPool daemon and API
+FROM node:20 AS web
+
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
 FROM golang:1.25 AS builder
 
 WORKDIR /src
@@ -10,6 +18,7 @@ RUN go mod download
 
 # Copy source
 COPY . .
+COPY --from=web /src/internal/api/webdist ./internal/api/webdist
 
 # Install build dependencies for cgo (sqlite)
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*

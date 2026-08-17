@@ -9,16 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Beardsoft/GoPool/internal/config"
 	"github.com/Beardsoft/GoPool/internal/db"
 )
-
-func setupTestAPI(t *testing.T) *API {
-	t.Helper()
-	q := newTestDB(t)
-	cfg := &config.Config{SessionSecret: "test-secret", ValidatorAddress: testAddr}
-	return &API{queries: q, cfg: cfg}
-}
 
 func configuredOperatorAPI(t *testing.T) (*API, *http.Cookie) {
 	t.Helper()

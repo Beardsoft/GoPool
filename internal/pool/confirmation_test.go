@@ -265,7 +265,7 @@ func TestRunConfirmationsFailsStuckPayout(t *testing.T) {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		switch req.Method {
 		case "getBlockNumber":
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"result":%d}`, head)))
+			fmt.Fprintf(w, `{"jsonrpc":"2.0","id":1,"result":%d}`, head)
 		case "getTransactionByHash":
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"not found"}}`))
 		default:

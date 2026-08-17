@@ -120,6 +120,8 @@ onMounted(() => queueMicrotask(load))
 
         <fieldset class="alert-channels span-2">
           <legend>Alert channels</legend>
+
+          <h3>Telegram</h3>
           <label class="check-field">
             <input v-model="settings.alert_telegram_enabled" type="checkbox" />
             <span>Telegram</span>
@@ -132,6 +134,7 @@ onMounted(() => queueMicrotask(load))
             Telegram bot token
             <input v-model="secrets.alert_telegram_token" class="input" type="password" placeholder="••• configured — leave blank to keep" autocomplete="new-password" />
           </label>
+          <h3>Webhook</h3>
           <label class="check-field">
             <input v-model="settings.alert_webhook_enabled" type="checkbox" />
             <span>Webhook</span>
@@ -140,6 +143,7 @@ onMounted(() => queueMicrotask(load))
             Webhook URL
             <input v-model="settings.alert_webhook_url" class="input" type="url" placeholder="https://…" />
           </label>
+          <h3>Email</h3>
           <label class="check-field">
             <input v-model="settings.alert_email_enabled" type="checkbox" />
             <span>Email</span>
@@ -266,6 +270,15 @@ onMounted(() => queueMicrotask(load))
 }
 .alert-channels legend {
   padding: 0 6px;
+  color: var(--app-muted);
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.alert-channels h3 {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
   color: var(--app-muted);
   font-size: .78rem;
   font-weight: 700;

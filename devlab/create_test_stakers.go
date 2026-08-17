@@ -29,7 +29,6 @@ const (
 
 func main() {
 	ctx := context.Background()
-	rand.Seed(time.Now().UnixNano())
 
 	rpcURL := getenv("RPC_URL", defaultRPCURL)
 	networkStr := getenv("NETWORK", defaultNetwork)

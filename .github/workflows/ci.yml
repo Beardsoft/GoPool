@@ -18,6 +18,14 @@ jobs:
         run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
       - name: Generate sqlc
         run: $HOME/go/bin/sqlc generate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
       - name: Test
         run: go test ./...
       - name: Build binaries
@@ -27,7 +35,7 @@ jobs:
           test -f gopool && test -f gopool-api
       - name: Lint
         run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
           $HOME/go/bin/golangci-lint run ./...
 
   web:

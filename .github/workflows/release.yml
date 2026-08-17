@@ -46,8 +46,18 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       - name: Download dependencies
         run: go mod download
+      - name: Build frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - name: Install arm64 cross compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
       - name: Build Linux binaries
         run: |
           mkdir -p dist
@@ -58,8 +68,8 @@ jobs:
           CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o dist/gopool-api-linux-amd64 ./cmd/api
           tar -czf dist/gopool-linux-amd64.tar.gz -C dist gopool-linux-amd64 gopool-api-linux-amd64
           # linux/arm64
-          CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o dist/gopool-linux-arm64 ./cmd
-          CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o dist/gopool-api-linux-arm64 ./cmd/api
+          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o dist/gopool-linux-arm64 ./cmd
+          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o dist/gopool-api-linux-arm64 ./cmd/api
           tar -czf dist/gopool-linux-arm64.tar.gz -C dist gopool-linux-arm64 gopool-api-linux-arm64
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -70,15 +80,3 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  release-notes:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Generate release notes
-        run: |
-          echo "## Release ${{ github.ref_name }}" > RELEASE_NOTES.md
-          git log $(git describe --tags --abbrev=0 HEAD~1)..HEAD --pretty=format:"- %s" >> RELEASE_NOTES.md
-          cat RELEASE_NOTES.md

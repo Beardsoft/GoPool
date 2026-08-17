@@ -83,7 +83,7 @@ dev-down: devnet-down
 
 dev-reset:
 	NETWORK_NAME=$(NETWORK_NAME) docker compose -f $(DEVNET_COMPOSE) -f $(DEVNET_POOL_COMPOSE) down -v
-	@echo "Note: data bind mount at $(DEVNET_DIR)/../data is owned by root. Remove manually with sudo rm -rf $(DEVNET_DIR)/../data/* or sudo chown -R $$USER:$$USER $(DEVNET_DIR)/../data"
+	sudo rm -rf data && mkdir data
 
 dev-clean: dev-reset
 

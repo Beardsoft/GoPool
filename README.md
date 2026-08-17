@@ -34,10 +34,31 @@ install -d -m 700 .secrets data/config
 openssl rand -hex 32 > .secrets/setup-token
 openssl rand -hex 32 > .secrets/session-secret
 install -m 600 /dev/stdin .secrets/validator-key <<<'<validator-private-key-hex>'
+echo 'GOPOOL_DOMAIN=your.pool.domain' > .env   # omit for local testing, defaults to localhost
 docker compose -f deployments/docker-compose.yml up -d
 ```
 
-Open `http://localhost:52412`, exchange the setup token, and complete the browser assistant. The API writes the full configuration, alert credentials included. Restart both services afterward and wait for daemon readiness.
+The API sits behind a bundled Caddy reverse proxy that handles TLS automatically (Let's Encrypt for a real domain, a locally-trusted cert for `localhost`). The API container itself only binds to `127.0.0.1`; Caddy on ports `80`/`443` is the public entrypoint.
+
+Open `https://localhost` (or `https://your.pool.domain` in production), exchange the setup token, and complete the browser assistant. The API writes the full configuration, alert credentials included. Restart both services afterward and wait for daemon readiness.
+
+## VPS onboarding
+
+Fresh Ubuntu/Debian VPS, no Docker installed yet:
+
+```bash
+git clone https://github.com/Beardsoft/GoPool.git
+cd GoPool
+sudo ./scripts/vps-onboard.sh
+```
+
+The script is an interactive wizard: it installs Docker if missing, generates the setup/session secrets, and either generates a brand-new validator wallet (via the official `ghcr.io/nimiq/core-rs-albatross` image — no separate signup or tooling needed) or lets you paste in an existing payout private key. It then asks for your domain and starts the daemon + API behind a bundled Caddy reverse proxy. Caddy terminates TLS automatically via Let's Encrypt — point an A record at the server first, then open ports `80` and `443` in your firewall (not `52412`; the API only listens on `127.0.0.1` now, Caddy is the only public entrypoint). `9100` (metrics) should also stay internal unless you're scraping it remotely.
+
+If you generate a new wallet, the full key set (address, signing, fee, and BLS voting keys — everything needed to also run the validator node itself, not just GoPool) is written to `.secrets/wallet.json`. Back it up offline and consider deleting it from the server afterward; GoPool itself only ever reads `.secrets/validator-key` (the payout address's private key).
+
+It prints the setup URL and token at the end — open it, complete the browser assistant, then restart both services (`docker compose -f deployments/docker-compose.yml restart`) so the daemon picks up the written config.
+
+For Swarm clusters instead of a single VPS, see [deployments/SWARM.md](deployments/SWARM.md).
 
 ## Configuration
 

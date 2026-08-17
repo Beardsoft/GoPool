@@ -185,7 +185,9 @@ func (m *Manager) recordHeartbeat(ctx context.Context, head uint32, processed in
 }
 
 func (m *Manager) recordSnapshot(ctx context.Context, head uint32, processed int64, tickStart time.Time) error {
-	if m.recorder == nil {
+	// Snapshot is at most once a minute; skip the full payslips scans and the
+	// balance/validator RPCs entirely when one is not due.
+	if m.recorder == nil || !m.recorder.SnapshotDue() {
 		return nil
 	}
 	stats, _ := m.queries.GetPayslipStats(ctx)

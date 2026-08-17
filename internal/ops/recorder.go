@@ -63,8 +63,15 @@ func (r *Recorder) RecordHeartbeat(ctx context.Context, hb Heartbeat) error {
 	return err
 }
 
+// SnapshotDue reports whether a minute has passed since the last recorded
+// snapshot (or none yet). Callers check it before doing the reads that feed
+// RecordSnapshot, so they skip the work instead of doing it and discarding it.
+func (r *Recorder) SnapshotDue() bool {
+	return r.lastSnapshot.IsZero() || time.Since(r.lastSnapshot) >= time.Minute
+}
+
 func (r *Recorder) RecordSnapshot(ctx context.Context, s Snapshot) error {
-	if !r.lastSnapshot.IsZero() && time.Since(r.lastSnapshot) < time.Minute {
+	if !r.SnapshotDue() {
 		return nil
 	}
 	rpcOk := int64(0)
