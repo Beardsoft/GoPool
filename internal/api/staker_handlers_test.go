@@ -108,6 +108,45 @@ func TestHandleMe(t *testing.T) {
 	}
 }
 
+func TestHandleMeNeverStaked(t *testing.T) {
+	q := newTestDB(t)
+	a := &API{queries: q, cfg: &config.Config{SessionSecret: "test-secret"}}
+	addr, err := nimiq.ParseAddress("NQ32 EGL6 H9C8 0JJB PH4S 7RYY ULRC 5B6N 56RE")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: a.issueSession(addr)})
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var got meResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.StakeLuna != 0 || len(got.Payslips) != 0 || len(got.Transactions) != 0 {
+		t.Errorf("want empty dashboard, got %+v", got)
+	}
+
+	rec2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/api/me/history", nil)
+	req2.AddCookie(&http.Cookie{Name: sessionCookieName, Value: a.issueSession(addr)})
+	a.Mux().ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("history status = %d, body: %s", rec2.Code, rec2.Body.String())
+	}
+	var hist stakerHistoryResponse
+	if err := json.NewDecoder(rec2.Body).Decode(&hist); err != nil {
+		t.Fatal(err)
+	}
+	if len(hist.Epochs) != 0 || hist.CumulativeRewardLuna != 0 {
+		t.Errorf("want empty history, got %+v", hist)
+	}
+}
+
 func TestStakerPayslipsCSV(t *testing.T) {
 	q := newTestDB(t)
 	seedStakerWithPayslip(t, q)

@@ -142,10 +142,10 @@ func (a *API) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 	detail, err := stakerDetail(r.Context(), a.queries, addr)
 	if errors.Is(err, errStakerNotFound) {
-		writeError(w, http.StatusNotFound, "this address has never staked with this pool")
-		return
-	}
-	if err != nil {
+		// A signed-in user who has never staked is not an error: show an
+		// empty dashboard instead of bouncing them back to the login screen.
+		detail = stakerDetailResponse{Address: addr.String(), Payslips: []payslipResponse{}, Transactions: []transactionResponse{}}
+	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "loading staker")
 		return
 	}
@@ -251,10 +251,8 @@ func (a *API) handleMeHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	hist, err := stakerHistory(r.Context(), a.queries, addr)
 	if errors.Is(err, errStakerNotFound) {
-		writeError(w, http.StatusNotFound, "this address has never staked with this pool")
-		return
-	}
-	if err != nil {
+		hist = stakerHistoryResponse{Address: addr.String(), Epochs: []stakerHistoryEpoch{}}
+	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "loading staker history")
 		return
 	}
