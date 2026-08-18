@@ -40,7 +40,7 @@ docker compose -f deployments/docker-compose.yml up -d
 
 The API sits behind a bundled Caddy reverse proxy that handles TLS automatically (Let's Encrypt for a real domain, a locally-trusted cert for `localhost`). The API container itself only binds to `127.0.0.1`; Caddy on ports `80`/`443` is the public entrypoint.
 
-Open `https://localhost` (or `https://your.pool.domain` in production), exchange the setup token, and complete the browser assistant. The API writes the full configuration, alert credentials included. Restart both services afterward and wait for daemon readiness.
+Open `https://localhost` (or `https://your.pool.domain` in production), exchange the setup token, and complete the browser assistant. The API writes the full configuration, alert credentials included, then activates in-process. The wizard polls until the daemon heartbeat matches; a `readiness_error` can remain if the configured address is not yet a validator on chain.
 
 ## VPS onboarding
 
@@ -56,7 +56,7 @@ The script is an interactive wizard: it installs Docker if missing, generates th
 
 If you generate a new wallet, the full key set (address, signing, fee, and BLS voting keys — everything needed to also run the validator node itself, not just GoPool) is written to `.secrets/wallet.json`. Back it up offline and consider deleting it from the server afterward; GoPool itself only ever reads `.secrets/validator-key` (the payout address's private key).
 
-It prints the setup URL and token at the end — open it, complete the browser assistant, then restart both services (`docker compose -f deployments/docker-compose.yml restart`) so the daemon picks up the written config.
+It prints the setup URL and token at the end — open it and complete the browser assistant. The daemon waits for `config.json`, retries validator readiness, and reloads when the file hash changes. No Compose restart is required after setup or Settings saves.
 
 For Swarm clusters instead of a single VPS, see [deployments/SWARM.md](deployments/SWARM.md). Homelab testnet (`test-albatross`, RPC `https://rpc-testnet.nimiqscan.com`) is `https://pool-testnet.maestroi.cc`. Generate a validator wallet with `./scripts/generate-validator-wallet.sh` before creating the Docker secrets.
 
@@ -184,7 +184,7 @@ Build and run locally:
 docker compose -f deployments/docker-compose.yml up --build
 ```
 
-Images for Swarm are `ghcr.io/beardsoft/gopool:<git-sha>` (published on every `master` push) and version tags from GitHub Releases. Settings saves and revision restores are pending until both services restart and the daemon heartbeat reports the expected hash. For Swarm rotation and failed-readiness recovery, see [deployments/SWARM.md](deployments/SWARM.md).
+Images for Swarm are `ghcr.io/beardsoft/gopool:<git-sha>` (published on every `master` push) and version tags from GitHub Releases. Settings saves and revision restores apply in-process; the UI shows Activating until the daemon heartbeat reports the expected hash. Force-update services only when rolling out a new image. For Swarm rotation and failed-readiness recovery, see [deployments/SWARM.md](deployments/SWARM.md).
 
 ## Project structure
 

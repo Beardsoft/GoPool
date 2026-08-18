@@ -47,15 +47,13 @@ Open `https://pool-testnet.maestroi.cc`, enter the setup token, and complete the
 - Network `test-albatross`
 - Validator address from `wallet.json`
 
-The daemon crash-loops until that config exists (`LoadDaemon` requires `config.json`). After the assistant writes the revision, restart both services and wait for the heartbeat:
+The daemon waits for `config.json` instead of crashing. After the assistant writes the revision, the API swaps to full routes and the daemon reloads between payout ticks. Watch the heartbeat; do not force-update the services after setup:
 
 ```bash
-docker service update --force gopool-test_gopool
-docker service update --force gopool-test_gopool-api
 docker service logs --tail 100 gopool-test_gopool
 ```
 
-Readiness is complete only when the daemon heartbeat reports the new configuration hash and derived validator address. A written revision is not active merely because the API accepted it.
+Readiness is complete when the daemon heartbeat reports the new configuration hash and derived validator address. A `readiness_error` can remain if the address is not a validator on chain. Force-update (`docker service update --force`) only when rolling out a new image.
 
 ## Generic / production stack
 
@@ -71,12 +69,12 @@ GOPOOL_DOMAIN=your.pool.domain \
   docker stack deploy --with-registry-auth -c deployments/docker-stack.yml gopool
 ```
 
-Then force-update `gopool_gopool` and `gopool_gopool-api` after setup.
+After setup, wait for the heartbeat (and a possible `readiness_error` until the address is a validator). Force-update `gopool_gopool` and `gopool_gopool-api` only when deploying a new image.
 
 ## Rotation and recovery
 
 - Rotate a Docker secret by creating a new uniquely named secret, updating the stack reference, deploying, then removing the old secret after both services converge.
 - The setup token is unusable after setup completion and may be removed from the API service in a follow-up stack revision.
-- Restore a prior non-secret revision from Operator → Settings, restart both services, and wait for the matching heartbeat.
+- Restore a prior non-secret revision from Operator → Settings and wait for the matching heartbeat. The daemon reloads the file in-process when payouts are idle.
 - If readiness fails, do not retry on-chain actions. Check the daemon logs, RPC/network pairing, validator-address mismatch, key-file permissions, and the pending configuration hash first.
 - SQLite and the configuration volume must stay on the manager selected by the placement constraint.
