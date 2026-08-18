@@ -1,6 +1,8 @@
 package api
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 
 	"github.com/Beardsoft/GoPool/internal/db"
@@ -31,7 +33,11 @@ type rewardPointResponse struct {
 
 func (a *API) handlePool(w http.ResponseWriter, r *http.Request) {
 	epoch, err := a.queries.GetLatestEpoch(r.Context())
-	if err != nil {
+	if errors.Is(err, sql.ErrNoRows) {
+		// Fresh pool: no epochs recorded yet. Report an empty state instead of
+		// an error so the dashboard renders before the first election.
+		epoch = db.GetLatestEpochRow{Number: 0, Status: "pending"}
+	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "loading pool state")
 		return
 	}

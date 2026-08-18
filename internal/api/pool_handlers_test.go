@@ -38,6 +38,25 @@ func TestHandlePool(t *testing.T) {
 	}
 }
 
+func TestHandlePoolEmpty(t *testing.T) {
+	q := newTestDB(t)
+	a := &API{queries: q}
+	req := httptest.NewRequest(http.MethodGet, "/api/pool", nil)
+	rec := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+	}
+	var got poolResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.CurrentEpoch != 0 || got.EpochStatus != "pending" || got.TotalRewardsLuna != 0 {
+		t.Errorf("got %+v", got)
+	}
+}
+
 func TestHandlePoolRewardsReturnsAggregatedJSON(t *testing.T) {
 	q := newTestDB(t)
 	ctx := context.Background()
