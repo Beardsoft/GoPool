@@ -2,6 +2,7 @@ package pool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -268,9 +269,34 @@ func (m *Manager) recordReadinessFailure(ctx context.Context, derived string, re
 	})
 }
 
-// Run is the daemon's main loop: replay every height between the last
-// processed cursor and the current chain head, in order, then sleep.
-func (m *Manager) Run(ctx context.Context) error {
+func readinessRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	return true
+}
+
+func waitReady(ctx context.Context, ensure func(context.Context) error, retry time.Duration) error {
+	for {
+		err := ensure(ctx)
+		if err == nil {
+			return nil
+		}
+		if !readinessRetryable(err) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(retry):
+		}
+	}
+}
+
+func (m *Manager) ensureReady(ctx context.Context) error {
 	derived := m.chain.Address().String()
 	policy, err := m.chain.RPC.GetPolicy(ctx)
 	if err != nil {
@@ -301,6 +327,15 @@ func (m *Manager) Run(ctx context.Context) error {
 				},
 			})
 		}
+		return err
+	}
+	return nil
+}
+
+// Run is the daemon's main loop: replay every height between the last
+// processed cursor and the current chain head, in order, then sleep.
+func (m *Manager) Run(ctx context.Context) error {
+	if err := waitReady(ctx, m.ensureReady, 2*time.Second); err != nil {
 		return err
 	}
 
