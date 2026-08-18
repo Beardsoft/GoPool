@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { apiGet, apiPut } from '../../api'
 import HoldConfirmButton from '../../components/ui/HoldConfirmButton.vue'
 import type { AlertSecrets, EditableConfig, SettingsResponse } from '../../types/api'
@@ -13,6 +13,12 @@ const original = ref<EditableConfig | null>(null)
 const review = ref(false)
 const error = ref('')
 const savedHash = ref('')
+let pollTimer: ReturnType<typeof setTimeout> | undefined
+let pollStopped = false
+onUnmounted(() => {
+  pollStopped = true
+  clearTimeout(pollTimer)
+})
 const minPayoutNim = computed({
   get: () => (settings.value?.min_payout_luna ?? 0) / 100_000,
   set: (value) => {
@@ -30,6 +36,14 @@ async function load() {
   }
 }
 
+async function pollUntilActive() {
+  if (pollStopped) return
+  await load()
+  if (response.value?.restart_required) {
+    pollTimer = setTimeout(pollUntilActive, 1000)
+  }
+}
+
 const changedSecrets = computed(() => Object.entries(secrets.value).filter(([, value]) => value !== '').map(([name]) => name))
 
 async function save() {
@@ -43,12 +57,16 @@ async function save() {
     savedHash.value = revision.hash
     review.value = false
     response.value.restart_required = true
+    void pollUntilActive()
   } catch (cause: any) {
     error.value = cause.message ?? 'Unable to save settings'
   }
 }
 
-onMounted(() => queueMicrotask(load))
+onMounted(() => queueMicrotask(async () => {
+  await load()
+  if (response.value?.restart_required) void pollUntilActive()
+}))
 </script>
 
 <template>
@@ -63,7 +81,7 @@ onMounted(() => queueMicrotask(load))
 
     <template v-if="settings && original">
       <p v-if="response?.restart_required || savedHash" class="notice">
-        Restart required — written configuration is not active yet.
+        {{ response?.restart_required ? 'Activating… written configuration is not active yet.' : 'Configuration is active.' }}
       </p>
 
       <section class="card form-grid">
