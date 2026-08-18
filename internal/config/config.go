@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	nimiq "github.com/NimMiniApps/nimiq-go"
 )
@@ -277,4 +279,23 @@ func LoadDaemon(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// WaitForDaemon loads daemon config, retrying while the file is missing.
+// Other LoadDaemon errors (invalid JSON, validation) are returned immediately.
+func WaitForDaemon(ctx context.Context, path string, retry time.Duration) (*Config, error) {
+	for {
+		cfg, err := LoadDaemon(path)
+		if err == nil {
+			return cfg, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(retry):
+		}
+	}
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	nimiq "github.com/NimMiniApps/nimiq-go"
 
@@ -23,7 +24,10 @@ import (
 func main() {
 	defer logger.Sync()
 
-	cfg, err := config.LoadDaemon("")
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	cfg, err := config.WaitForDaemon(ctx, "", time.Second)
 	if err != nil {
 		logger.Logger.Fatal("failed to load config", zap.Error(err))
 	}
@@ -46,9 +50,6 @@ func main() {
 
 	recorder := ops.NewRecorder(queries, config.ConfigHash(cfg.Editable(), cfg.AlertSecrets()))
 	manager := pool.NewManager(c, queries, cfg, recorder)
-
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
 
 	if len(os.Args) > 1 && os.Args[1] == "validator" {
 		if err := runValidatorCLI(ctx, manager, os.Args[2:]); err != nil {
