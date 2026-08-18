@@ -11,3 +11,6 @@ web/tsconfig.tsbuildinfo
 .secrets/
 data/
 devlab/.runtime/
+.impeccable/
+.superpowers/
+node_modules/

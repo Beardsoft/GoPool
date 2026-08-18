@@ -368,6 +368,12 @@ FROM transactions t
 LEFT JOIN payslips p ON p.tx_hash = t.hash
 LEFT JOIN rewards r ON r.batch_number = p.batch_number
 WHERE (? IS NULL OR t.status = ?)
+  AND (? IS NULL OR t.address LIKE '%' || ? || '%')
+  AND (? IS NULL OR EXISTS (
+    SELECT 1 FROM payslips p2
+    JOIN rewards r2 ON r2.batch_number = p2.batch_number
+    WHERE p2.tx_hash = t.hash AND r2.epoch_number = ?
+  ))
 GROUP BY t.hash
 ORDER BY t.submitted_at DESC
 LIMIT ? OFFSET ?;

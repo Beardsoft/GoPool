@@ -344,3 +344,80 @@ func TestOperatorPayoutsPaginatesWithHasMore(t *testing.T) {
 		t.Fatalf("second page: items=%d has_more=%v", len(second.Items), second.HasMore)
 	}
 }
+
+func TestOperatorPayoutsFilterByAddressAndEpoch(t *testing.T) {
+	a, cookie, _ := operatorTestAPI(t)
+	const addrA = "NQ00 0000 0000 0000 0000 0000 0001"
+	const addrB = "NQ32 EGL6 H9C8 0JJB PH4S 7RYY ULRC 5B6N 56RE"
+	for _, epoch := range []int64{12, 13, 14} {
+		if err := a.queries.InsertEpoch(t.Context(), db.InsertEpochParams{Number: epoch, NumStakers: 1, Balance: 1, Status: "completed"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := a.queries.InsertReward(t.Context(), db.InsertRewardParams{BatchNumber: 10, EpochNumber: 12, Amount: 50, PoolFee: 0, NumStakers: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.InsertReward(t.Context(), db.InsertRewardParams{BatchNumber: 11, EpochNumber: 13, Amount: 50, PoolFee: 0, NumStakers: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.InsertReward(t.Context(), db.InsertRewardParams{BatchNumber: 12, EpochNumber: 14, Amount: 50, PoolFee: 0, NumStakers: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.InsertPayslip(t.Context(), db.InsertPayslipParams{BatchNumber: 10, Address: addrA, Amount: 50, Status: "out_for_payment"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.InsertPayslip(t.Context(), db.InsertPayslipParams{BatchNumber: 11, Address: addrA, Amount: 50, Status: "out_for_payment"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.InsertPayslip(t.Context(), db.InsertPayslipParams{BatchNumber: 12, Address: addrB, Amount: 50, Status: "out_for_payment"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.SetPayslipsTransaction(t.Context(), db.SetPayslipsTransactionParams{TxHash: sql.NullString{String: "tx-a", Valid: true}, Address: addrA}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.SetPayslipsTransaction(t.Context(), db.SetPayslipsTransactionParams{TxHash: sql.NullString{String: "tx-b", Valid: true}, Address: addrB}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.InsertTransaction(t.Context(), db.InsertTransactionParams{Hash: "tx-a", Address: addrA, Amount: 100, Status: "completed"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.InsertTransaction(t.Context(), db.InsertTransactionParams{Hash: "tx-b", Address: addrB, Amount: 50, Status: "completed"}); err != nil {
+		t.Fatal(err)
+	}
+
+	fetch := func(query string) []string {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/operator/payouts?"+query, nil)
+		req.AddCookie(cookie)
+		a.Mux().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("payouts?%s status = %d, body: %s", query, rec.Code, rec.Body.String())
+		}
+		var got struct {
+			Items []struct {
+				Hash string `json:"hash"`
+			} `json:"items"`
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		hashes := []string{}
+		for _, it := range got.Items {
+			hashes = append(hashes, it.Hash)
+		}
+		return hashes
+	}
+
+	if got := fetch("epoch=13"); len(got) != 1 || got[0] != "tx-a" {
+		t.Fatalf("epoch=13 = %v, want [tx-a]", got)
+	}
+	if got := fetch("epoch=14"); len(got) != 1 || got[0] != "tx-b" {
+		t.Fatalf("epoch=14 = %v, want [tx-b]", got)
+	}
+	if got := fetch("address=nq32"); len(got) != 1 || got[0] != "tx-b" {
+		t.Fatalf("address=nq32 = %v, want [tx-b] (case-insensitive)", got)
+	}
+	if got := fetch(""); len(got) != 2 {
+		t.Fatalf("unfiltered = %v, want 2 rows", got)
+	}
+}

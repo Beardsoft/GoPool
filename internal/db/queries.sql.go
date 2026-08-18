@@ -1481,16 +1481,26 @@ FROM transactions t
 LEFT JOIN payslips p ON p.tx_hash = t.hash
 LEFT JOIN rewards r ON r.batch_number = p.batch_number
 WHERE (? IS NULL OR t.status = ?)
+  AND (? IS NULL OR t.address LIKE '%' || ? || '%')
+  AND (? IS NULL OR EXISTS (
+    SELECT 1 FROM payslips p2
+    JOIN rewards r2 ON r2.batch_number = p2.batch_number
+    WHERE p2.tx_hash = t.hash AND r2.epoch_number = ?
+  ))
 GROUP BY t.hash
 ORDER BY t.submitted_at DESC
 LIMIT ? OFFSET ?
 `
 
 type ListPayoutTransactionsParams struct {
-	Column1 interface{} `json:"column_1"`
-	Status  string      `json:"status"`
-	Limit   int64       `json:"limit"`
-	Offset  int64       `json:"offset"`
+	Column1     interface{}    `json:"column_1"`
+	Status      string         `json:"status"`
+	Column3     interface{}    `json:"column_3"`
+	Column4     sql.NullString `json:"column_4"`
+	Column5     interface{}    `json:"column_5"`
+	EpochNumber int64          `json:"epoch_number"`
+	Limit       int64          `json:"limit"`
+	Offset      int64          `json:"offset"`
 }
 
 type ListPayoutTransactionsRow struct {
@@ -1508,6 +1518,10 @@ func (q *Queries) ListPayoutTransactions(ctx context.Context, arg ListPayoutTran
 	rows, err := q.db.QueryContext(ctx, ListPayoutTransactions,
 		arg.Column1,
 		arg.Status,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.EpochNumber,
 		arg.Limit,
 		arg.Offset,
 	)

@@ -11,23 +11,30 @@ const payouts = ref<OperatorPayout[]>([])
 const actions = ref<OperatorAction[]>([])
 const statusFilter = ref('')
 const addressFilter = ref('')
-const epochFilter = ref<number | null>(null)
+const epochFilter = ref('')
 const error = ref('')
 const reviewAction = ref<'deactivate' | 'retire' | null>(null)
 const payoutNextCursor = ref<number | string | null>(null)
 const payoutHasMore = ref(false)
 const loadingMore = ref(false)
 
-const filteredPayouts = computed(() => payouts.value
-  .filter((item) => !statusFilter.value || item.status === statusFilter.value)
-  .filter((item) => !addressFilter.value || item.address.toLowerCase().includes(addressFilter.value.toLowerCase()))
-  .filter((item) => epochFilter.value == null || (item.epoch_from != null && item.epoch_to != null && epochFilter.value >= item.epoch_from && epochFilter.value <= item.epoch_to))
+const filteredPayouts = computed(() => [...payouts.value]
   .sort((a, b) => Number(b.status === 'failed') - Number(a.status === 'failed')))
+
+function payoutQuery(cursor?: number | string) {
+  const params = new URLSearchParams()
+  params.set('limit', '50')
+  if (statusFilter.value) params.set('status', statusFilter.value)
+  if (addressFilter.value.trim()) params.set('address', addressFilter.value.trim())
+  if (epochFilter.value !== '') params.set('epoch', epochFilter.value)
+  if (cursor != null) params.set('cursor', String(cursor))
+  return params.toString()
+}
 
 async function load() {
   try {
     const [payoutPage, actionPage] = await Promise.all([
-      apiGet<PageResponse<OperatorPayout>>('/api/operator/payouts?limit=50'),
+      apiGet<PageResponse<OperatorPayout>>(`/api/operator/payouts?${payoutQuery()}`),
       apiGet<PageResponse<OperatorAction>>('/api/operator/actions?limit=50'),
     ])
     payouts.value = payoutPage.items
@@ -39,11 +46,17 @@ async function load() {
   }
 }
 
+function applyFilters() {
+  payoutNextCursor.value = null
+  payoutHasMore.value = false
+  load()
+}
+
 async function loadMorePayouts() {
   if (payoutNextCursor.value == null || loadingMore.value) return
   loadingMore.value = true
   try {
-    const page = await apiGet<PageResponse<OperatorPayout>>(`/api/operator/payouts?limit=50&cursor=${payoutNextCursor.value}`)
+    const page = await apiGet<PageResponse<OperatorPayout>>(`/api/operator/payouts?${payoutQuery(payoutNextCursor.value)}`)
     payouts.value.push(...page.items)
     payoutNextCursor.value = page.next_cursor
     payoutHasMore.value = page.has_more ?? false
@@ -113,11 +126,11 @@ onMounted(load)
     <section class="card">
       <div class="section-heading"><h2>Payout queue</h2><span>{{ filteredPayouts.length }} shown</span></div>
       <div class="filters">
-        <select v-model="statusFilter" class="input" aria-label="Payout status">
+        <select v-model="statusFilter" class="input" aria-label="Payout status" @change="applyFilters">
           <option value="">All states</option><option>failed</option><option>awaiting_confirmation</option><option>completed</option>
         </select>
-        <input v-model="addressFilter" class="input" placeholder="Filter address" aria-label="Filter payout address" />
-        <input v-model.number="epochFilter" type="number" min="0" class="input" placeholder="Filter epoch" aria-label="Filter payout epoch" />
+        <input v-model="addressFilter" class="input" placeholder="Filter address" aria-label="Filter payout address" @change="applyFilters" />
+        <input v-model="epochFilter" type="number" min="0" class="input" placeholder="Filter epoch" aria-label="Filter payout epoch" @change="applyFilters" />
       </div>
       <div v-if="filteredPayouts.length" class="table-wrap">
         <table><thead><tr><th>Status</th><th>Epoch</th><th>Recipient</th><th>Amount</th><th>Transaction</th><th>Waiting</th><th></th></tr></thead>

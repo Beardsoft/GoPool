@@ -46,7 +46,7 @@ describe('Operations', () => {
     expect(wrapper.get('tbody tr').text()).toContain('12–13')
   })
 
-  it('loads more payouts and filters rows by epoch', async () => {
+  it('loads more payouts and sends filter changes to the server', async () => {
     const payout = (hash: string, epochFrom: number, epochTo: number) => ({
       hash,
       address: 'NQ00 0000 0000 0000 0000 0000 0001',
@@ -61,6 +61,8 @@ describe('Operations', () => {
       .mockResolvedValueOnce({ items: [payout('0xa', 12, 13)], next_cursor: 50, has_more: true })
       .mockResolvedValueOnce({ items: [], next_cursor: 0 })
       .mockResolvedValueOnce({ items: [payout('0xb', 14, 14)], next_cursor: 51, has_more: false })
+      .mockResolvedValueOnce({ items: [payout('0xb', 14, 14)], next_cursor: 0, has_more: false })
+      .mockResolvedValueOnce({ items: [], next_cursor: 0 })
     const wrapper = mount(Operations)
     await flushPromises()
     expect(wrapper.get('tbody').findAll('tr').length).toBe(1)
@@ -68,7 +70,11 @@ describe('Operations', () => {
     await flushPromises()
     expect(get).toHaveBeenLastCalledWith(expect.stringContaining('cursor=50'))
     expect(wrapper.get('tbody').findAll('tr').length).toBe(2)
-    await wrapper.get('[aria-label="Filter payout epoch"]').setValue('14')
+    const epochInput = wrapper.get('[aria-label="Filter payout epoch"]')
+    await epochInput.setValue('14')
+    await epochInput.trigger('change')
+    await flushPromises()
+    expect(get.mock.calls.some((c) => String(c[0]).includes('epoch=14'))).toBe(true)
     expect(wrapper.get('tbody').findAll('tr').length).toBe(1)
     expect(wrapper.get('tbody tr').text()).toContain('14')
   })

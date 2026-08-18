@@ -298,6 +298,8 @@ func (a *API) handleOperatorActionSub(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) handleOperatorPayouts(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
+	address := r.URL.Query().Get("address")
+	epochStr := r.URL.Query().Get("epoch")
 	cursorStr := r.URL.Query().Get("cursor")
 	limitStr := r.URL.Query().Get("limit")
 	limit := 50
@@ -312,17 +314,37 @@ func (a *API) handleOperatorPayouts(w http.ResponseWriter, r *http.Request) {
 			cursor = v
 		}
 	}
+	epoch := int64(0)
+	hasEpoch := false
+	if epochStr != "" {
+		if v, err := strconv.ParseInt(epochStr, 10, 64); err == nil && v >= 0 {
+			epoch = v
+			hasEpoch = true
+		}
+	}
 	ctx := r.Context()
 	column1 := interface{}(nil)
 	if status != "" {
 		column1 = 1
 	}
+	column3 := interface{}(nil)
+	if address != "" {
+		column3 = 1
+	}
+	column5 := interface{}(nil)
+	if hasEpoch {
+		column5 = 1
+	}
 	// Fetch one extra row to detect whether another page exists.
 	rows, err := a.queries.ListPayoutTransactions(ctx, db.ListPayoutTransactionsParams{
-		Column1: column1,
-		Status:  status,
-		Limit:   int64(limit + 1),
-		Offset:  int64(cursor),
+		Column1:     column1,
+		Status:      status,
+		Column3:     column3,
+		Column4:     sql.NullString{String: address, Valid: true},
+		Column5:     column5,
+		EpochNumber: epoch,
+		Limit:       int64(limit + 1),
+		Offset:      int64(cursor),
 	})
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "db_error", "loading payouts")
