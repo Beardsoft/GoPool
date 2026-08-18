@@ -13,4 +13,5 @@ data/
 devlab/.runtime/
 .impeccable/
 .superpowers/
+docs/superpowers/
 node_modules/
