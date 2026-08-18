@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Beardsoft/GoPool/internal/chain"
@@ -116,5 +117,35 @@ func (a *API) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 	a.setupComplete = true
 	a.setupSessions = make(map[string]time.Time)
 	a.setupMu.Unlock()
+	_ = a.tryActivateFromStore()
 	writeJSON(w, http.StatusCreated, revision)
+}
+
+func (a *API) tryActivateFromStore() error {
+	if a.configStore == nil {
+		return nil
+	}
+	cfg, configured, err := config.LoadOptional(a.configStore.Path())
+	if err != nil {
+		return err
+	}
+	if !configured {
+		return nil
+	}
+	if path := os.Getenv("POOL_SESSION_SECRET_FILE"); path != "" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		cfg.SessionSecret = strings.TrimSpace(string(data))
+	}
+	if err := config.ValidateAPI(cfg); err != nil {
+		return err
+	}
+	rpcClient, err := chain.NewRPCOnly(cfg)
+	if err != nil {
+		return err
+	}
+	a.ActivateConfigured(cfg, rpcClient)
+	return nil
 }

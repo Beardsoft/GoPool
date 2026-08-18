@@ -76,7 +76,7 @@ func main() {
 		addr = cfg.APIAddr
 	}
 
-	srv := &http.Server{Addr: addr, Handler: a.Mux()}
+	srv := &http.Server{Addr: addr, Handler: a}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

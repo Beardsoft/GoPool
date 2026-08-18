@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,5 +54,55 @@ func TestSetupCompletePersistsAlertSecrets(t *testing.T) {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("config file missing %q", want)
 		}
+	}
+}
+
+func TestSetupCompleteActivatesPoolRoutes(t *testing.T) {
+	secretPath := filepath.Join(t.TempDir(), "session-secret")
+	if err := os.WriteFile(secretPath, []byte("test-session-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("POOL_SESSION_SECRET_FILE", secretPath)
+
+	sum := sha256.Sum256([]byte("bootstrap"))
+	q := newTestDB(t)
+	store := configstore.New(filepath.Join(t.TempDir(), "config.json"), q)
+	a := New(nil, q, nil, WithSetup(hex.EncodeToString(sum[:]), store))
+	mux := a.Mux()
+
+	session := postJSON(t, mux, "/api/setup/session", map[string]string{"token": "bootstrap"}, nil)
+	if session.Code != http.StatusOK {
+		t.Fatalf("session: %d %s", session.Code, session.Body.String())
+	}
+	var cookie *http.Cookie
+	for _, c := range session.Result().Cookies() {
+		if c.Name == setupCookieName {
+			cookie = c
+		}
+	}
+	if cookie == nil {
+		t.Fatal("no setup cookie")
+	}
+
+	draft := map[string]any{
+		"rpc_url": "https://rpc-testnet.nimiqscan.com", "network": "test-albatross",
+		"pool_fee_wallet": testAddr, "pool_fee_percentage": .01, "payout_mode": "delegate",
+		"min_payout_luna": 100000, "api_addr": ":8080", "validator_address": testAddr, "pool_name": "GoPool",
+	}
+	complete := postJSON(t, mux, "/api/setup/complete", map[string]any{"settings": draft}, cookie)
+	if complete.Code != http.StatusCreated {
+		t.Fatalf("complete: %d %s", complete.Code, complete.Body.String())
+	}
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/pool", nil))
+	if rec.Code == http.StatusNotFound || rec.Code == http.StatusServiceUnavailable {
+		t.Fatalf("pool still unavailable after setup: %d %s", rec.Code, rec.Body.String())
+	}
+
+	home := httptest.NewRecorder()
+	mux.ServeHTTP(home, httptest.NewRequest(http.MethodGet, "/", nil))
+	if home.Code == http.StatusFound && home.Header().Get("Location") == "/setup" {
+		t.Fatal("GET / still redirects to /setup after complete")
 	}
 }

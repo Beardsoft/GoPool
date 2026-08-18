@@ -32,6 +32,8 @@ type API struct {
 	setupMu        sync.Mutex
 	setupSessions  map[string]time.Time
 	setupFailures  map[string][]time.Time
+	mu             sync.Mutex
+	handler        http.Handler
 }
 
 type Option func(*API)
@@ -49,13 +51,46 @@ func New(cfg *config.Config, q *db.Queries, rpcClient *rpc.Client, options ...Op
 	for _, option := range options {
 		option(a)
 	}
+	a.handler = a.buildMux()
 	return a
 }
 
-// Mux builds the HTTP routes. Route registration for auth/operator handlers
-// is added in later tasks; this file owns the mux itself so every task edits
-// only the routes it adds, not a shared switch statement.
+// Mux returns the API as a handler so tests and the server share one
+// replaceable mux rather than a snapshot captured at startup.
 func (a *API) Mux() http.Handler {
+	a.ensureHandler()
+	return a
+}
+
+func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	if a.handler == nil {
+		a.handler = a.buildMux()
+	}
+	h := a.handler
+	a.mu.Unlock()
+	h.ServeHTTP(w, r)
+}
+
+func (a *API) ensureHandler() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.handler == nil {
+		a.handler = a.buildMux()
+	}
+}
+
+// ActivateConfigured swaps setup-only routes for the full API mux.
+func (a *API) ActivateConfigured(cfg *config.Config, rpcClient *rpc.Client) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cfg = cfg
+	a.rpc = rpcClient
+	a.setupOnly = false
+	a.handler = a.buildMux()
+}
+
+func (a *API) buildMux() http.Handler {
 	mux := http.NewServeMux()
 	if a.setupOnly {
 		a.registerSetupRoutes(mux)
