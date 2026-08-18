@@ -13,7 +13,7 @@ withDefaults(defineProps<{
 </script>
 
 <template>
-  <dl v-if="facts.length" class="event-facts" :data-layout="layout">
+  <dl v-if="facts.length" class="event-facts" :data-layout="layout" :data-count="facts.length">
     <div v-for="fact in facts" :key="fact.key" class="fact">
       <dt>{{ fact.label }}</dt>
       <dd>
@@ -42,12 +42,16 @@ withDefaults(defineProps<{
 
 <style scoped>
 .event-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 28px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 16px;
   margin: 0;
   min-width: 0;
-  justify-content: flex-end;
+  width: 100%;
+  justify-content: stretch;
+}
+.event-facts[data-count='1'] {
+  grid-template-columns: minmax(0, 1fr);
 }
 .fact {
   display: grid;
@@ -70,11 +74,15 @@ withDefaults(defineProps<{
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
+.event-facts[data-layout='compact'] .fact dd,
+.event-facts[data-layout='compact'] .fact dd > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .event-facts[data-layout='fill'] {
-  display: grid;
   grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
   gap: 12px 20px;
-  justify-content: stretch;
   padding: 14px 16px;
   border-radius: 10px;
   background: var(--surface-2);
@@ -92,5 +100,10 @@ withDefaults(defineProps<{
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .event-facts[data-layout='compact']:not([data-count='1']) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>

@@ -101,6 +101,8 @@ describe('Overview', () => {
     expect(row.text()).not.toContain('21584135')
     expect(row.find('[aria-label="Copy wallet address"]').exists()).toBe(true)
     expect(row.find('[aria-label="Copy transaction hash"]').exists()).toBe(true)
+    expect(row.get('.event-facts').attributes('data-layout')).toBe('compact')
+    expect(row.get('.event-facts').attributes('data-count')).toBe('4')
   })
 
   it('keeps the daily overview scannable when many attention items are open', async () => {

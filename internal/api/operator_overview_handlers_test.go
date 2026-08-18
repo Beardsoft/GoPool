@@ -53,6 +53,31 @@ func TestOperatorOverviewReturnsHealthAndAttention(t *testing.T) {
 	}
 }
 
+func TestOperatorOverviewIgnoresRecoveredReadinessEvents(t *testing.T) {
+	a, cookie, _ := operatorTestAPI(t)
+	seedRuntimeStatus(t, a.queries, "active", 100, 100, true)
+	if _, err := a.queries.InsertOperatorEvent(t.Context(), db.InsertOperatorEventParams{
+		Severity: "error", Category: "readiness", Source: "daemon",
+		EventType: "pool_wallet_readiness_failed", Summary: "Pool wallet readiness check failed",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/operator/overview", nil)
+	req.AddCookie(cookie)
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%d: %s", rec.Code, rec.Body.String())
+	}
+	var got operatorOverviewResponseTest
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "healthy" || len(got.Attention) != 0 {
+		t.Fatalf("%+v, want healthy with no attention", got)
+	}
+}
+
 func TestOperatorOverviewWalletRunway(t *testing.T) {
 	a, cookie, _ := operatorTestAPI(t)
 	seedRuntimeStatus(t, a.queries, "active", 100, 100, true)

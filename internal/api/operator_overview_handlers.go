@@ -92,7 +92,10 @@ func (a *API) handleOperatorOverview(w http.ResponseWriter, r *http.Request) {
 		events = append(events, eventSummary{
 			ID: e.ID, Severity: e.Severity, Category: e.Category, Summary: e.Summary, ContextJson: e.ContextJson.String, CreatedAt: created,
 		})
-		if e.Severity == "error" || e.Severity == "warning" {
+		// Readiness events are transient by design (the daemon retries until
+		// the validator is staked); the current state is the readiness field,
+		// so they stay in the event feed without flagging attention.
+		if (e.Severity == "error" || e.Severity == "warning") && e.Category != "readiness" {
 			attention = append(attention, attentionItem{
 				ID: e.ID, Severity: e.Severity, Category: e.Category, Summary: e.Summary,
 			})

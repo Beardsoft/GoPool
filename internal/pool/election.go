@@ -32,20 +32,36 @@ func stakerPercentage(stake, total nimiq.Luna) float64 {
 func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 	nextEpoch := epochAt(m.policy, height) + 1
 
-	exists, err := m.queries.EpochExists(ctx, int64(nextEpoch))
-	if err != nil {
-		return err
+	// The genesis election closes epoch 0, whose stakers are exactly this
+	// snapshot. The first checkpoint attributes batch 0's reward to epoch 0,
+	// so without an epoch-0 row the rewards foreign key fails and the replay
+	// loop is stuck forever on the first batch boundary.
+	epochs := []int64{int64(nextEpoch)}
+	if height == m.policy.GenesisBlockNumber {
+		epochs = append(epochs, int64(epochAt(m.policy, height)))
 	}
-	if exists {
-		return nil
+
+	for _, ep := range epochs {
+		exists, err := m.queries.EpochExists(ctx, ep)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return nil
+		}
 	}
 
 	addr := m.chain.Address()
 	validator, err := m.chain.RPC.GetValidator(ctx, addr)
 	if err != nil {
-		insertErr := m.queries.InsertEpoch(ctx, db.InsertEpochParams{
-			Number: int64(nextEpoch), NumStakers: 0, Balance: 0, Status: "not_elected",
-		})
+		var insertErr error
+		for _, ep := range epochs {
+			if insertErr = m.queries.InsertEpoch(ctx, db.InsertEpochParams{
+				Number: ep, NumStakers: 0, Balance: 0, Status: "not_elected",
+			}); insertErr != nil {
+				break
+			}
+		}
 		if m.notifier != nil {
 			m.notifier.Send(ctx, notifier.Alert{Level: "warning", Type: "missed_election", Title: "Missed election",
 				Message: fmt.Sprintf("Could not confirm validator election for epoch %d: %v", nextEpoch, err)})
@@ -66,10 +82,16 @@ func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 		status = "no_stakers"
 	}
 	if status != "" {
-		if err := m.queries.InsertEpoch(ctx, db.InsertEpochParams{
-			Number: int64(nextEpoch), NumStakers: 0, Balance: int64(validator.Balance), Status: status,
-		}); err != nil {
-			return err
+		var insertErr error
+		for _, ep := range epochs {
+			if insertErr = m.queries.InsertEpoch(ctx, db.InsertEpochParams{
+				Number: ep, NumStakers: 0, Balance: int64(validator.Balance), Status: status,
+			}); insertErr != nil {
+				break
+			}
+		}
+		if insertErr != nil {
+			return insertErr
 		}
 		if m.notifier != nil {
 			m.notifier.Send(ctx, notifier.Alert{Level: "warning", Type: "validator_state", Title: "Validator state", Message: "Validator is " + status + " for epoch " + fmt.Sprintf("%d", nextEpoch)})
@@ -96,23 +118,27 @@ func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 		return err
 	}
 
-	if err := m.queries.InsertEpoch(ctx, db.InsertEpochParams{
-		Number: int64(nextEpoch), NumStakers: int64(len(stakers)), Balance: int64(validator.Balance), Status: "in_progress",
-	}); err != nil {
-		return err
-	}
-
-	for _, s := range stakers {
-		if s.Balance == 0 {
-			continue
-		}
-		if err := m.queries.InsertStaker(ctx, db.InsertStakerParams{
-			EpochNumber: int64(nextEpoch),
-			Address:     s.Address,
-			Stake:       int64(s.Balance),
-			Percentage:  stakerPercentage(s.Balance, validator.Balance),
+	for _, ep := range epochs {
+		if err := m.queries.InsertEpoch(ctx, db.InsertEpochParams{
+			Number: ep, NumStakers: int64(len(stakers)), Balance: int64(validator.Balance), Status: "in_progress",
 		}); err != nil {
 			return err
+		}
+	}
+
+	for _, ep := range epochs {
+		for _, s := range stakers {
+			if s.Balance == 0 {
+				continue
+			}
+			if err := m.queries.InsertStaker(ctx, db.InsertStakerParams{
+				EpochNumber: ep,
+				Address:     s.Address,
+				Stake:       int64(s.Balance),
+				Percentage:  stakerPercentage(s.Balance, validator.Balance),
+			}); err != nil {
+				return err
+			}
 		}
 	}
 
