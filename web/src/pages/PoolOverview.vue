@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { apiGet } from '../api'
+import { apiGet, type ApiError } from '../api'
 import NimAmount from '../components/ui/NimAmount.vue'
 import type { PoolStatus } from '../types/api'
 
@@ -22,7 +22,12 @@ onMounted(async () => {
   try {
     pool.value = await apiGet<PoolStatus>('/api/pool')
   } catch (cause) {
-    error.value = (cause as Error).message || 'Pool data is temporarily unavailable.'
+    const err = cause as ApiError
+    if (err.code === 'setup_required') {
+      await router.replace('/setup')
+      return
+    }
+    error.value = err.message || 'Pool data is temporarily unavailable.'
   }
 })
 </script>

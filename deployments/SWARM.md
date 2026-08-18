@@ -41,7 +41,7 @@ GOPOOL_IMAGE=ghcr.io/beardsoft/gopool:${SHA} \
   docker stack deploy --with-registry-auth -c deployments/docker-stack-test.yml gopool-test
 ```
 
-Open `https://pool-testnet.maestroi.cc`, enter the setup token, and complete the assistant. Use:
+Open `https://pool-testnet.maestroi.cc`, enter the setup token, and complete the assistant. An unconfigured daemon serves only the setup wizard (`/` redirects to `/setup`). Use:
 
 - RPC URL `https://rpc-testnet.nimiqscan.com`
 - Network `test-albatross`

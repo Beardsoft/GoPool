@@ -38,4 +38,26 @@ describe('PoolOverview product composition', () => {
     expect(wrapper.get('[data-section="reward-model"]').text()).toMatch(/rewards|fee/i)
     expect(wrapper.get('[data-section="activity"]').text()).toMatch(/performance|activity/i)
   })
+
+  it('sends unconfigured visitors to the setup wizard', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      code: 'setup_required',
+      error: 'pool is not configured',
+    }), { status: 503, headers: { 'Content-Type': 'application/json' } })))
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: PoolOverview },
+        { path: '/setup', component: { template: '<div>setup</div>' } },
+        { path: '/stakers', component: { template: '<div />' } },
+        { path: '/performance', component: { template: '<div />' } },
+        { path: '/epochs', component: { template: '<div />' } },
+      ],
+    })
+    await router.push('/')
+    await router.isReady()
+    mount(PoolOverview, { global: { plugins: [router] } })
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/setup')
+  })
 })
