@@ -110,9 +110,24 @@ else
   echo
   if [ -n "$key" ]; then
     install -m 600 /dev/stdin .secrets/validator-key <<<"$key"
+    cat <<EOF
+
+Note: a pasted payout key lets GoPool pay out, but the validator node
+(gopool-validator) cannot run without the full key set. To add it later,
+save the full key set to .secrets/wallet.json and run:
+  ./scripts/make-validator-node-config.sh --network <network>
+  docker compose -f deployments/docker-compose.yml up -d
+EOF
   else
     echo "Skipped: create .secrets/validator-key (mode 600) before starting the daemon."
   fi
+fi
+
+# The gopool-validator service needs the full key set in node-config.toml;
+# a pasted payout key alone cannot provide it.
+if [ -f .secrets/wallet.json ] && [ ! -f .secrets/node-config.toml ]; then
+  read -rp "Network for the validator node [main-albatross]: " validator_network
+  ./scripts/make-validator-node-config.sh --network "${validator_network:-main-albatross}"
 fi
 
 step "Step 4/5: Domain / TLS"
@@ -125,7 +140,12 @@ fi
 
 step "Step 5/5: Start GoPool"
 if confirm "Build and start the daemon + API + Caddy now?"; then
-  docker compose -f deployments/docker-compose.yml up -d --build
+  if [ -f .secrets/node-config.toml ]; then
+    docker compose -f deployments/docker-compose.yml up -d --build
+  else
+    echo "No node-config.toml: starting without the gopool-validator service."
+    docker compose -f deployments/docker-compose.yml up -d --build gopool gopool-api caddy
+  fi
   cat <<EOF
 
 Done. Open https://$(grep GOPOOL_DOMAIN .env | cut -d= -f2) and enter this setup token:

@@ -21,6 +21,22 @@ services:
       placement: { constraints: [node.role == manager] }
     networks: [gopool_net]
 
+  # Validator node: produces blocks for the pool. Syncs the chain on first
+  # start; the pool stakes the validator via the setup wizard. No RPC: the
+  # pool keeps using its configured RPC URL.
+  gopool-validator:
+    image: ${NIMIQ_IMAGE:-ghcr.io/nimiq/core-rs-albatross:2.0.0-pre}
+    volumes:
+      - gopool_validator_data:/home/nimiq/.nimiq
+    secrets:
+      - source: gopool_node_config
+        target: /home/nimiq/.nimiq/client.toml
+    deploy:
+      replicas: 1
+      restart_policy: { condition: any }
+      placement: { constraints: [node.role == manager] }
+    networks: [gopool_net]
+
   gopool-api:
     image: ${GOPOOL_IMAGE:-ghcr.io/beardsoft/gopool:latest}
     environment:
@@ -56,7 +72,9 @@ networks:
 volumes:
   gopool_data: { driver: local }
   gopool_config: { driver: local }
+  gopool_validator_data: { driver: local }
 secrets:
   gopool_validator_key: { external: true }
   gopool_setup_token: { external: true }
   gopool_session_secret: { external: true }
+  gopool_node_config: { external: true }

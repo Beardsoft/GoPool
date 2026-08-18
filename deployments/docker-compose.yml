@@ -46,6 +46,19 @@ services:
     depends_on: [gopool]
     restart: unless-stopped
 
+  # Validator node: produces blocks for the pool. Needs .secrets/node-config.toml
+  # (scripts/make-validator-node-config.sh). Runs as the image's default user
+  # (nimiq:1001); the .nimiq dir/volume is pre-owned by nimiq. No RPC is exposed.
+  gopool-validator:
+    image: ghcr.io/nimiq/core-rs-albatross:2.0.0-pre
+    container_name: gopool-validator
+    volumes:
+      - validator_data:/home/nimiq/.nimiq
+    secrets:
+      - source: gopool_node_config
+        target: /home/nimiq/.nimiq/client.toml
+    restart: unless-stopped
+
   caddy:
     image: caddy:2-alpine
     container_name: gopool-caddy
@@ -60,6 +73,7 @@ services:
 
 volumes:
   caddy_data:
+  validator_data:
 
 secrets:
   gopool_validator_key:
@@ -68,3 +82,5 @@ secrets:
     file: ../.secrets/setup-token
   gopool_session_secret:
     file: ../.secrets/session-secret
+  gopool_node_config:
+    file: ../.secrets/node-config.toml
