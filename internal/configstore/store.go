@@ -18,8 +18,10 @@ import (
 var ErrRevisionConflict = errors.New("configuration revision conflict")
 
 type Revision struct {
-	ID              int64           `json:"id"`
-	Hash            string          `json:"hash"`
+	ID   int64  `json:"id"`
+	Hash string `json:"hash"`
+	// RestartRequired means the daemon heartbeat does not yet match this
+	// hash, not that the operator must restart containers.
 	RestartRequired bool            `json:"restart_required"`
 	Actor           string          `json:"actor,omitempty"`
 	Before          config.Redacted `json:"before"`

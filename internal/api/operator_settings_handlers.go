@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Beardsoft/GoPool/internal/chain"
 	"github.com/Beardsoft/GoPool/internal/config"
 	"github.com/Beardsoft/GoPool/internal/configstore"
 )
@@ -87,6 +88,7 @@ func (a *API) handleOperatorSettingsSave(w http.ResponseWriter, r *http.Request)
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", err.Error())
 		return
 	}
+	a.applyLiveConfig()
 	writeJSON(w, http.StatusOK, revision)
 }
 
@@ -132,5 +134,28 @@ func (a *API) handleOperatorSettingsRestore(w http.ResponseWriter, r *http.Reque
 		writeAPIError(w, http.StatusUnprocessableEntity, "restore_failed", err.Error())
 		return
 	}
+	a.applyLiveConfig()
 	writeJSON(w, http.StatusOK, revision)
+}
+
+func (a *API) applyLiveConfig() {
+	if a.configStore == nil {
+		return
+	}
+	cfg, configured, err := config.LoadOptional(a.configStore.Path())
+	if err != nil || !configured || cfg == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg != nil {
+		cfg.SessionSecret = a.cfg.SessionSecret
+	}
+	rpcChanged := a.cfg == nil || a.cfg.RPCURL != cfg.RPCURL || a.cfg.Network != cfg.Network
+	a.cfg = cfg
+	if rpcChanged {
+		if rpcClient, err := chain.NewRPCOnly(cfg); err == nil {
+			a.rpc = rpcClient
+		}
+	}
 }

@@ -68,3 +68,31 @@ func TestSettingsSavePersistsSecretsRedacted(t *testing.T) {
 		}
 	}
 }
+
+func TestOperatorSettingsSave(t *testing.T) {
+	a, cookie := configuredOperatorAPI(t)
+	store := configstore.New(filepath.Join(t.TempDir(), "config.json"), a.queries)
+	a.configStore = store
+	settings := validTestEditable()
+	settings.PoolFeePercentage = 0.05
+	settings.RPCURL = "https://rpc.example.test"
+	rec := putJSON(t, a.Mux(), "/api/operator/settings", map[string]any{
+		"expected_hash": "",
+		"settings":      settings,
+	}, cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%d: %s", rec.Code, rec.Body.String())
+	}
+	if a.cfg == nil || a.cfg.PoolFeePercentage != 0.05 {
+		t.Fatalf("live cfg fee = %v, want 0.05", a.cfg)
+	}
+	if a.cfg.RPCURL != "https://rpc.example.test" {
+		t.Fatalf("live cfg rpc = %q", a.cfg.RPCURL)
+	}
+	if a.cfg.SessionSecret != "test-secret" {
+		t.Fatalf("session secret not kept")
+	}
+	if !strings.Contains(rec.Body.String(), `"restart_required":true`) {
+		t.Fatalf("expected restart_required while heartbeat lags: %s", rec.Body.String())
+	}
+}
