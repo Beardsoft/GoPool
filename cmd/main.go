@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -32,11 +33,6 @@ func main() {
 		logger.Logger.Fatal("failed to load config", zap.Error(err))
 	}
 
-	c, err := chain.New(cfg)
-	if err != nil {
-		logger.Logger.Fatal("failed to set up chain client", zap.Error(err))
-	}
-
 	dbPath := os.Getenv("SQLITE_DB")
 	if dbPath == "" {
 		dbPath = "pool.db"
@@ -48,10 +44,13 @@ func main() {
 	defer sqlDB.Close()
 	queries := db.New(sqlDB)
 
-	recorder := ops.NewRecorder(queries, config.ConfigHash(cfg.Editable(), cfg.AlertSecrets()))
-	manager := pool.NewManager(c, queries, cfg, recorder)
-
 	if len(os.Args) > 1 && os.Args[1] == "validator" {
+		c, err := chain.New(cfg)
+		if err != nil {
+			logger.Logger.Fatal("failed to set up chain client", zap.Error(err))
+		}
+		recorder := ops.NewRecorder(queries, config.ConfigHash(cfg.Editable(), cfg.AlertSecrets()))
+		manager := pool.NewManager(c, queries, cfg, recorder)
 		if err := runValidatorCLI(ctx, manager, os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
@@ -67,8 +66,27 @@ func main() {
 		}()
 	}
 
-	if err := manager.Run(ctx); err != nil {
-		logger.Logger.Error("pool manager stopped", zap.Error(err))
+	for {
+		c, err := chain.New(cfg)
+		if err != nil {
+			logger.Logger.Fatal("failed to set up chain client", zap.Error(err))
+		}
+		recorder := ops.NewRecorder(queries, config.ConfigHash(cfg.Editable(), cfg.AlertSecrets()))
+		manager := pool.NewManager(c, queries, cfg, recorder)
+		err = manager.Run(ctx)
+		if errors.Is(err, pool.ErrConfigChanged) {
+			next, loadErr := config.WaitForDaemon(ctx, "", time.Second)
+			if loadErr != nil {
+				logger.Logger.Fatal("failed to load config", zap.Error(loadErr))
+			}
+			logger.Logger.Info("reloading pool manager after config change")
+			cfg = next
+			continue
+		}
+		if err != nil {
+			logger.Logger.Error("pool manager stopped", zap.Error(err))
+		}
+		return
 	}
 }
 

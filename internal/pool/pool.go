@@ -50,6 +50,7 @@ type Manager struct {
 	balanceHoldAlerted    map[string]bool
 	lastChainGaugeRefresh time.Time
 	lastValidatorObserve  time.Time
+	fileHash              string
 }
 
 // NewManager builds a Manager. Policy is loaded on Run.
@@ -57,7 +58,23 @@ func NewManager(c *chain.Chain, q *db.Queries, cfg *config.Config, recorder *ops
 	return &Manager{
 		chain: c, queries: q, cfg: cfg, notifier: notifier.New(cfg, nil), recorder: recorder,
 		feeFloorAlerted: make(map[string]bool), balanceHoldAlerted: make(map[string]bool),
+		fileHash: currentFileHash(""),
 	}
+}
+
+// ErrConfigChanged is returned from Run when CONFIG_FILE changed and payouts are idle.
+var ErrConfigChanged = errors.New("config file changed")
+
+func shouldReload(running, current string, payoutInFlight bool) bool {
+	return !payoutInFlight && current != "" && running != current
+}
+
+func currentFileHash(path string) string {
+	h, err := config.FileHash(path)
+	if err != nil {
+		return ""
+	}
+	return h
 }
 
 // classify reports what kind of block a height is, relative to the cached
@@ -418,6 +435,14 @@ func (m *Manager) Run(ctx context.Context) error {
 		if m.recorder != nil {
 			_ = m.recordHeartbeat(ctx, head, processed, tickStart)
 			_ = m.recordSnapshot(ctx, head, processed, tickStart)
+		}
+
+		if shouldReload(m.fileHash, currentFileHash(""), false) {
+			if _, err := config.LoadDaemon(""); err != nil {
+				logger.Logger.Error("ignoring invalid config file", zap.Error(err))
+				continue
+			}
+			return ErrConfigChanged
 		}
 	}
 }

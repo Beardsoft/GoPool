@@ -281,6 +281,16 @@ func LoadDaemon(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// FileHash returns the SHA-256 hex digest of the config file bytes.
+func FileHash(path string) (string, error) {
+	data, err := os.ReadFile(configPath(path))
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
 // WaitForDaemon loads daemon config, retrying while the file is missing.
 // Other LoadDaemon errors (invalid JSON, validation) are returned immediately.
 func WaitForDaemon(ctx context.Context, path string, retry time.Duration) (*Config, error) {
