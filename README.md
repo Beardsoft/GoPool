@@ -58,7 +58,7 @@ If you generate a new wallet, the full key set (address, signing, fee, and BLS v
 
 It prints the setup URL and token at the end — open it, complete the browser assistant, then restart both services (`docker compose -f deployments/docker-compose.yml restart`) so the daemon picks up the written config.
 
-For Swarm clusters instead of a single VPS, see [deployments/SWARM.md](deployments/SWARM.md).
+For Swarm clusters instead of a single VPS, see [deployments/SWARM.md](deployments/SWARM.md). Homelab testnet (`test-albatross`, RPC `https://rpc-testnet.nimiqscan.com`) is `https://pool-testnet.maestroi.cc`. Generate a validator wallet with `./scripts/generate-validator-wallet.sh` before creating the Docker secrets.
 
 ## Configuration
 
@@ -184,7 +184,7 @@ Build and run locally:
 docker compose -f deployments/docker-compose.yml up --build
 ```
 
-Settings saves and revision restores are pending until both services restart and the daemon heartbeat reports the expected hash. For Swarm rotation and failed-readiness recovery, see [deployments/SWARM.md](deployments/SWARM.md).
+Images for Swarm are `ghcr.io/beardsoft/gopool:<git-sha>` (published on every `master` push) and version tags from GitHub Releases. Settings saves and revision restores are pending until both services restart and the daemon heartbeat reports the expected hash. For Swarm rotation and failed-readiness recovery, see [deployments/SWARM.md](deployments/SWARM.md).
 
 ## Project structure
 

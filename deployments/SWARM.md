@@ -2,22 +2,76 @@
 
 GoPool uses three separate secrets. Only the daemon receives the validator key; only the API receives setup and session secrets. Both services share SQLite and a configuration volume, mounted read-only in the daemon and writable in the API.
 
+Images are published to GHCR on every push to `master` (`ghcr.io/beardsoft/gopool:<full-sha>` and `:latest`) and on version tags (`:vX.Y.Z`). Pin deploys to the full commit SHA. The package lives on a private repo, so the Swarm manager must be logged into `ghcr.io` (or the package must be public) before `docker stack deploy --with-registry-auth`.
+
+Attach the API to the cluster's existing Traefik overlay named `web`. SQLite volumes are local: keep both replicas on one manager with the placement constraint in the stack file.
+
+## Generate keys and bootstrap secrets
+
 ```bash
-openssl rand -hex 32 | docker secret create gopool_setup_token -
-openssl rand -hex 32 | docker secret create gopool_session_secret -
-printf '%s' '<validator-private-key-hex>' | docker secret create gopool_validator_key -
-docker stack deploy -c deployments/docker-stack.yml gopool
+# Full validator identity (address + signing/fee/BLS). Back up wallet.json offline.
+./scripts/generate-validator-wallet.sh --out-dir .secrets/testnet
+
+openssl rand -hex 32 > .secrets/testnet/setup-token
+openssl rand -hex 32 > .secrets/testnet/session-secret
+chmod 600 .secrets/testnet/setup-token .secrets/testnet/session-secret
 ```
 
-Open the configured Traefik hostname, enter the setup token value, complete the assistant, then restart both services so the daemon reads the written configuration:
+GoPool itself only reads the payout address private key (`validator-key`). The rest of `wallet.json` is for running the validator node.
+
+## Homelab testnet (`gopool-test`)
+
+Public UI: `https://pool-testnet.maestroi.cc`
+RPC (set in the browser assistant): `https://rpc-testnet.nimiqscan.com`
+Network: `test-albatross`
+
+On the Swarm manager (`root@192.168.50.151`):
 
 ```bash
-docker service update --force gopool_gopool
-docker service update --force gopool_gopool-api
-docker service logs --tail 100 gopool_gopool
+# Once per cluster (skip if already logged in)
+echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+# Create secrets once. Recreating a named secret fails; rotate by using a new name.
+docker secret create gopool_test_setup_token .secrets/testnet/setup-token
+docker secret create gopool_test_session_secret .secrets/testnet/session-secret
+docker secret create gopool_test_validator_key .secrets/testnet/validator-key
+
+SHA=$(git rev-parse HEAD)
+GOPOOL_IMAGE=ghcr.io/beardsoft/gopool:${SHA} \
+  docker stack deploy --with-registry-auth -c deployments/docker-stack-test.yml gopool-test
+```
+
+Open `https://pool-testnet.maestroi.cc`, enter the setup token, and complete the assistant. Use:
+
+- RPC URL `https://rpc-testnet.nimiqscan.com`
+- Network `test-albatross`
+- Validator address from `wallet.json`
+
+The daemon crash-loops until that config exists (`LoadDaemon` requires `config.json`). After the assistant writes the revision, restart both services and wait for the heartbeat:
+
+```bash
+docker service update --force gopool-test_gopool
+docker service update --force gopool-test_gopool-api
+docker service logs --tail 100 gopool-test_gopool
 ```
 
 Readiness is complete only when the daemon heartbeat reports the new configuration hash and derived validator address. A written revision is not active merely because the API accepted it.
+
+## Generic / production stack
+
+Same flow with `deployments/docker-stack.yml` and unprefixed secret names:
+
+```bash
+openssl rand -hex 32 | docker secret create gopool_setup_token -
+openssl rand -hex 32 | docker secret create gopool_session_secret -
+printf '%s' "$(cat .secrets/validator-key)" | docker secret create gopool_validator_key -
+
+GOPOOL_IMAGE=ghcr.io/beardsoft/gopool:$(git rev-parse HEAD) \
+GOPOOL_DOMAIN=your.pool.domain \
+  docker stack deploy --with-registry-auth -c deployments/docker-stack.yml gopool
+```
+
+Then force-update `gopool_gopool` and `gopool_gopool-api` after setup.
 
 ## Rotation and recovery
 

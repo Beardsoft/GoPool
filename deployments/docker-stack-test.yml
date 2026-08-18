@@ -1,6 +1,9 @@
 version: "3.8"
-# Generic Swarm stack. Set GOPOOL_IMAGE and GOPOOL_DOMAIN before deploy.
-# Testnet homelab: see docker-stack-test.yml (pool-testnet.maestroi.cc).
+# Homelab testnet stack: Nimiq test-albatross via rpc-testnet.nimiqscan.com,
+# public UI at https://pool-testnet.maestroi.cc
+#
+#   GOPOOL_IMAGE=ghcr.io/beardsoft/gopool:<sha> \
+#     docker stack deploy --with-registry-auth -c deployments/docker-stack-test.yml gopool-test
 services:
   gopool:
     image: ${GOPOOL_IMAGE:-ghcr.io/beardsoft/gopool:latest}
@@ -8,13 +11,13 @@ services:
       SERVICE: daemon
       SQLITE_DB: /root/data/pool.db
       CONFIG_FILE: /root/config/config.json
-      POOL_PRIVATE_KEY_FILE: /run/secrets/gopool_validator_key
+      POOL_PRIVATE_KEY_FILE: /run/secrets/gopool_test_validator_key
     volumes:
       - gopool_data:/root/data
       - gopool_config:/root/config:ro
-    secrets: [gopool_validator_key]
+    secrets: [gopool_test_validator_key]
     healthcheck:
-      test: ["CMD-SHELL", "test -r /run/secrets/gopool_validator_key"]
+      test: ["CMD-SHELL", "test -r /run/secrets/gopool_test_validator_key"]
     deploy:
       replicas: 1
       restart_policy: { condition: on-failure }
@@ -28,14 +31,14 @@ services:
       SQLITE_DB: /root/data/pool.db
       CONFIG_FILE: /root/config/config.json
       POOL_API_ADDR: :8080
-      POOL_SETUP_TOKEN_FILE: /run/secrets/gopool_setup_token
-      POOL_SESSION_SECRET_FILE: /run/secrets/gopool_session_secret
+      POOL_SETUP_TOKEN_FILE: /run/secrets/gopool_test_setup_token
+      POOL_SESSION_SECRET_FILE: /run/secrets/gopool_test_session_secret
     volumes:
       - gopool_data:/root/data
       - gopool_config:/root/config:rw
-    secrets: [gopool_setup_token, gopool_session_secret]
+    secrets: [gopool_test_setup_token, gopool_test_session_secret]
     healthcheck:
-      test: ["CMD-SHELL", "test -r /run/secrets/gopool_setup_token && test -r /run/secrets/gopool_session_secret"]
+      test: ["CMD-SHELL", "test -r /run/secrets/gopool_test_setup_token && test -r /run/secrets/gopool_test_session_secret"]
     deploy:
       replicas: 1
       restart_policy: { condition: on-failure }
@@ -44,10 +47,10 @@ services:
         - traefik.enable=true
         - traefik.swarm.network=web
         - traefik.docker.network=web
-        - traefik.http.routers.gopool-api.entrypoints=websecure
-        - traefik.http.routers.gopool-api.rule=Host(`${GOPOOL_DOMAIN:-gopool.example.com}`)
-        - traefik.http.routers.gopool-api.tls=true
-        - traefik.http.services.gopool-api.loadbalancer.server.port=8080
+        - traefik.http.routers.gopool-test-api.entrypoints=websecure
+        - traefik.http.routers.gopool-test-api.rule=Host(`pool-testnet.maestroi.cc`)
+        - traefik.http.routers.gopool-test-api.tls=true
+        - traefik.http.services.gopool-test-api.loadbalancer.server.port=8080
     networks: [gopool_net, web]
 
 networks:
@@ -57,6 +60,6 @@ volumes:
   gopool_data: { driver: local }
   gopool_config: { driver: local }
 secrets:
-  gopool_validator_key: { external: true }
-  gopool_setup_token: { external: true }
-  gopool_session_secret: { external: true }
+  gopool_test_validator_key: { external: true }
+  gopool_test_setup_token: { external: true }
+  gopool_test_session_secret: { external: true }
