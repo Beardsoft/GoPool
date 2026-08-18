@@ -9,11 +9,13 @@ vi.mock('chart.js/auto', () => ({
     destroy() {}
   },
 }))
+vi.mock('../hub', () => ({ signStakingTransaction: vi.fn() }))
 
 import StakerLookup from './StakerLookup.vue'
 import { mockFetch } from '../test/helpers'
 import { loadNetwork, resetExplorerForTests } from '../composables/useExplorer'
 import { resetSessionCache } from '../composables/useSession'
+import { signStakingTransaction } from '../hub'
 
 const ADDR = 'NQ32 EGL6 H9C8 0JJB PH4S 7RYY ULRC 5B6N 56RE'
 const TX1 = 'ab'.repeat(32)
@@ -61,6 +63,7 @@ describe('StakerLookup', () => {
     chartConfigs.length = 0
     resetExplorerForTests()
     resetSessionCache()
+    vi.mocked(signStakingTransaction).mockReset()
     mockFetch('/api/session', { error: 'not logged in' }, 401)
   })
 
@@ -100,13 +103,53 @@ describe('StakerLookup', () => {
     expect(config.data.datasets[0].data).toEqual([61.70507, 62.19169])
   })
 
-  it('shows an error when the staker is unknown', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(
-      JSON.stringify({ error: 'no staker with this address in this pool' }),
-      { status: 404, headers: { 'Content-Type': 'application/json' } },
-    )))
+  it('shows a no-stake state (not an error) when the staker is unknown', async () => {
+    mockFetch('/api/stakers/NQ00%20UNKNOWN%20STAKER%20ADDRESS%20HERE', { error: 'no staker' }, 404)
+    mockFetch('/api/stakers/NQ00%20UNKNOWN%20STAKER%20ADDRESS%20HERE/history', { error: 'no staker' }, 404)
     const wrapper = await mountPage('NQ00 UNKNOWN STAKER ADDRESS HERE')
-    expect(wrapper.get('[role="alert"]').text()).toContain('no staker')
+    const section = wrapper.get('[data-section="no-stake"]')
+    expect(section.text()).toContain("This address isn't staking with us.")
+    expect(section.get('button.btn').text()).toBe('Log in to stake')
+  })
+
+  it('shows the start-staking form for a signed-in staker with no stake', async () => {
+    const MINE = 'NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E'
+    mockFetch('/api/session', { address: MINE, operator: false })
+    mockFetch(`/api/stakers/${encodeURIComponent(MINE)}`, { error: 'no staker' }, 404)
+    mockFetch(`/api/stakers/${encodeURIComponent(MINE)}/history`, { error: 'no staker' }, 404)
+    const wrapper = await mountPage()
+    const section = wrapper.get('[data-section="no-stake"]')
+    expect(section.text()).toContain('Delegate NIM to the pool')
+    expect(section.get('#stake-amount').attributes('aria-label')).toBe('Amount in NIM')
+    expect(section.get('button[type="submit"]').text()).toBe('Delegate to pool')
+  })
+
+  it('quotes, signs, and submits a stake, then shows the tx hash', async () => {
+    const MINE = 'NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E'
+    const TX = 'ee'.repeat(32)
+    mockFetch('/api/pool', { network: 'test-albatross' })
+    mockFetch('/api/session', { address: MINE, operator: false })
+    mockFetch(`/api/stakers/${encodeURIComponent(MINE)}`, { error: 'no staker' }, 404)
+    mockFetch(`/api/stakers/${encodeURIComponent(MINE)}/history`, { error: 'no staker' }, 404)
+    mockFetch('/api/stake/quote', {
+      tx: 'QUFBQQ==', amount_luna: 10_000_000, fee_luna: 1500,
+      min_stake_luna: 10_000_000, balance_luna: 50_000_000,
+      sender: MINE, delegate: MINE, validity_start_height: 12345,
+    })
+    mockFetch('/api/stake/submit', { tx_hash: TX })
+    vi.mocked(signStakingTransaction).mockResolvedValue('ff'.repeat(32))
+    await loadNetwork()
+
+    const wrapper = await mountPage()
+    const form = wrapper.get('[data-section="no-stake"] form')
+    await form.get('#stake-amount').setValue('100')
+    await form.trigger('submit')
+    await flushPromises()
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(signStakingTransaction).toHaveBeenCalledWith(MINE, 'QUFBQQ==')
+    expect(wrapper.text()).toContain('Your stake is on its way')
+    expect(wrapper.html()).toContain(TX)
   })
 
   it('shows a "log in to manage" CTA linking to the dashboard', async () => {

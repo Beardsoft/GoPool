@@ -66,9 +66,6 @@ func (s *Store) Save(ctx context.Context, actor, expectedHash string, editable c
 	if err := s.Validate(editable); err != nil {
 		return Revision{}, err
 	}
-	if err := config.ValidateAlertSecrets(secrets); err != nil {
-		return Revision{}, err
-	}
 	current, currentHash, err := s.current()
 	if err != nil {
 		return Revision{}, err

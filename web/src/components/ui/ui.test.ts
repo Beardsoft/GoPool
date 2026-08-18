@@ -51,4 +51,18 @@ describe('UI primitives', () => {
     await flushPromises()
     expect(wrapper.find('img.identicon').exists()).toBe(true)
   })
+
+  it('copies wallet addresses and transaction hashes', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    const address = 'NQ32 EGL6 H9C8 0JJB PH4S 7RYY ULRC 5B6N 56RE'
+    const hash = 'ab'.repeat(32)
+    const account = mount(ExplorerLink, { props: { kind: 'account', value: address, copyable: true } })
+    await account.get('[aria-label="Copy wallet address"]').trigger('click')
+    expect(writeText).toHaveBeenCalledWith(address)
+    const tx = mount(ExplorerLink, { props: { kind: 'transaction', value: hash, copyable: true } })
+    await tx.get('[aria-label="Copy transaction hash"]').trigger('click')
+    expect(writeText).toHaveBeenCalledWith(hash)
+    expect(tx.get('button').attributes('aria-label')).toBe('Transaction hash copied')
+  })
 })

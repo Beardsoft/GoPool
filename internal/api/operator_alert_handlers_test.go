@@ -25,24 +25,32 @@ func TestOperatorAlertsNeverExposeSecrets(t *testing.T) {
 			t.Fatalf("response leaks %q: %s", secret, body)
 		}
 	}
+	a.cfg.AlertWebhookURL = "https://discord.com/api/webhooks/123456/discord-path-token"
+	rec2 := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec2, req)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec2.Code, rec2.Body.String())
+	}
+	if strings.Contains(rec2.Body.String(), "discord-path-token") {
+		t.Fatalf("response leaks discord path token: %s", rec2.Body.String())
+	}
 }
 
 func TestOperatorAlertTestIsRateLimited(t *testing.T) {
 	a, cookie := configuredOperatorAPI(t)
-	a.cfg.AlertEmailEnabled = true
-	a.cfg.AlertEmailTo = "ops@example.com"
-	a.cfg.AlertEmailFrom = "pool@example.com"
-	first := postJSON(t, a.Mux(), "/api/operator/alerts/email/test", map[string]any{}, cookie)
+	a.cfg.AlertWebhookEnabled = true
+	a.cfg.AlertWebhookURL = "http://127.0.0.1:9/hook"
+	first := postJSON(t, a.Mux(), "/api/operator/alerts/webhook/test", map[string]any{}, cookie)
 	if first.Code != http.StatusOK {
 		t.Fatalf("first status %d: %s", first.Code, first.Body.String())
 	}
-	second := postJSON(t, a.Mux(), "/api/operator/alerts/email/test", map[string]any{}, cookie)
+	second := postJSON(t, a.Mux(), "/api/operator/alerts/webhook/test", map[string]any{}, cookie)
 	if second.Code != http.StatusTooManyRequests {
 		t.Fatalf("second status %d: %s", second.Code, second.Body.String())
 	}
 	var body map[string]any
 	_ = json.Unmarshal(first.Body.Bytes(), &body)
-	if body["state"] != "failed" || !strings.Contains(body["response_summary"].(string), "smtp host") {
+	if body["state"] != "failed" || !strings.Contains(body["response_summary"].(string), "connect") {
 		t.Fatalf("state = %v", body["state"])
 	}
 }

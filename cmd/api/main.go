@@ -65,7 +65,6 @@ func main() {
 			logger.Logger.Fatal("failed to load session secret", zap.Error(err))
 		}
 		cfg.AlertTelegramToken, _ = readSecretFile("POOL_ALERT_TELEGRAM_TOKEN_FILE", false)
-		cfg.AlertEmailPassword, _ = readSecretFile("POOL_ALERT_EMAIL_PASSWORD_FILE", false)
 		if err := config.ValidateAPI(cfg); err != nil {
 			logger.Logger.Fatal("invalid API config", zap.Error(err))
 		}

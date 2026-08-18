@@ -13,7 +13,7 @@ describe('PoolOverview product composition', () => {
       total_rewards_luna: 177_489_526,
       pool_fee_percentage: 0.01,
       pool_name: 'GoPool Devnet',
-      pool_description: 'Transparent, non-custodial Nimiq staking.',
+      pool_description: 'Custom pool blurb for visiting stakers.',
       contact_url: '',
       disclosure: '',
     }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
@@ -32,7 +32,7 @@ describe('PoolOverview product composition', () => {
     const wrapper = mount(PoolOverview, { global: { plugins: [router] } })
     await flushPromises()
 
-    expect(wrapper.get('[data-section="trust"]').text()).toContain('Transparent')
+    expect(wrapper.get('[data-section="trust"]').text()).toContain('Custom pool blurb for visiting stakers.')
     expect(wrapper.get('[data-section="live-proof"]').text()).toContain('Current epoch')
     expect(wrapper.get('[data-section="staker-lookup"]').get('input').attributes('aria-label')).toBe('Nimiq address')
     expect(wrapper.get('[data-section="reward-model"]').text()).toMatch(/rewards|fee/i)

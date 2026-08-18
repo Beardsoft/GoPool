@@ -4,7 +4,7 @@ import { apiGet, apiPut } from '../../api'
 import HoldConfirmButton from '../../components/ui/HoldConfirmButton.vue'
 import type { AlertSecrets, EditableConfig, SettingsResponse } from '../../types/api'
 
-const emptySecrets = (): AlertSecrets => ({ alert_telegram_token: '', alert_email_smtp_host: '', alert_email_smtp_port: 0, alert_email_username: '', alert_email_password: '', alert_email_from: '' })
+const emptySecrets = (): AlertSecrets => ({ alert_telegram_token: '', alert_webhook_url: '' })
 
 const response = ref<SettingsResponse | null>(null)
 const settings = ref<EditableConfig | null>(null)
@@ -30,17 +30,15 @@ async function load() {
   }
 }
 
-const changedSecrets = computed(() => Object.entries(secrets.value).filter(([, value]) => value !== '' && value !== 0).map(([name]) => name))
+const changedSecrets = computed(() => Object.entries(secrets.value).filter(([, value]) => value !== '').map(([name]) => name))
 
 async function save() {
   if (!response.value || !settings.value) return
   try {
-    const payloadSecrets = { ...secrets.value }
-    if (!payloadSecrets.alert_email_smtp_port) delete payloadSecrets.alert_email_smtp_port
     const revision = await apiPut<{ hash: string }>('/api/operator/settings', {
       expected_hash: response.value.active_hash,
       settings: settings.value,
-      secrets: payloadSecrets,
+      secrets: secrets.value,
     })
     savedHash.value = revision.hash
     review.value = false
@@ -103,7 +101,11 @@ onMounted(() => queueMicrotask(load))
         </label>
         <label class="span-2">
           Contact URL
-          <input v-model="settings.contact_url" class="input" />
+          <input v-model="settings.contact_url" class="input" type="url" />
+        </label>
+        <label class="span-2">
+          Disclosure
+          <textarea v-model="settings.disclosure" name="disclosure" class="input" rows="3" />
         </label>
       </section>
 
@@ -140,37 +142,8 @@ onMounted(() => queueMicrotask(load))
             <span>Webhook</span>
           </label>
           <label>
-            Webhook URL
-            <input v-model="settings.alert_webhook_url" class="input" type="url" placeholder="https://…" />
-          </label>
-          <h3>Email</h3>
-          <label class="check-field">
-            <input v-model="settings.alert_email_enabled" type="checkbox" />
-            <span>Email</span>
-          </label>
-          <label>
-            Email destination
-            <input v-model="settings.alert_email_to" class="input" type="email" placeholder="ops@example.com" />
-          </label>
-          <label>
-            SMTP host
-            <input v-model="secrets.alert_email_smtp_host" class="input" placeholder="e.g. smtp.example.com" />
-          </label>
-          <label>
-            SMTP port
-            <input v-model.number="secrets.alert_email_smtp_port" class="input" type="number" placeholder="587" />
-          </label>
-          <label>
-            SMTP username
-            <input v-model="secrets.alert_email_username" class="input" placeholder="optional" />
-          </label>
-          <label>
-            SMTP password
-            <input v-model="secrets.alert_email_password" class="input" type="password" placeholder="••• configured — leave blank to keep" autocomplete="new-password" />
-          </label>
-          <label>
-            SMTP from address
-            <input v-model="secrets.alert_email_from" class="input" type="email" placeholder="pool@example.com" />
+            Webhook URL (Discord webhook URLs work)
+            <input v-model="secrets.alert_webhook_url" class="input" type="password" placeholder="••• configured — leave blank to keep" autocomplete="new-password" />
           </label>
           <p class="secret-hint">Leave a secret blank to keep its current value. Secret values are never shown after saving.</p>
         </fieldset>

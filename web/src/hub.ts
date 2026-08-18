@@ -14,6 +14,25 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+
+// signStakingTransaction asks Nimiq Hub to sign an unsigned staking
+// transaction (base64 wire bytes from /api/stake/quote) and returns the
+// signed transaction as hex. The key never leaves the Hub.
+export async function signStakingTransaction(sender: string, txB64: string): Promise<string> {
+  const signed = await hub.signStaking({
+    appName: 'GoPool',
+    senderLabel: sender,
+    transaction: base64ToBytes(txB64),
+  })
+  return signed[0].serializedTx
+}
+
 export async function loginWithHub(): Promise<{ address: string }> {
   const { nonce, challenge } = await apiPost<Challenge>('/api/auth/challenge')
 

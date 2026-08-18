@@ -8,3 +8,6 @@ export function shortAddress(address: string): string {
   const groups = address.trim().split(/\s+/)
   return groups.length >= 4 ? `${groups.slice(0, 2).join(' ')}…${groups.slice(-2).join(' ')}` : address
 }
+export function shortHash(hash: string): string {
+  return hash.length >= 16 ? `${hash.slice(0, 8)}…${hash.slice(-6)}` : hash
+}

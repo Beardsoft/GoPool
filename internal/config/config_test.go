@@ -45,7 +45,7 @@ func TestLoadOptionalDoesNotMaterializeSecrets(t *testing.T) {
 
 func TestLoadOptionalKeepsAlertSecrets(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	seed := `{"rpc_url":"https://rpc.example","network":"main","alert_telegram_token":"tg-value","alert_email_smtp_host":"smtp.example","alert_email_smtp_port":465,"alert_email_password":"pw-value","stuck_payout_epochs":9}`
+	seed := `{"rpc_url":"https://rpc.example","network":"main","alert_telegram_token":"tg-value","alert_webhook_url":"https://discord.com/api/webhooks/1/wh-value","stuck_payout_epochs":9}`
 	if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestLoadOptionalKeepsAlertSecrets(t *testing.T) {
 	if err != nil || !configured {
 		t.Fatalf("configured=%v err=%v", configured, err)
 	}
-	if cfg.AlertTelegramToken != "tg-value" || cfg.AlertEmailSMTPHost != "smtp.example" || cfg.AlertEmailSMTPPort != 465 || cfg.AlertEmailPassword != "pw-value" || cfg.StuckPayoutEpochs != 9 {
+	if cfg.AlertTelegramToken != "tg-value" || cfg.AlertWebhookURL != "https://discord.com/api/webhooks/1/wh-value" || cfg.StuckPayoutEpochs != 9 {
 		t.Fatalf("alert secrets lost on load: %+v", cfg.AlertSecrets())
 	}
 }
@@ -69,26 +69,16 @@ func TestConfigHashChangesWithSecrets(t *testing.T) {
 	}
 }
 
-func TestValidateAlertSecrets(t *testing.T) {
-	for _, port := range []int{0, 1, 587, 65535} {
-		if err := ValidateAlertSecrets(AlertSecrets{SMTPPort: port}); err != nil {
-			t.Errorf("port %d: %v", port, err)
-		}
-	}
-	for _, port := range []int{-1, 65536} {
-		if err := ValidateAlertSecrets(AlertSecrets{SMTPPort: port}); err == nil {
-			t.Errorf("port %d: wanted error", port)
-		}
-	}
-}
-
 func TestRedactedConfigNeverContainsSecrets(t *testing.T) {
-	cfg := Config{PrivateKey: "private-value-7f8c", SessionSecret: "session-value-5a2d", AlertTelegramToken: "telegram-value-9b1e"}
+	cfg := Config{PrivateKey: "private-value-7f8c", SessionSecret: "session-value-5a2d", AlertTelegramToken: "telegram-value-9b1e", AlertWebhookURL: "https://discord.com/api/webhooks/1/webhook-value-77aa"}
 	got, _ := json.Marshal(Redact(&cfg))
-	for _, secret := range []string{cfg.PrivateKey, cfg.SessionSecret, cfg.AlertTelegramToken} {
+	for _, secret := range []string{cfg.PrivateKey, cfg.SessionSecret, cfg.AlertTelegramToken, "webhook-value-77aa"} {
 		if strings.Contains(string(got), secret) {
 			t.Fatal(string(got))
 		}
+	}
+	if !Redact(&cfg).Secrets.WebhookURL {
+		t.Fatalf("webhook_url presence not reported: %+v", Redact(&cfg).Secrets)
 	}
 }
 

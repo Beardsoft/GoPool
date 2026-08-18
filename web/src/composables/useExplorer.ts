@@ -1,19 +1,32 @@
 import { computed, ref } from 'vue'
 import { apiGet } from '../api'
+import type { PoolStatus } from '../types/api'
 
 const network = ref('')
+const poolName = ref('GoPool')
+const contactUrl = ref('')
+const disclosure = ref('')
 let loaded = false
 let pending: Promise<void> | null = null
 
 export function loadNetwork(): Promise<void> {
   if (loaded) return Promise.resolve()
   if (!pending) {
-    pending = apiGet<{ network?: string }>('/api/pool')
-      .then((pool) => { network.value = pool.network ?? '' })
+    pending = apiGet<PoolStatus>('/api/pool')
+      .then((pool) => {
+        network.value = pool.network ?? ''
+        poolName.value = pool.pool_name || 'GoPool'
+        contactUrl.value = pool.contact_url ?? ''
+        disclosure.value = pool.disclosure ?? ''
+      })
       .catch(() => { network.value = '' })
       .finally(() => { loaded = true })
   }
   return pending
+}
+
+export function usePoolProfile() {
+  return { poolName, contactUrl, disclosure }
 }
 
 const explorerBase = computed(() => {
@@ -44,6 +57,9 @@ export function useExplorer() {
 
 export function resetExplorerForTests() {
   network.value = ''
+  poolName.value = 'GoPool'
+  contactUrl.value = ''
+  disclosure.value = ''
   loaded = false
   pending = null
 }

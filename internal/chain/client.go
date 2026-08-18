@@ -31,6 +31,13 @@ func networkFromString(s string) (nimiq.NetworkID, error) {
 	return 0, fmt.Errorf("chain: unknown network %q", s)
 }
 
+// NetworkID maps a configured network name to its nimiq NetworkID. Exported so
+// callers that build transactions (the API's staking handlers) reuse the same
+// mapping as New instead of re-deriving it.
+func NetworkID(s string) (nimiq.NetworkID, error) {
+	return networkFromString(s)
+}
+
 // New builds an RPC client and signer from cfg.
 func New(cfg *config.Config) (*Chain, error) {
 	network, err := networkFromString(cfg.Network)

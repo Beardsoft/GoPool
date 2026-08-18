@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
-import { apiGet } from '../api'
+import { apiGet, apiPost } from '../api'
+import { signStakingTransaction } from '../hub'
 import Chart from 'chart.js/auto'
 import NimAmount from '../components/ui/NimAmount.vue'
 import ExplorerLink from '../components/ui/ExplorerLink.vue'
@@ -11,12 +12,21 @@ import SkeletonBlock from '../components/ui/SkeletonBlock.vue'
 import { formatNim } from '../utils/format'
 import { useSession } from '../composables/useSession'
 
-const { signedIn, address: sessionAddress } = useSession()
+const { signedIn, address: sessionAddress, login: sessionLogin } = useSession()
 const props = defineProps<{ address?: string }>()
 const router = useRouter()
 const input = ref(props.address ?? '')
 const error = ref('')
 const loading = ref(false)
+
+const lookedUp = ref('')
+const noStake = ref(false)
+const stakeAmount = ref('')
+const staking = ref(false)
+const stakeError = ref('')
+const stakeTxHash = ref('')
+const minStakeLuna = ref(0)
+const balanceLuna = ref(0)
 
 interface Payslip {
   batch_number: number
@@ -125,6 +135,10 @@ async function lookup(address: string) {
   error.value = ''
   staker.value = null
   history.value = null
+  noStake.value = false
+  lookedUp.value = address
+  stakeTxHash.value = ''
+  stakeError.value = ''
   epochPage.value = 0
   payoutPage.value = 0
   loading.value = true
@@ -137,7 +151,9 @@ async function lookup(address: string) {
     history.value = hist
     setTimeout(renderChart, 0)
   } catch (e) {
-    error.value = (e as { message?: string }).message ?? 'lookup failed'
+    // A 404 means this address has no stake in the pool yet — not an error.
+    if ((e as { status?: number }).status === 404) noStake.value = true
+    else error.value = (e as { message?: string }).message ?? 'lookup failed'
   } finally {
     loading.value = false
   }
@@ -149,6 +165,48 @@ function submit() {
 }
 
 const isOwn = computed(() => sessionAddress.value !== '' && staker.value?.address === sessionAddress.value)
+const noStakeIsOwn = computed(() => sessionAddress.value !== '' && lookedUp.value === sessionAddress.value)
+
+async function signIn() {
+  error.value = ''
+  try {
+    await sessionLogin()
+  } catch (e) {
+    error.value = (e as Error).message
+  }
+}
+
+async function startStaking() {
+  stakeError.value = ''
+  stakeTxHash.value = ''
+  const amountLuna = Math.round((Number(stakeAmount.value) || 0) * 100_000)
+  if (amountLuna <= 0) {
+    stakeError.value = 'Enter an amount greater than zero'
+    return
+  }
+  staking.value = true
+  try {
+    const quote = await apiPost<{
+      tx: string; amount_luna: number; fee_luna: number
+      min_stake_luna: number; balance_luna: number
+      sender: string; delegate: string; validity_start_height: number
+    }>('/api/stake/quote', { amount_luna: amountLuna })
+    minStakeLuna.value = quote.min_stake_luna
+    balanceLuna.value = quote.balance_luna
+    const signedTx = await signStakingTransaction(quote.sender, quote.tx)
+    const res = await apiPost<{ tx_hash: string }>('/api/stake/submit', {
+      signed_tx: signedTx,
+      amount_luna: quote.amount_luna,
+      fee_luna: quote.fee_luna,
+      validity_start_height: quote.validity_start_height,
+    })
+    stakeTxHash.value = res.tx_hash
+  } catch (e) {
+    stakeError.value = (e as { message?: string }).message ?? 'stake failed'
+  } finally {
+    staking.value = false
+  }
+}
 
 watch([() => props.address, () => sessionAddress.value], ([routeAddr, mine]) => {
   if (routeAddr) {
@@ -163,7 +221,7 @@ onUnmounted(() => { if (chart) chart.destroy() })
 
 <template>
   <div class="staker-page">
-    <section v-if="!props.address && !staker" data-section="staker-lookup" class="card lookup-card">
+    <section v-if="!props.address && !staker && !noStake" data-section="staker-lookup" class="card lookup-card">
       <p class="section-kicker">Find your stake</p>
       <h1>See exactly what your stake is doing.</h1>
       <p class="muted">Enter your Nimiq address to inspect delegated stake, pool share, rewards, and payout history.</p>
@@ -178,6 +236,33 @@ onUnmounted(() => { if (chart) chart.destroy() })
     </section>
 
     <p v-else-if="error" class="error" role="alert">{{ error }}</p>
+
+    <section v-else-if="noStake" class="card lookup-card" data-section="no-stake">
+      <template v-if="stakeTxHash">
+        <p class="section-kicker">Stake submitted</p>
+        <h1>Your stake is on its way.</h1>
+        <p class="muted">Your delegation was signed in your wallet and broadcast. It appears in your position once the pool processes the next epoch.</p>
+        <ExplorerLink kind="transaction" :value="stakeTxHash" label="View transaction on explorer" />
+      </template>
+      <form v-else-if="noStakeIsOwn" class="stake-form" @submit.prevent="startStaking">
+        <p class="section-kicker">Start staking</p>
+        <h1>Delegate NIM to the pool.</h1>
+        <p class="muted">You're not staking yet. Delegate NIM to start earning a share of pool rewards.</p>
+        <label for="stake-amount">Amount (NIM)</label>
+        <div class="lookup-control">
+          <input id="stake-amount" v-model="stakeAmount" type="number" min="0" step="any" inputmode="decimal" aria-label="Amount in NIM" placeholder="e.g. 100" />
+          <button type="submit" class="btn" :disabled="staking">{{ staking ? 'Waiting for wallet…' : 'Delegate to pool' }}</button>
+        </div>
+        <p v-if="minStakeLuna" class="muted">Minimum stake {{ formatNim(minStakeLuna) }} NIM · Available {{ formatNim(balanceLuna) }} NIM</p>
+        <p v-if="stakeError" class="error" role="alert">{{ stakeError }}</p>
+      </form>
+      <template v-else>
+        <p class="section-kicker">No stake found</p>
+        <h1>This address isn't staking with us.</h1>
+        <p class="muted">No delegated stake was found for this address in this pool.</p>
+        <button v-if="!signedIn" class="btn" @click="signIn">Log in to stake</button>
+      </template>
+    </section>
 
     <template v-else-if="staker">
       <header class="staker-header">
@@ -291,6 +376,9 @@ onUnmounted(() => { if (chart) chart.destroy() })
 .lookup-control input { flex: 1; min-width: 0; font-family: var(--font-mono); }
 .lookup-control .btn { flex: 0 0 auto; }
 .lookup-form small { display: block; margin-top: 10px; color: var(--app-faint); }
+.stake-form { margin-top: var(--space-24); }
+.stake-form label { display: block; margin-bottom: 9px; font-size: .82rem; font-weight: 700; }
+.stake-form .muted { margin-top: 12px; }
 
 .staker-header {
   display: flex;

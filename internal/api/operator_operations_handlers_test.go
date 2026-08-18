@@ -224,3 +224,123 @@ func TestOperatorPayoutsIncludeHeightAndStuckFlag(t *testing.T) {
 		t.Errorf("done = %+v, want stuck=false (terminal)", done)
 	}
 }
+
+func TestOperatorPayoutsIncludeEpochRange(t *testing.T) {
+	a, cookie, _ := operatorTestAPI(t)
+	const address = "NQ00 0000 0000 0000 0000 0000 0000 0001"
+	for _, epoch := range []int64{12, 13} {
+		if err := a.queries.InsertEpoch(t.Context(), db.InsertEpochParams{Number: epoch, NumStakers: 1, Balance: 1, Status: "completed"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := a.queries.InsertReward(t.Context(), db.InsertRewardParams{BatchNumber: 10, EpochNumber: 12, Amount: 50, PoolFee: 0, NumStakers: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.InsertReward(t.Context(), db.InsertRewardParams{BatchNumber: 11, EpochNumber: 13, Amount: 50, PoolFee: 0, NumStakers: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.InsertPayslip(t.Context(), db.InsertPayslipParams{BatchNumber: 10, Address: address, Amount: 50, Status: "out_for_payment"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.InsertPayslip(t.Context(), db.InsertPayslipParams{BatchNumber: 11, Address: address, Amount: 50, Status: "out_for_payment"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.SetPayslipsTransaction(t.Context(), db.SetPayslipsTransactionParams{
+		TxHash: sql.NullString{String: "bundled-payout", Valid: true}, Address: address,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.InsertTransaction(t.Context(), db.InsertTransactionParams{
+		Hash: "bundled-payout", Address: address, Amount: 100, Status: "awaiting_confirmation", SubmittedHeight: 540,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.queries.InsertTransaction(t.Context(), db.InsertTransactionParams{
+		Hash: "orphan-payout", Address: address, Amount: 1, Status: "completed", SubmittedHeight: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/operator/payouts?limit=10", nil)
+	req.AddCookie(cookie)
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("payouts status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Items []struct {
+			Hash      string `json:"hash"`
+			EpochFrom *int64 `json:"epoch_from"`
+			EpochTo   *int64 `json:"epoch_to"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	byHash := map[string]struct {
+		EpochFrom *int64
+		EpochTo   *int64
+	}{}
+	for _, it := range got.Items {
+		byHash[it.Hash] = struct {
+			EpochFrom *int64
+			EpochTo   *int64
+		}{it.EpochFrom, it.EpochTo}
+	}
+	bundled := byHash["bundled-payout"]
+	if bundled.EpochFrom == nil || *bundled.EpochFrom != 12 || bundled.EpochTo == nil || *bundled.EpochTo != 13 {
+		t.Fatalf("bundled-payout epochs = %+v, want 12–13", bundled)
+	}
+	orphan := byHash["orphan-payout"]
+	if orphan.EpochFrom != nil || orphan.EpochTo != nil {
+		t.Fatalf("orphan-payout epochs = %+v, want none", orphan)
+	}
+}
+
+func TestOperatorPayoutsPaginatesWithHasMore(t *testing.T) {
+	a, cookie, _ := operatorTestAPI(t)
+	const address = "NQ00 0000 0000 0000 0000 0000 0001"
+	for i := 0; i < 51; i++ {
+		if err := a.queries.InsertTransaction(t.Context(), db.InsertTransactionParams{
+			Hash: fmt.Sprintf("tx-%02d", i), Address: address, Amount: 1, Status: "completed",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/operator/payouts", nil)
+	req.AddCookie(cookie)
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var first struct {
+		Items      []operatorPayoutResponse `json:"items"`
+		NextCursor int                      `json:"next_cursor"`
+		HasMore    bool                     `json:"has_more"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&first); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Items) != 50 || !first.HasMore || first.NextCursor != 50 {
+		t.Fatalf("first page: items=%d has_more=%v next_cursor=%d", len(first.Items), first.HasMore, first.NextCursor)
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/operator/payouts?cursor=50", nil)
+	req.AddCookie(cookie)
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var second struct {
+		Items   []operatorPayoutResponse `json:"items"`
+		HasMore bool                     `json:"has_more"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&second); err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Items) != 1 || second.HasMore {
+		t.Fatalf("second page: items=%d has_more=%v", len(second.Items), second.HasMore)
+	}
+}

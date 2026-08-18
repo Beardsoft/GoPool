@@ -1,4 +1,4 @@
-.PHONY: help up down restart logs logs-f build daemon api devnet-prepare devnet-up devnet-down devnet-logs devnet-build dev-up dev-down devnet-restart dev-reset dev-clean dev-stakers dev-api-rebuild
+.PHONY: help up down restart logs logs-f build daemon api devnet-prepare devnet-up devnet-down devnet-logs devnet-build dev-up dev-down devnet-restart dev-reset dev-clean dev-stakers dev-api-rebuild dev-pool-rebuild
 
 COMPOSE_FILE := deployments/docker-compose.yml
 DEVNET_DIR := devlab
@@ -34,6 +34,7 @@ help:
 	@echo "  make dev-stakers    - Create test stakers for devnet"
 	@echo "                       STAKER_COUNT=$(STAKER_COUNT) STAKER_FUND_NIM=$(STAKER_FUND_NIM) STAKER_STAKE_NIM=$(STAKER_STAKE_NIM)"
 	@echo "  make dev-api-rebuild - Rebuild and restart only gopool-api container"
+	@echo "  make dev-pool-rebuild - Rebuild and restart only gopool daemon container"
 
 up:
 	docker compose -f $(COMPOSE_FILE) up --build -d
@@ -101,3 +102,6 @@ dev-stakers:
 
 dev-api-rebuild:
 	NETWORK_NAME=$(NETWORK_NAME) docker compose -f $(DEVNET_COMPOSE) -f $(DEVNET_POOL_COMPOSE) up --build -d gopool-api
+
+dev-pool-rebuild:
+	NETWORK_NAME=$(NETWORK_NAME) docker compose -f $(DEVNET_COMPOSE) -f $(DEVNET_POOL_COMPOSE) up --build -d gopool

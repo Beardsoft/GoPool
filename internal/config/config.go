@@ -36,13 +36,6 @@ type Config struct {
 	AlertTelegramToken       string `json:"alert_telegram_token,omitempty"`
 	AlertWebhookEnabled      bool   `json:"alert_webhook_enabled,omitempty"`
 	AlertWebhookURL          string `json:"alert_webhook_url,omitempty"`
-	AlertEmailEnabled        bool   `json:"alert_email_enabled,omitempty"`
-	AlertEmailTo             string `json:"alert_email_to,omitempty"`
-	AlertEmailSMTPHost       string `json:"alert_email_smtp_host,omitempty"`
-	AlertEmailSMTPPort       int    `json:"alert_email_smtp_port,omitempty"`
-	AlertEmailUsername       string `json:"alert_email_username,omitempty"`
-	AlertEmailPassword       string `json:"alert_email_password,omitempty"`
-	AlertEmailFrom           string `json:"alert_email_from,omitempty"`
 
 	PoolName        string `json:"pool_name"`
 	PoolDescription string `json:"pool_description,omitempty"`
@@ -66,9 +59,6 @@ type Editable struct {
 	AlertTelegramEnabled     bool    `json:"alert_telegram_enabled"`
 	AlertTelegramDestination string  `json:"alert_telegram_destination,omitempty"`
 	AlertWebhookEnabled      bool    `json:"alert_webhook_enabled"`
-	AlertWebhookURL          string  `json:"alert_webhook_url,omitempty"`
-	AlertEmailEnabled        bool    `json:"alert_email_enabled"`
-	AlertEmailTo             string  `json:"alert_email_to,omitempty"`
 	PoolName                 string  `json:"pool_name"`
 	PoolDescription          string  `json:"pool_description,omitempty"`
 	ContactURL               string  `json:"contact_url,omitempty"`
@@ -79,17 +69,12 @@ type Editable struct {
 // accepted on save (empty means keep current) but never returned by the API.
 type AlertSecrets struct {
 	TelegramToken string `json:"alert_telegram_token,omitempty"`
-	SMTPHost      string `json:"alert_email_smtp_host,omitempty"`
-	SMTPPort      int    `json:"alert_email_smtp_port,omitempty"`
-	SMTPUsername  string `json:"alert_email_username,omitempty"`
-	SMTPPassword  string `json:"alert_email_password,omitempty"`
-	SMTPFrom      string `json:"alert_email_from,omitempty"`
+	WebhookURL    string `json:"alert_webhook_url,omitempty"`
 }
 
 // AlertSecrets extracts the secret subset of the config.
 func (c *Config) AlertSecrets() AlertSecrets {
-	return AlertSecrets{TelegramToken: c.AlertTelegramToken, SMTPHost: c.AlertEmailSMTPHost, SMTPPort: c.AlertEmailSMTPPort,
-		SMTPUsername: c.AlertEmailUsername, SMTPPassword: c.AlertEmailPassword, SMTPFrom: c.AlertEmailFrom}
+	return AlertSecrets{TelegramToken: c.AlertTelegramToken, WebhookURL: c.AlertWebhookURL}
 }
 
 // ApplySecrets merges provided secrets onto c; empty fields keep the current value.
@@ -97,29 +82,9 @@ func (c *Config) ApplySecrets(s AlertSecrets) {
 	if s.TelegramToken != "" {
 		c.AlertTelegramToken = s.TelegramToken
 	}
-	if s.SMTPHost != "" {
-		c.AlertEmailSMTPHost = s.SMTPHost
+	if s.WebhookURL != "" {
+		c.AlertWebhookURL = s.WebhookURL
 	}
-	if s.SMTPPort != 0 {
-		c.AlertEmailSMTPPort = s.SMTPPort
-	}
-	if s.SMTPUsername != "" {
-		c.AlertEmailUsername = s.SMTPUsername
-	}
-	if s.SMTPPassword != "" {
-		c.AlertEmailPassword = s.SMTPPassword
-	}
-	if s.SMTPFrom != "" {
-		c.AlertEmailFrom = s.SMTPFrom
-	}
-}
-
-// ValidateAlertSecrets checks the operator-editable alert secrets.
-func ValidateAlertSecrets(s AlertSecrets) error {
-	if s.SMTPPort != 0 && (s.SMTPPort < 1 || s.SMTPPort > 65535) {
-		return fmt.Errorf("alert_email_smtp_port must be between 1 and 65535")
-	}
-	return nil
 }
 
 // SecretPresence reports which optional secrets are set, without exposing them.
@@ -127,7 +92,7 @@ type SecretPresence struct {
 	ValidatorKey  bool `json:"validator_key"`
 	SessionSecret bool `json:"session_secret"`
 	TelegramToken bool `json:"telegram_token"`
-	EmailPassword bool `json:"email_password"`
+	WebhookURL    bool `json:"webhook_url"`
 }
 
 // Redacted is the API-safe view of config: editable settings plus secret presence.
@@ -142,8 +107,7 @@ func (c *Config) Editable() Editable {
 		PayoutMode: c.PayoutMode, MinPayoutLuna: c.MinPayoutLuna, AutoReactivate: c.AutoReactivate, APIAddr: c.APIAddr,
 		ValidatorAddress: c.ValidatorAddress, OperatorAddresses: c.OperatorAddresses, MetricsAddr: c.MetricsAddr,
 		AlertTelegramEnabled: c.AlertTelegramEnabled, AlertTelegramDestination: c.AlertTelegramDestination,
-		AlertWebhookEnabled: c.AlertWebhookEnabled, AlertWebhookURL: c.AlertWebhookURL, AlertEmailEnabled: c.AlertEmailEnabled,
-		AlertEmailTo: c.AlertEmailTo, PoolName: c.PoolName, PoolDescription: c.PoolDescription, ContactURL: c.ContactURL, Disclosure: c.Disclosure}
+		AlertWebhookEnabled: c.AlertWebhookEnabled, PoolName: c.PoolName, PoolDescription: c.PoolDescription, ContactURL: c.ContactURL, Disclosure: c.Disclosure}
 }
 
 // FromEditable builds a Config from an editable subset.
@@ -152,13 +116,12 @@ func FromEditable(e Editable) *Config {
 		PayoutMode: e.PayoutMode, MinPayoutLuna: e.MinPayoutLuna, AutoReactivate: e.AutoReactivate, APIAddr: e.APIAddr,
 		ValidatorAddress: e.ValidatorAddress, OperatorAddresses: e.OperatorAddresses, MetricsAddr: e.MetricsAddr,
 		AlertTelegramEnabled: e.AlertTelegramEnabled, AlertTelegramDestination: e.AlertTelegramDestination,
-		AlertWebhookEnabled: e.AlertWebhookEnabled, AlertWebhookURL: e.AlertWebhookURL, AlertEmailEnabled: e.AlertEmailEnabled,
-		AlertEmailTo: e.AlertEmailTo, PoolName: e.PoolName, PoolDescription: e.PoolDescription, ContactURL: e.ContactURL, Disclosure: e.Disclosure}
+		AlertWebhookEnabled: e.AlertWebhookEnabled, PoolName: e.PoolName, PoolDescription: e.PoolDescription, ContactURL: e.ContactURL, Disclosure: e.Disclosure}
 }
 
 // Redact builds the API-safe representation of a config.
 func Redact(c *Config) Redacted {
-	return Redacted{Settings: c.Editable(), Secrets: SecretPresence{ValidatorKey: c.PrivateKey != "", SessionSecret: c.SessionSecret != "", TelegramToken: c.AlertTelegramToken != "", EmailPassword: c.AlertEmailPassword != ""}}
+	return Redacted{Settings: c.Editable(), Secrets: SecretPresence{ValidatorKey: c.PrivateKey != "", SessionSecret: c.SessionSecret != "", TelegramToken: c.AlertTelegramToken != "", WebhookURL: c.AlertWebhookURL != ""}}
 }
 
 // ConfigHash returns a stable hash of the editable settings plus alert

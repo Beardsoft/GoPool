@@ -10,3 +10,12 @@ it('shows before/after before saving settings', async () => {
   await wrapper.get('[data-review]').trigger('click')
   expect(wrapper.get('[data-review-panel]').text()).toContain('10 NIM → 25 NIM')
 })
+
+it('lets the operator edit disclosure on the public profile', async () => {
+  const wrapper = mount(Settings, { global: operatorTestGlobals })
+  await loadSettings(wrapper)
+  const disclosure = wrapper.get('[name="disclosure"]')
+  expect(disclosure.element).toBeTruthy()
+  await disclosure.setValue('Operated by Aurora Labs.')
+  expect((disclosure.element as HTMLTextAreaElement).value).toBe('Operated by Aurora Labs.')
+})

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"math"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -54,17 +53,6 @@ func destinationHint(value string) string {
 	return "…" + value[len(value)-4:]
 }
 
-func webhookHint(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "configured webhook"
-	}
-	u.User = nil
-	u.RawQuery = ""
-	u.Fragment = ""
-	return u.String()
-}
-
 func (a *API) handleOperatorAlerts(w http.ResponseWriter, _ *http.Request) {
 	cfg := a.diskConfig()
 	if cfg == nil {
@@ -73,11 +61,9 @@ func (a *API) handleOperatorAlerts(w http.ResponseWriter, _ *http.Request) {
 	}
 	telegramConfigured := cfg.AlertTelegramEnabled && cfg.AlertTelegramToken != ""
 	webhookConfigured := cfg.AlertWebhookEnabled && cfg.AlertWebhookURL != ""
-	emailConfigured := cfg.AlertEmailEnabled && cfg.AlertEmailTo != ""
 	writeJSON(w, http.StatusOK, map[string]any{"channels": map[string]any{
 		"telegram": map[string]any{"enabled": telegramConfigured, "configured": telegramConfigured, "destination_hint": destinationHint(cfg.AlertTelegramDestination), "state": configuredState(telegramConfigured, false)},
-		"webhook":  map[string]any{"enabled": webhookConfigured, "configured": webhookConfigured, "destination_hint": webhookHint(cfg.AlertWebhookURL), "state": configuredState(webhookConfigured, false)},
-		"email":    map[string]any{"enabled": emailConfigured, "configured": emailConfigured, "destination_hint": destinationHint(cfg.AlertEmailTo), "state": configuredState(emailConfigured, false)},
+		"webhook":  map[string]any{"enabled": webhookConfigured, "configured": webhookConfigured, "destination_hint": notifier.RedactWebhookURL(cfg.AlertWebhookURL), "state": configuredState(webhookConfigured, false)},
 	}})
 }
 
@@ -99,7 +85,7 @@ func (a *API) handleOperatorAlertTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	channel := parts[0]
-	if channel != "telegram" && channel != "webhook" && channel != "email" {
+	if channel != "telegram" && channel != "webhook" {
 		writeAPIError(w, http.StatusBadRequest, "invalid_channel", "unknown alert channel")
 		return
 	}
@@ -122,9 +108,6 @@ func (a *API) handleOperatorAlertTest(w http.ResponseWriter, r *http.Request) {
 	}
 	if channel != "webhook" {
 		cfgCopy.AlertWebhookURL = ""
-	}
-	if channel != "email" {
-		cfgCopy.AlertEmailTo = ""
 	}
 	n := notifier.New(&cfgCopy, alertDeliveryRecorder{q: a.queries})
 	correlationID := operationCorrelationID(r, "alert-test")

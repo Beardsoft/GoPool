@@ -88,9 +88,6 @@ func (a *API) handleSetupValidate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fieldErrors := editableFieldErrors(draft.Editable)
-	if err := config.ValidateAlertSecrets(draft.AlertSecrets); err != nil {
-		fieldErrors["alert_secrets"] = err.Error()
-	}
 	writeJSON(w, http.StatusOK, map[string]any{"valid": len(fieldErrors) == 0, "field_errors": fieldErrors})
 }
 

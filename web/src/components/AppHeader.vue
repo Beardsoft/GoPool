@@ -3,11 +3,13 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useTheme } from '../composables/useTheme'
 import { useSession } from '../composables/useSession'
+import { loadNetwork, usePoolProfile } from '../composables/useExplorer'
 import Identicon from './ui/Identicon.vue'
 import { shortAddress } from '../utils/format'
 
 const { theme, toggleTheme } = useTheme()
 const { signedIn, address, operator, login, logout } = useSession()
+const { poolName } = usePoolProfile()
 
 const sessionMenuOpen = ref(false)
 const sessionMenuRef = ref<HTMLElement | null>(null)
@@ -28,6 +30,7 @@ async function signOut() {
 }
 
 onMounted(() => {
+  loadNetwork()
   document.addEventListener('pointerdown', onGlobalPointerDown)
   document.addEventListener('keydown', onGlobalKeydown)
 })
@@ -40,10 +43,10 @@ onBeforeUnmount(() => {
 <template>
   <header class="app-header">
     <div class="container header-inner">
-      <RouterLink to="/" class="brand" aria-label="GoPool home">
+      <RouterLink to="/" class="brand" :aria-label="`${poolName} home`">
         <span class="brand-mark" aria-hidden="true"><span></span></span>
         <span class="brand-copy">
-          <strong>GoPool</strong>
+          <strong>{{ poolName }}</strong>
           <small>Nimiq staking</small>
         </span>
       </RouterLink>

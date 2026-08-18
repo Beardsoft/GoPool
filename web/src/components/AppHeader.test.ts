@@ -1,9 +1,10 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AppHeader from './AppHeader.vue'
 import { mockFetch } from '../test/helpers'
 import { resetSessionCache } from '../composables/useSession'
+import { resetExplorerForTests } from '../composables/useExplorer'
 
 const ADDR = 'NQ32 EGL6 H9C8 0JJB PH4S 7RYY ULRC 5B6N 56RE'
 
@@ -31,6 +32,7 @@ describe('AppHeader', () => {
       removeEventListener: vi.fn(),
     }))
     resetSessionCache()
+    resetExplorerForTests()
     mockFetch('/api/session', { error: 'not logged in' }, 401)
   })
 
@@ -40,7 +42,7 @@ describe('AppHeader', () => {
     await router.push('/')
     await router.isReady()
     const wrapper = mount(AppHeader, { global: { plugins: [router] } })
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await flushPromises()
     return wrapper
   }
 
@@ -49,6 +51,13 @@ describe('AppHeader', () => {
     expect(wrapper.get('.login-btn').text()).toBe('Sign in with Nimiq')
     expect(wrapper.find('.session-chip').exists()).toBe(false)
     expect(wrapper.find('.operator-link').exists()).toBe(true)
+  })
+
+  it('uses the configured pool name as the public brand', async () => {
+    mockFetch('/api/pool', { pool_name: 'Aurora Stake', network: 'test-albatross' })
+    const wrapper = await mountHeader()
+    expect(wrapper.get('.brand').text()).toContain('Aurora Stake')
+    expect(wrapper.get('.brand').attributes('aria-label')).toBe('Aurora Stake home')
   })
 
   it('shows the session chip and keeps the operator link for operators', async () => {

@@ -44,6 +44,8 @@ type operatorPayoutResponse struct {
 	SubmittedAt     string `json:"submitted_at,omitempty"`
 	SubmittedHeight int64  `json:"submitted_height"`
 	Stuck           bool   `json:"stuck"`
+	EpochFrom       *int64 `json:"epoch_from,omitempty"`
+	EpochTo         *int64 `json:"epoch_to,omitempty"`
 }
 
 var errDuplicateValidatorAction = errors.New("validator action already requested or in flight")
@@ -54,6 +56,23 @@ func nullableString(v sql.NullString) *string {
 		return nil
 	}
 	return &v.String
+}
+
+func nullableInt64(v any) *int64 {
+	switch n := v.(type) {
+	case nil:
+		return nil
+	case int64:
+		return &n
+	case int:
+		x := int64(n)
+		return &x
+	case float64:
+		x := int64(n)
+		return &x
+	default:
+		return nil
+	}
 }
 
 func actionResponseFromRow(row db.ListValidatorActionsRow) operatorActionResponse {
@@ -298,15 +317,20 @@ func (a *API) handleOperatorPayouts(w http.ResponseWriter, r *http.Request) {
 	if status != "" {
 		column1 = 1
 	}
+	// Fetch one extra row to detect whether another page exists.
 	rows, err := a.queries.ListPayoutTransactions(ctx, db.ListPayoutTransactionsParams{
 		Column1: column1,
 		Status:  status,
-		Limit:   int64(limit),
+		Limit:   int64(limit + 1),
 		Offset:  int64(cursor),
 	})
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "db_error", "loading payouts")
 		return
+	}
+	hasMore := len(rows) > limit
+	if hasMore {
+		rows = rows[:limit]
 	}
 
 	var head uint32
@@ -341,11 +365,14 @@ func (a *API) handleOperatorPayouts(w http.ResponseWriter, r *http.Request) {
 			SubmittedAt:     submittedAtStr,
 			SubmittedHeight: r.SubmittedHeight,
 			Stuck:           stuck,
+			EpochFrom:       nullableInt64(r.EpochFrom),
+			EpochTo:         nullableInt64(r.EpochTo),
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items":       items,
 		"next_cursor": cursor + len(items),
+		"has_more":    hasMore,
 	})
 }
 

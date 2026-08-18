@@ -87,7 +87,7 @@ export interface TelemetryPoint {
 
 export interface OperatorActivityResponse {
   items: OperatorEvent[];
-  next_cursor: string | null;
+  next_cursor: number | null;
   has_more: boolean;
 }
 
@@ -110,11 +110,14 @@ export interface OperatorPayout {
   submitted_at?: string;
   submitted_height: number;
   stuck: boolean;
+  epoch_from?: number | null;
+  epoch_to?: number | null;
 }
 
 export interface PageResponse<T> {
   items: T[];
   next_cursor: number | string | null;
+  has_more?: boolean;
 }
 
 export interface AlertChannelStatus {
@@ -150,9 +153,6 @@ export interface EditableConfig {
   alert_telegram_enabled: boolean;
   alert_telegram_destination?: string;
   alert_webhook_enabled: boolean;
-  alert_webhook_url?: string;
-  alert_email_enabled: boolean;
-  alert_email_to?: string;
   pool_name: string;
   pool_description?: string;
   contact_url?: string;
@@ -161,11 +161,7 @@ export interface EditableConfig {
 
 export interface AlertSecrets {
   alert_telegram_token?: string;
-  alert_email_smtp_host?: string;
-  alert_email_smtp_port?: number;
-  alert_email_username?: string;
-  alert_email_password?: string;
-  alert_email_from?: string;
+  alert_webhook_url?: string;
 }
 
 export type SetupDraft = EditableConfig & AlertSecrets

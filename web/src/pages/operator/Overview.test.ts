@@ -64,6 +64,45 @@ describe('Overview', () => {
     expect(wrapper.get('[data-section="attention"]').text()).toContain('Failed to fetch block number')
   })
 
+  it('surfaces payout context on recent activity rows', async () => {
+    mockFetch('/api/operator/overview', overviewFixture({
+      events: [{
+        id: 24,
+        severity: 'info',
+        category: 'payout',
+        summary: 'Payout submitted',
+        created_at: '2026-08-18T06:31:45Z',
+        context_json: JSON.stringify({
+          address: 'NQ95 HH5Q QT81 0VE5 V9SA LCNY CV37 K6Q6 XMPM',
+          amount: 21584135,
+          fee: 0,
+          kind: 'delegate',
+          txHash: '807c040f8be37948fb9bcb344158f42d543676a1e4b44a7effc25aee3df0593b',
+        }),
+      }],
+    }))
+    mockFetch('/api/pool', {
+      current_epoch: 2, epoch_status: 'in_progress', num_stakers: 1,
+      total_stake_luna: 10_100_000_000, total_rewards_luna: 177_489_526,
+      pool_fee_percentage: 0.01,
+    })
+    const wrapper = mount(Overview, {
+      global: {
+        ...operatorTestGlobals,
+        stubs: { RouterLink: { template: '<a href="#"><slot /></a>' } },
+      },
+    })
+    await flushPromises()
+    const row = wrapper.get('[data-section="activity"] li')
+    expect(row.text()).toContain('Payout submitted')
+    expect(row.text()).toContain('215.84135 NIM')
+    expect(row.text()).toContain('NQ95 HH5Q…K6Q6 XMPM')
+    expect(row.text()).toContain('delegate')
+    expect(row.text()).not.toContain('21584135')
+    expect(row.find('[aria-label="Copy wallet address"]').exists()).toBe(true)
+    expect(row.find('[aria-label="Copy transaction hash"]').exists()).toBe(true)
+  })
+
   it('keeps the daily overview scannable when many attention items are open', async () => {
     mockFetch('/api/operator/overview', overviewFixture({
       status: 'attention',

@@ -11,12 +11,17 @@ const payouts = ref<OperatorPayout[]>([])
 const actions = ref<OperatorAction[]>([])
 const statusFilter = ref('')
 const addressFilter = ref('')
+const epochFilter = ref<number | null>(null)
 const error = ref('')
 const reviewAction = ref<'deactivate' | 'retire' | null>(null)
+const payoutNextCursor = ref<number | string | null>(null)
+const payoutHasMore = ref(false)
+const loadingMore = ref(false)
 
 const filteredPayouts = computed(() => payouts.value
   .filter((item) => !statusFilter.value || item.status === statusFilter.value)
   .filter((item) => !addressFilter.value || item.address.toLowerCase().includes(addressFilter.value.toLowerCase()))
+  .filter((item) => epochFilter.value == null || (item.epoch_from != null && item.epoch_to != null && epochFilter.value >= item.epoch_from && epochFilter.value <= item.epoch_to))
   .sort((a, b) => Number(b.status === 'failed') - Number(a.status === 'failed')))
 
 async function load() {
@@ -26,9 +31,26 @@ async function load() {
       apiGet<PageResponse<OperatorAction>>('/api/operator/actions?limit=50'),
     ])
     payouts.value = payoutPage.items
+    payoutNextCursor.value = payoutPage.next_cursor
+    payoutHasMore.value = payoutPage.has_more ?? false
     actions.value = actionPage.items
   } catch (cause: any) {
     error.value = cause.message ?? 'Unable to load operations'
+  }
+}
+
+async function loadMorePayouts() {
+  if (payoutNextCursor.value == null || loadingMore.value) return
+  loadingMore.value = true
+  try {
+    const page = await apiGet<PageResponse<OperatorPayout>>(`/api/operator/payouts?limit=50&cursor=${payoutNextCursor.value}`)
+    payouts.value.push(...page.items)
+    payoutNextCursor.value = page.next_cursor
+    payoutHasMore.value = page.has_more ?? false
+  } catch (cause: any) {
+    error.value = cause.message ?? 'Unable to load more payouts'
+  } finally {
+    loadingMore.value = false
   }
 }
 
@@ -69,6 +91,12 @@ function waitingLabel(item: OperatorPayout): string {
   return elapsed(item.submitted_at) || 'waiting…'
 }
 
+function epochLabel(item: OperatorPayout): string {
+  if (item.epoch_from == null) return ''
+  if (item.epoch_to == null || item.epoch_to === item.epoch_from) return String(item.epoch_from)
+  return `${item.epoch_from}–${item.epoch_to}`
+}
+
 onMounted(load)
 </script>
 
@@ -89,11 +117,13 @@ onMounted(load)
           <option value="">All states</option><option>failed</option><option>awaiting_confirmation</option><option>completed</option>
         </select>
         <input v-model="addressFilter" class="input" placeholder="Filter address" aria-label="Filter payout address" />
+        <input v-model.number="epochFilter" type="number" min="0" class="input" placeholder="Filter epoch" aria-label="Filter payout epoch" />
       </div>
       <div v-if="filteredPayouts.length" class="table-wrap">
-        <table><thead><tr><th>Status</th><th>Recipient</th><th>Amount</th><th>Transaction</th><th>Waiting</th><th></th></tr></thead>
+        <table><thead><tr><th>Status</th><th>Epoch</th><th>Recipient</th><th>Amount</th><th>Transaction</th><th>Waiting</th><th></th></tr></thead>
           <tbody><tr v-for="item in filteredPayouts" :key="item.hash">
             <td><StatusBadge :status="item.status || 'unknown'" /><span v-if="item.stuck" class="stuck-badge">stuck</span></td>
+            <td class="epoch"><span v-if="epochLabel(item)">{{ epochLabel(item) }}</span><span v-else class="muted">—</span></td>
             <td class="address"><ExplorerLink kind="account" :value="item.address" /></td>
             <td><NimAmount :luna="item.amount ?? 0" /></td>
             <td class="hash"><ExplorerLink kind="transaction" :value="item.hash" /><span v-if="item.submitted_height" class="height">h{{ item.submitted_height }}</span></td>
@@ -102,6 +132,7 @@ onMounted(load)
           </tr></tbody></table>
       </div>
       <p v-else class="muted">No payout rows match these filters.</p>
+      <button v-if="payoutHasMore" class="btn secondary" @click="loadMorePayouts" :disabled="loadingMore">Load more</button>
     </section>
 
     <section class="card">
@@ -127,6 +158,6 @@ onMounted(load)
 .section-heading,.filters,.action-buttons{display:flex;gap:12px;align-items:center;justify-content:space-between}.filters{margin-bottom:16px}.filters>*{max-width:280px}
 .table-wrap{overflow:auto}.address,.hash{max-width:240px;overflow:hidden;text-overflow:ellipsis}.action-list{display:grid;gap:8px;list-style:none;padding:0}.danger-zone{border-color:var(--nimiq-red)}
 .stuck-badge{margin-left:8px;padding:2px 8px;border-radius:999px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:var(--nimiq-red);color:#fff}
-.height{margin-left:8px;font-size:.75rem;color:var(--nimiq-light-blue);white-space:nowrap}.waiting{white-space:nowrap}
-.destructive{background:var(--nimiq-red)}.review-panel{margin-top:16px;padding:16px;background:var(--bg-muted);border-radius:10px}@media(max-width:640px){.filters,.action-buttons{align-items:stretch;flex-direction:column}.filters>*{max-width:none}}
+.height{margin-left:8px;font-size:.75rem;color:var(--nimiq-light-blue);white-space:nowrap}.waiting,.epoch{white-space:nowrap}
+.destructive{background:var(--nimiq-red)}.btn.secondary{background:var(--surface-1);color:var(--app-text);border:1px solid var(--app-border);margin-top:16px}.btn.secondary:disabled{opacity:.55;cursor:not-allowed}.review-panel{margin-top:16px;padding:16px;background:var(--bg-muted);border-radius:10px}@media(max-width:640px){.filters,.action-buttons{align-items:stretch;flex-direction:column}.filters>*{max-width:none}}
 </style>

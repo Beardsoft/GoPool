@@ -10,7 +10,7 @@ GoPool is a Go-based Nimiq Albatross validator pool daemon. It tracks delegators
 - Pool fee wallet and percentage support.
 - Auto-reactivate, validator CLI actions, Prometheus metrics, and a REST API.
 - Real-time SSE stream at `/api/events` for epoch starts and checkpoint rewards, with live Vue dashboard.
-- Operator alerts via Telegram/Webhook/Email for validator state changes and payout failures.
+- Operator alerts via Telegram/Webhook (including Discord webhook URLs) for validator state changes and payout failures.
 
 ## Prerequisites
 
@@ -77,7 +77,7 @@ Key fields:
 - `api_addr` and `validator_address` – public API/validator identity
 - `POOL_PRIVATE_KEY_FILE` – daemon-only validator key file
 - `POOL_SETUP_TOKEN_FILE` and `POOL_SESSION_SECRET_FILE` – API-only bootstrap/session files
-- alert channels are fully self-service: destinations and credentials (Telegram token, SMTP host/port/username/password/from) are set in the UI and never returned by the API
+- alert channels are fully self-service: destinations and credentials (Telegram token, webhook URL) are set in the UI and never returned by the API
 
 Example dev config is in `config/config.json-example`. The repo ships `config.json` for local dev.
 

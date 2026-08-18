@@ -52,5 +52,5 @@ onMounted(load)
 </template>
 
 <style scoped>
-.alerts-page{display:grid;gap:24px}.eyebrow{text-transform:uppercase;letter-spacing:.08em;font-size:.75rem;font-weight:700;color:var(--nimiq-light-blue)}.channel-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.channel-heading{display:flex;align-items:center;justify-content:space-between}.table-wrap{overflow:auto}@media(max-width:760px){.channel-grid{grid-template-columns:1fr}}
+.alerts-page{display:grid;gap:24px}.eyebrow{text-transform:uppercase;letter-spacing:.08em;font-size:.75rem;font-weight:700;color:var(--nimiq-light-blue)}.channel-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}.channel-heading{display:flex;align-items:center;justify-content:space-between}.table-wrap{overflow:auto}@media(max-width:760px){.channel-grid{grid-template-columns:1fr}}
 </style>

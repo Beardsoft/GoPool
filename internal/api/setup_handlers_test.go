@@ -37,10 +37,9 @@ func TestSetupCompletePersistsAlertSecrets(t *testing.T) {
 		"pool_fee_wallet": testAddr, "pool_fee_percentage": .01, "payout_mode": "delegate",
 		"min_payout_luna": 100000, "api_addr": ":8080", "validator_address": testAddr, "pool_name": "GoPool",
 		"alert_telegram_enabled": true, "alert_telegram_destination": "12345",
-		"alert_telegram_token": "tg-setup-token",
-		"alert_email_enabled":  true, "alert_email_to": "ops@example.com",
-		"alert_email_smtp_host": "smtp.example.com", "alert_email_smtp_port": 465,
-		"alert_email_password": "smtp-setup-pw", "alert_email_from": "pool@example.com",
+		"alert_telegram_token":  "tg-setup-token",
+		"alert_webhook_enabled": true,
+		"alert_webhook_url":     "https://discord.com/api/webhooks/123456/wh-setup-token",
 	}
 	rec := postJSON(t, a.Mux(), "/api/setup/complete", map[string]any{"settings": draft}, cookie)
 	if rec.Code != http.StatusCreated {
@@ -50,7 +49,7 @@ func TestSetupCompletePersistsAlertSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"tg-setup-token", "smtp-setup-pw", "smtp.example.com"} {
+	for _, want := range []string{"tg-setup-token", "wh-setup-token"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("config file missing %q", want)
 		}

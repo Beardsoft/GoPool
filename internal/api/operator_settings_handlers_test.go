@@ -38,12 +38,8 @@ func TestSettingsSavePersistsSecretsRedacted(t *testing.T) {
 		"expected_hash": "",
 		"settings":      validTestEditable(),
 		"secrets": map[string]any{
-			"alert_telegram_token":  "tg-secret-token",
-			"alert_email_smtp_host": "smtp.example.com",
-			"alert_email_smtp_port": 587,
-			"alert_email_username":  "pool",
-			"alert_email_password":  "pw-secret",
-			"alert_email_from":      "pool@example.com",
+			"alert_telegram_token": "tg-secret-token",
+			"alert_webhook_url":    "https://discord.com/api/webhooks/123456/wh-secret-token",
 		},
 	}, cookie)
 	if rec.Code != http.StatusOK {
@@ -53,7 +49,7 @@ func TestSettingsSavePersistsSecretsRedacted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"tg-secret-token", "smtp.example.com", "pw-secret"} {
+	for _, want := range []string{"tg-secret-token", "wh-secret-token"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("config file missing %q", want)
 		}
@@ -63,10 +59,10 @@ func TestSettingsSavePersistsSecretsRedacted(t *testing.T) {
 	getRec := httptest.NewRecorder()
 	a.Mux().ServeHTTP(getRec, req)
 	body := getRec.Body.String()
-	if strings.Contains(body, "tg-secret-token") || strings.Contains(body, "pw-secret") {
+	if strings.Contains(body, "tg-secret-token") || strings.Contains(body, "wh-secret-token") {
 		t.Fatalf("settings response leaked a secret: %s", body)
 	}
-	for _, want := range []string{`"telegram_token":"configured"`, `"email_password":"configured"`} {
+	for _, want := range []string{`"telegram_token":"configured"`, `"webhook_url":"configured"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("settings response missing %s", want)
 		}

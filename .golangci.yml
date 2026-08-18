@@ -7,7 +7,6 @@ linters:
         - (*database/sql.Rows).Close
         - (*database/sql.Tx).Rollback
         - (*os.File).Close
-        - (*net/smtp.Client).Close
         - (net.Listener).Close
         - (net.Conn).Close
         - (io.ReadCloser).Close

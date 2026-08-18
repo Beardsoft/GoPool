@@ -54,12 +54,12 @@ func TestStoreSaveMergesSecretsAndCarriesUnmanagedFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	revision, err := store.Save(context.Background(), "actor", hash, validEditable(), config.AlertSecrets{TelegramToken: "tg-new-token", SMTPHost: "smtp.example.com", SMTPPort: 465})
+	revision, err := store.Save(context.Background(), "actor", hash, validEditable(), config.AlertSecrets{TelegramToken: "tg-new-token", WebhookURL: "https://discord.com/api/webhooks/1/wh-new-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(store.Path())
-	for _, want := range []string{"legacy-key-value", "legacy-session-value", "tg-new-token", "smtp.example.com", `"stuck_payout_epochs": 7`} {
+	for _, want := range []string{"legacy-key-value", "legacy-session-value", "tg-new-token", "wh-new-token", `"stuck_payout_epochs": 7`} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("config file missing %q: %s", want, raw)
 		}
@@ -73,7 +73,7 @@ func TestStoreSaveMergesSecretsAndCarriesUnmanagedFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ = os.ReadFile(store.Path())
-	if !strings.Contains(string(raw), "tg-new-token") || !strings.Contains(string(raw), "smtp.example.com") {
+	if !strings.Contains(string(raw), "tg-new-token") || !strings.Contains(string(raw), "wh-new-token") {
 		t.Fatalf("empty secrets dropped existing values: %s", raw)
 	}
 	// Revisions are redacted: no secret values in the snapshots.
@@ -84,7 +84,7 @@ func TestStoreSaveMergesSecretsAndCarriesUnmanagedFields(t *testing.T) {
 	for _, rev := range revisions {
 		before, _ := json.Marshal(rev.Before)
 		after, _ := json.Marshal(rev.After)
-		for _, leaked := range []string{"old-token", "tg-new-token", "legacy-key-value", "legacy-session-value", "smtp.example.com"} {
+		for _, leaked := range []string{"old-token", "tg-new-token", "legacy-key-value", "legacy-session-value", "wh-new-token"} {
 			if strings.Contains(string(before), leaked) || strings.Contains(string(after), leaked) {
 				t.Fatalf("revision leaked %q", leaked)
 			}

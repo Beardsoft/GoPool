@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"net/http"
@@ -120,9 +122,27 @@ func (a *API) handleOperatorOverview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func computeWalletRunway(ctx interface{}, q *db.Queries) *int {
-	// Simplified: return nil (no confirmed payouts)
-	return nil
+// computeWalletRunway estimates how many days the payout wallet can keep
+// paying out at its recent pace: latest wallet balance divided by the
+// greater of one luna or the average confirmed payout per day over the
+// previous 30 complete UTC days. Returns nil when there is no recorded
+// balance or no confirmed payouts in the window.
+func computeWalletRunway(ctx context.Context, q *db.Queries) *int {
+	balance, err := q.GetLatestWalletBalance(ctx)
+	if err != nil {
+		return nil
+	}
+	windowStart := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -30)
+	total, err := q.SumCompletedPayoutsSince(ctx, sql.NullTime{Time: windowStart, Valid: true})
+	if err != nil || total == 0 {
+		return nil
+	}
+	avgDaily := float64(total) / 30
+	if avgDaily < 1 {
+		avgDaily = 1
+	}
+	days := int(float64(balance) / avgDaily)
+	return &days
 }
 
 func (a *API) handleOperatorReadiness(w http.ResponseWriter, r *http.Request) {
@@ -178,8 +198,76 @@ func (a *API) handleOperatorTelemetry(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "range_too_large", "range >31 days")
 		return
 	}
-	// Simplified telemetry: return empty points (max 500)
-	writeJSON(w, http.StatusOK, []any{})
+	bucket := time.Duration(0)
+	if bucketStr := r.URL.Query().Get("bucket"); bucketStr != "" {
+		bucket, err = time.ParseDuration(bucketStr)
+		if err != nil || bucket <= 0 {
+			writeAPIError(w, http.StatusBadRequest, "invalid_bucket", "invalid bucket")
+			return
+		}
+	}
+	rows, err := a.queries.ListHealthSnapshotsBetween(r.Context(), db.ListHealthSnapshotsBetweenParams{RecordedAt: from, RecordedAt_2: to})
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "db_error", "loading telemetry")
+		return
+	}
+	points := make([]telemetryPoint, 0, len(rows))
+	for _, row := range rows {
+		points = append(points, telemetryPoint{t: row.RecordedAt, value: metricValue(metric, row)})
+	}
+	if bucket > 0 {
+		points = bucketize(points, bucket)
+	}
+	if n := len(points); n > 500 {
+		out := make([]telemetryPoint, 500)
+		for i := range out {
+			out[i] = points[i*n/500]
+		}
+		points = out
+	}
+	resp := make([]map[string]any, 0, len(points))
+	for _, p := range points {
+		resp = append(resp, map[string]any{"ts": p.t.Format(time.RFC3339), "value": p.value})
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+type telemetryPoint struct {
+	t     time.Time
+	value float64
+}
+
+func metricValue(metric string, row db.ListHealthSnapshotsBetweenRow) float64 {
+	switch metric {
+	case "chain_lag":
+		if row.ChainHead >= row.ProcessedHeight {
+			return float64(row.ChainHead - row.ProcessedHeight)
+		}
+		return 0
+	case "wallet_balance":
+		return float64(row.WalletBalance)
+	case "live_stake":
+		return float64(row.LiveStake)
+	case "staker_count":
+		return float64(row.StakerCount)
+	default:
+		return float64(row.PendingPayoutLuna)
+	}
+}
+
+// bucketize collapses ordered points into fixed buckets, keeping the last
+// sample of each bucket (gauge semantics) and the bucket start as the label.
+func bucketize(points []telemetryPoint, bucket time.Duration) []telemetryPoint {
+	out := make([]telemetryPoint, 0, len(points))
+	for i := range points {
+		start := points[i].t.Truncate(bucket)
+		if n := len(out); n > 0 && out[n-1].t.Equal(start) {
+			out[n-1] = telemetryPoint{t: start, value: points[i].value}
+			continue
+		}
+		out = append(out, telemetryPoint{t: start, value: points[i].value})
+	}
+	return out
 }
 
 func (a *API) handleOperatorActivity(w http.ResponseWriter, r *http.Request) {
@@ -190,24 +278,25 @@ func (a *API) handleOperatorActivity(w http.ResponseWriter, r *http.Request) {
 
 	limit := 50
 	if limitStr != "" {
-		if v, err := strconv.Atoi(limitStr); err == nil {
-			if v > 100 {
-				v = 100
-			}
+		if v, err := strconv.Atoi(limitStr); err == nil && v > 0 && v <= 100 {
 			limit = v
 		}
 	}
 	cursor := 0
 	if cursorStr != "" {
-		if v, err := strconv.Atoi(cursorStr); err == nil {
+		if v, err := strconv.Atoi(cursorStr); err == nil && v >= 0 {
 			cursor = v
 		}
 	}
-	// Fetch events
-	events, err := a.queries.ListOperatorEvents(r.Context(), db.ListOperatorEventsParams{Limit: int64(limit), Offset: int64(cursor)})
+	// Fetch one extra row to detect whether another page exists.
+	events, err := a.queries.ListOperatorEvents(r.Context(), db.ListOperatorEventsParams{Limit: int64(limit + 1), Offset: int64(cursor)})
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "db_error", "loading events")
 		return
+	}
+	hasMore := len(events) > limit
+	if hasMore {
+		events = events[:limit]
 	}
 	// Simple filter
 	filtered := []eventSummary{}
@@ -228,7 +317,8 @@ func (a *API) handleOperatorActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items":       filtered,
-		"next_cursor": cursor + len(filtered),
+		"next_cursor": cursor + len(events),
+		"has_more":    hasMore,
 	})
 }
 

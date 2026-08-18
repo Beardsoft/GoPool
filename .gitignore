@@ -2,11 +2,12 @@
 config.json
 pool.db
 GoPool
+/e2e_stake
 devlab/albatross
 .worktrees
 internal/api/webdist/
 web/node_modules/
 web/tsconfig.tsbuildinfo
 .secrets/
-data/config/
+data/
 devlab/.runtime/

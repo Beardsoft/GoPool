@@ -41,7 +41,7 @@ func (a *API) handleOperatorSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"active_hash": hash, "daemon_hash": runtimeHash, "restart_required": runtimeHash != hash,
 		"settings": cfg.Editable(), "secrets": map[string]string{"validator_key": presenceState(validatorPresent), "session_secret": presenceState(a.cfg != nil && a.cfg.SessionSecret != ""),
-			"telegram_token": presenceState(cfg.AlertTelegramToken != ""), "email_password": presenceState(cfg.AlertEmailPassword != "")}})
+			"telegram_token": presenceState(cfg.AlertTelegramToken != ""), "webhook_url": presenceState(cfg.AlertWebhookURL != "")}})
 }
 
 func presenceState(present bool) string {
@@ -53,17 +53,13 @@ func presenceState(present bool) string {
 
 func (a *API) handleOperatorSettingsValidate(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Settings config.Editable     `json:"settings"`
-		Secrets  config.AlertSecrets `json:"secrets"`
+		Settings config.Editable `json:"settings"`
 	}
 	if decodeJSON(r.Body, &body) != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid_body", "invalid json")
 		return
 	}
 	errors := editableFieldErrors(body.Settings)
-	if err := config.ValidateAlertSecrets(body.Secrets); err != nil {
-		errors["alert_secrets"] = err.Error()
-	}
 	writeJSON(w, http.StatusOK, map[string]any{"valid": len(errors) == 0, "field_errors": errors})
 }
 

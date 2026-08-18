@@ -377,6 +377,17 @@ func (q *Queries) GetLatestPolicyConstants(ctx context.Context) (GetLatestPolicy
 	return i, err
 }
 
+const GetLatestWalletBalance = `-- name: GetLatestWalletBalance :one
+SELECT wallet_balance FROM health_snapshots ORDER BY id DESC LIMIT 1
+`
+
+func (q *Queries) GetLatestWalletBalance(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, GetLatestWalletBalance)
+	var wallet_balance int64
+	err := row.Scan(&wallet_balance)
+	return wallet_balance, err
+}
+
 const GetPayslipStats = `-- name: GetPayslipStats :one
 SELECT
     CAST(COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS INTEGER) AS pending_count,
@@ -1365,6 +1376,59 @@ func (q *Queries) ListEpochs(ctx context.Context) ([]ListEpochsRow, error) {
 	return items, nil
 }
 
+const ListHealthSnapshotsBetween = `-- name: ListHealthSnapshotsBetween :many
+SELECT recorded_at, chain_head, processed_height, live_stake, staker_count, pending_payout_luna, wallet_balance
+FROM health_snapshots
+WHERE recorded_at >= ? AND recorded_at < ?
+ORDER BY recorded_at ASC
+`
+
+type ListHealthSnapshotsBetweenParams struct {
+	RecordedAt   time.Time `json:"recorded_at"`
+	RecordedAt_2 time.Time `json:"recorded_at_2"`
+}
+
+type ListHealthSnapshotsBetweenRow struct {
+	RecordedAt        time.Time `json:"recorded_at"`
+	ChainHead         int64     `json:"chain_head"`
+	ProcessedHeight   int64     `json:"processed_height"`
+	LiveStake         int64     `json:"live_stake"`
+	StakerCount       int64     `json:"staker_count"`
+	PendingPayoutLuna int64     `json:"pending_payout_luna"`
+	WalletBalance     int64     `json:"wallet_balance"`
+}
+
+func (q *Queries) ListHealthSnapshotsBetween(ctx context.Context, arg ListHealthSnapshotsBetweenParams) ([]ListHealthSnapshotsBetweenRow, error) {
+	rows, err := q.db.QueryContext(ctx, ListHealthSnapshotsBetween, arg.RecordedAt, arg.RecordedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListHealthSnapshotsBetweenRow{}
+	for rows.Next() {
+		var i ListHealthSnapshotsBetweenRow
+		if err := rows.Scan(
+			&i.RecordedAt,
+			&i.ChainHead,
+			&i.ProcessedHeight,
+			&i.LiveStake,
+			&i.StakerCount,
+			&i.PendingPayoutLuna,
+			&i.WalletBalance,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ListOperatorEvents = `-- name: ListOperatorEvents :many
 SELECT id, severity, category, source, event_type, summary, context_json, actor_address, correlation_id, created_at FROM operator_events ORDER BY id DESC LIMIT ? OFFSET ?
 `
@@ -1409,7 +1473,17 @@ func (q *Queries) ListOperatorEvents(ctx context.Context, arg ListOperatorEvents
 }
 
 const ListPayoutTransactions = `-- name: ListPayoutTransactions :many
-SELECT hash, address, amount, status, submitted_at, submitted_height FROM transactions WHERE (? IS NULL OR status = ?) ORDER BY submitted_at DESC LIMIT ? OFFSET ?
+SELECT
+  t.hash, t.address, t.amount, t.status, t.submitted_at, t.submitted_height,
+  MIN(r.epoch_number) AS epoch_from,
+  MAX(r.epoch_number) AS epoch_to
+FROM transactions t
+LEFT JOIN payslips p ON p.tx_hash = t.hash
+LEFT JOIN rewards r ON r.batch_number = p.batch_number
+WHERE (? IS NULL OR t.status = ?)
+GROUP BY t.hash
+ORDER BY t.submitted_at DESC
+LIMIT ? OFFSET ?
 `
 
 type ListPayoutTransactionsParams struct {
@@ -1426,6 +1500,8 @@ type ListPayoutTransactionsRow struct {
 	Status          string       `json:"status"`
 	SubmittedAt     sql.NullTime `json:"submitted_at"`
 	SubmittedHeight int64        `json:"submitted_height"`
+	EpochFrom       interface{}  `json:"epoch_from"`
+	EpochTo         interface{}  `json:"epoch_to"`
 }
 
 func (q *Queries) ListPayoutTransactions(ctx context.Context, arg ListPayoutTransactionsParams) ([]ListPayoutTransactionsRow, error) {
@@ -1449,6 +1525,8 @@ func (q *Queries) ListPayoutTransactions(ctx context.Context, arg ListPayoutTran
 			&i.Status,
 			&i.SubmittedAt,
 			&i.SubmittedHeight,
+			&i.EpochFrom,
+			&i.EpochTo,
 		); err != nil {
 			return nil, err
 		}
@@ -1888,6 +1966,21 @@ func (q *Queries) SubmitValidatorAction(ctx context.Context, arg SubmitValidator
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const SumCompletedPayoutsSince = `-- name: SumCompletedPayoutsSince :one
+SELECT CAST(COALESCE(SUM(p.amount), 0) AS INTEGER)
+FROM payslips p
+JOIN transactions t ON t.hash = p.tx_hash
+WHERE p.status = 'completed'
+  AND t.submitted_at >= ?
+`
+
+func (q *Queries) SumCompletedPayoutsSince(ctx context.Context, submittedAt sql.NullTime) (int64, error) {
+	row := q.db.QueryRowContext(ctx, SumCompletedPayoutsSince, submittedAt)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const SumRewardsAmount = `-- name: SumRewardsAmount :one

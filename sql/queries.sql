@@ -360,7 +360,17 @@ WHERE NOT EXISTS (
 RETURNING id;
 
 -- name: ListPayoutTransactions :many
-SELECT hash, address, amount, status, submitted_at, submitted_height FROM transactions WHERE (? IS NULL OR status = ?) ORDER BY submitted_at DESC LIMIT ? OFFSET ?;
+SELECT
+  t.hash, t.address, t.amount, t.status, t.submitted_at, t.submitted_height,
+  MIN(r.epoch_number) AS epoch_from,
+  MAX(r.epoch_number) AS epoch_to
+FROM transactions t
+LEFT JOIN payslips p ON p.tx_hash = t.hash
+LEFT JOIN rewards r ON r.batch_number = p.batch_number
+WHERE (? IS NULL OR t.status = ?)
+GROUP BY t.hash
+ORDER BY t.submitted_at DESC
+LIMIT ? OFFSET ?;
 
 -- name: CountPayoutTransactions :one
 SELECT COUNT(*) FROM transactions WHERE (? IS NULL OR status = ?);
@@ -407,6 +417,22 @@ ORDER BY batch_number ASC;
 
 -- name: GetStakerPreference :one
 SELECT compound FROM staker_preferences WHERE address = ?;
+
+-- name: GetLatestWalletBalance :one
+SELECT wallet_balance FROM health_snapshots ORDER BY id DESC LIMIT 1;
+
+-- name: ListHealthSnapshotsBetween :many
+SELECT recorded_at, chain_head, processed_height, live_stake, staker_count, pending_payout_luna, wallet_balance
+FROM health_snapshots
+WHERE recorded_at >= ? AND recorded_at < ?
+ORDER BY recorded_at ASC;
+
+-- name: SumCompletedPayoutsSince :one
+SELECT CAST(COALESCE(SUM(p.amount), 0) AS INTEGER)
+FROM payslips p
+JOIN transactions t ON t.hash = p.tx_hash
+WHERE p.status = 'completed'
+  AND t.submitted_at >= ?;
 
 -- name: UpsertStakerPreference :exec
 INSERT INTO staker_preferences (address, compound, updated_at)
