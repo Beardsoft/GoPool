@@ -21,7 +21,7 @@ services:
     deploy:
       replicas: 1
       restart_policy: { condition: on-failure }
-      placement: { constraints: [node.role == manager] }
+      placement: { constraints: [node.hostname == vm-swarm-worker-01] }
     networks: [gopool_net]
 
   gopool-api:
@@ -42,7 +42,7 @@ services:
     deploy:
       replicas: 1
       restart_policy: { condition: on-failure }
-      placement: { constraints: [node.role == manager] }
+      placement: { constraints: [node.hostname == vm-swarm-worker-01] }
       labels:
         - traefik.enable=true
         - traefik.swarm.network=web

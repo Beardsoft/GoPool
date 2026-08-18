@@ -4,7 +4,7 @@ GoPool uses three separate secrets. Only the daemon receives the validator key; 
 
 Images are published to GHCR on every push to `master` (`ghcr.io/beardsoft/gopool:<full-sha>` and `:latest`) and on version tags (`:vX.Y.Z`). Pin deploys to the full commit SHA. The package lives on a private repo, so the Swarm manager must be logged into `ghcr.io` (or the package must be public) before `docker stack deploy --with-registry-auth`.
 
-Attach the API to the cluster's existing Traefik overlay named `web`. SQLite volumes are local: keep both replicas on one manager with the placement constraint in the stack file.
+Attach the API to the cluster's existing Traefik overlay named `web`. SQLite volumes are local: pin both replicas to one hostname. The test stack uses `vm-swarm-worker-01` (same node as Traefik); `node.role == manager` is wrong here because several nodes are managers and overlay to the leader does not reach Traefik.
 
 ## Generate keys and bootstrap secrets
 
