@@ -1,246 +1,110 @@
 # GoPool
 
-GoPool is a Go-based Nimiq Albatross validator pool daemon. It tracks delegators per epoch, records rewards from the chain, and pays out stake proportionally using SQLite for persistence and RPC for on-chain interaction.
+Run your own [Nimiq](https://nimiq.com) staking pool on a VPS.
 
-## Features
+People delegate NIM to your validator. You produce blocks. GoPool tracks who staked, records rewards, and pays them out. You also get a website for the pool and an operator dashboard.
 
-- Tracks user participation per epoch via `getValidatorByAddress` / `getStakersByValidatorAddress`.
-- Records rewards from `getInherentsByBlockNumber` at checkpoint blocks.
-- Pays out rewards as stake or transfers after a configurable minimum.
-- Pool fee wallet and percentage support.
-- Auto-reactivate, validator CLI actions, Prometheus metrics, and a REST API.
-- Real-time SSE stream at `/api/operator/events` for epoch starts and checkpoint rewards, with live Vue dashboard.
-- Operator alerts via Telegram/Webhook (including Discord webhook URLs) for validator state changes and payout failures.
+You do **not** need to know Go, compile anything, or run Nimiq RPC yourself.
 
-## Prerequisites
+## What you need
 
-- Go 1.25+
-- SQLite
-- Docker + Docker Compose for the devnet
-- A Nimiq RPC endpoint
+- An Ubuntu or Debian VPS (2 CPU / 4 GB RAM is comfortable)
+- A domain name, for example `pool.yourname.com`
+- **101,000 NIM** to register the validator (real NIM on mainnet, testnet coins if you are practising)
 
-## Quick start
+## 1. Point the domain at the server
 
-One command on a fresh Ubuntu/Debian VPS:
+Pick the setup that matches how you host things.
+
+**The VPS is on the public internet**
+
+1. Create a DNS **A** record: `pool.yourname.com` → the VPS IP address.
+2. In the cloud firewall (and `ufw` if you use it), open ports **80** and **443**.
+
+**You already use Nginx Proxy Manager, Traefik, or Cloudflare in front**
+
+1. Point the domain at that proxy, not at the VPS.
+2. After install, forward `https://pool.yourname.com` to `http://VPS-IP:80`.
+
+## 2. Install
+
+SSH into the VPS, then:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Beardsoft/GoPool/master/scripts/install.sh \
-  | sudo bash -s -- --domain pool.example.com
+  | sudo bash -s -- --domain pool.yourname.com
 ```
 
-That writes `/opt/gopool` (compose, Caddyfile, secrets — no git clone), installs Docker if needed, generates a validator wallet, pulls `ghcr.io/beardsoft/gopool:latest`, and starts the daemon + API + validator node behind Caddy. It prints a setup URL that already includes the one-time token — open it, confirm name/fee/operators, and launch. The API writes the configuration and activates in-process; no Compose restart.
-
-**You still do by hand:**
-
-1. Point DNS at the VPS (`A` record) **or** add a reverse-proxy host that forwards `https://your.domain` to `http://VPS:80`.
-2. On a public VPS, open ports `80` and `443` in the cloud firewall. The installer opens `ufw` when it is active.
-3. Open the printed `/setup?token=…` link, confirm the pre-filled wallet/network, set the pool name/fee, and launch.
-4. Back up `.secrets/wallet.json` offline. Keep it on the server until the daemon has registered the validator (it needs the signing and voting keys). You can delete it afterward.
-5. On mainnet, send at least **101,000 NIM** to the validator address. On testnet the daemon tries the public faucet **once**; that faucet is limited to about once per 24 hours **per public IP**. If it is rate-limited, send at least 101,000 NIM yourself. The daemon registers and self-stakes as soon as the balance is there. A `readiness_error` is expected until that finishes.
-
-If the domain already hits Nginx Proxy Manager, Traefik, or Cloudflare (it does not resolve to this machine), the installer serves HTTP on port `80` and tells you the forward target. Force either mode with `--tls auto` or `--tls proxy`.
-
-For testnet, add `--network test-albatross`. To install somewhere other than `/opt/gopool`, add `--dir /path`.
-
-### Local / from a git checkout
+To try testnet first (recommended once, before mainnet):
 
 ```bash
-git clone https://github.com/Beardsoft/GoPool.git
-cd GoPool
-go mod tidy
+curl -fsSL https://raw.githubusercontent.com/Beardsoft/GoPool/master/scripts/install.sh \
+  | sudo bash -s -- --domain pool.yourname.com --network test-albatross
 ```
 
-Create deployment-only secrets and the writable configuration directory:
+That installs Docker if needed, creates a validator wallet, and starts the pool, the website, and the validator node. It prints a **setup link** — copy the whole thing (it includes a one-time token).
+
+## 3. Finish setup in the browser
+
+Open the setup link. Confirm the pre-filled wallet and network, set the pool name and fee, then launch.
+
+Wait until the dashboard looks live. You do not need to restart Docker after this.
+
+## 4. Back up the wallet now
+
+On the server the keys live in:
+
+```text
+/opt/gopool/.secrets/wallet.json
+```
+
+Copy that file somewhere safe **offline** (USB stick, password manager, printed backup). If the VPS dies and you only have this file, you can recover. If you lose both, the validator is gone.
+
+Keep `wallet.json` on the server until the validator is registered (GoPool needs those keys to register). After that you can delete the server copy **if** you still have the offline backup.
+
+## 5. Fund the validator
+
+Send **at least 101,000 NIM** to the validator address shown in setup.
+
+- **Mainnet:** send real NIM.
+- **Testnet:** GoPool asks the public faucet **once**. That faucet is limited to about once per 24 hours **per public IP**. If it is rate-limited, send 101,000 testnet NIM yourself.
+
+As soon as the balance is there, GoPool registers the validator and stakes the leftover. A waiting / readiness message on the dashboard until that finishes is normal.
+
+The validator node also downloads the chain the first time. That can take a while. It stays small after that (it does not keep full history).
+
+## Day-to-day
+
+Useful commands on the VPS:
 
 ```bash
-install -d -m 700 .secrets data/config
-openssl rand -hex 32 > .secrets/setup-token
-openssl rand -hex 32 > .secrets/session-secret
-install -m 600 /dev/stdin .secrets/validator-key <<<'<validator-private-key-hex>'
-# Validator node config (needs the full key set in .secrets/wallet.json):
-./scripts/make-validator-node-config.sh --network main-albatross
-echo 'GOPOOL_DOMAIN=your.pool.domain' > .env   # omit for local testing, defaults to localhost
-docker compose --env-file .env -f deployments/docker-compose.yml up -d
+cd /opt/gopool
+docker compose ps
+docker compose logs -f gopool
+docker compose logs -f gopool-validator
 ```
 
-The stack also runs `gopool-validator`, the validator node itself (it produces the blocks the pool earns on). Without a full key set (`.secrets/wallet.json`) you can start just the pool: `docker compose -f deployments/docker-compose.yml up -d gopool gopool-api caddy`.
+In the operator dashboard you can change the pool name and fee, turn on Telegram or Discord alerts, and watch whether the validator is elected.
 
-The API sits behind a bundled Caddy reverse proxy that handles TLS automatically (Let's Encrypt for a real domain, a locally-trusted cert for `localhost`). The API container itself only binds to `127.0.0.1`; Caddy on ports `80`/`443` is the public entrypoint.
+Delegators stake to **your validator address** (the Nimiq one from setup), not to a GoPool account.
 
-Open `https://localhost` (or `https://your.pool.domain/setup?token=…` after the installer), complete the browser assistant, and wait until the daemon heartbeat matches. A `readiness_error` remains until faucet/register/self-stake finishes (or until you send ≥101k NIM). The API field `restart_required` means the daemon heartbeat has not caught the new config hash yet — not that you must restart Compose.
+## If something looks stuck
 
-## VPS onboarding
+| What you see | What to do |
+| --- | --- |
+| Setup page will not load over HTTPS | DNS is not pointing where you think, or the reverse proxy is not forwarding to `http://VPS:80`. |
+| Waiting for NIM / readiness error | The 101,000 NIM deposit is not there yet. Send it, then wait. |
+| Dashboard says “activating” | Give it a minute. Config is applying. Do **not** restart Compose for this. |
+| Validator still syncing | First start downloads the chain. Watch `docker compose logs -f gopool-validator`. |
 
-`scripts/install.sh` is the one-shot path above: it does **not** clone this repository. It generates a Compose file that only references published images. From a git checkout (local `--build`, or the interactive wizard), use:
+## Extra options
 
-```bash
-sudo ./scripts/vps-onboard.sh --yes --domain pool.example.com --generate-wallet
-```
+Add these to the same install command:
 
-Omit `--yes` for the interactive version (wallet generate vs paste, domain, start). The script installs Docker if missing, generates the setup/session secrets, and either generates a brand-new validator wallet (via the official `ghcr.io/nimiq/core-rs-albatross` image — no separate signup or tooling needed) or lets you paste in an existing payout private key. With a full wallet it writes `.secrets/node-config.toml` for the validator node (default network `main-albatross`) and `data/config/setup-hints.json` so the browser assistant is pre-filled. It then starts the daemon + API + validator node behind a bundled Caddy reverse proxy, pulling `ghcr.io/beardsoft/gopool` instead of compiling on the VPS.
+- `--dir /path` — install somewhere other than `/opt/gopool`
+- `--tls auto` — this machine gets HTTPS (Let's Encrypt)
+- `--tls proxy` — HTTP on port 80, for Nginx Proxy Manager / Traefik / Cloudflare in front
 
-Caddy terminates TLS with Let's Encrypt when the domain resolves to this server. If it does not (existing reverse proxy), Caddy serves HTTP on port `80` and the installer prints the forward address. `52412` is loopback-only; `9100` (metrics) should stay internal unless you scrape it remotely.
+Running several machines as a Docker Swarm cluster: [deployments/SWARM.md](deployments/SWARM.md).
 
-If you generate a new wallet, the full key set (address, signing, fee, and BLS voting keys) is written to `.secrets/wallet.json`. Back it up offline. The daemon reads the payout key from `.secrets/validator-key` and, for auto-register, the signing/voting keys from `wallet.json`. Keep `wallet.json` until registration succeeds; you can delete it afterward. Pasting only a payout key starts the pool without auto-register or the validator node. The validator node is a pruned full node (`sync_mode = "full"`, two epochs of history). It syncs on first start and produces blocks once the daemon has registered and self-staked.
-
-It prints the setup URL (token included as `?token=`) at the end — open it and complete the browser assistant. The daemon waits for `config.json`, retries validator readiness, and reloads when the file hash changes. No Compose restart is required after setup or Settings saves.
-
-For Swarm clusters instead of a single VPS, see [deployments/SWARM.md](deployments/SWARM.md). Homelab testnet (`test-albatross`, RPC `https://rpc-testnet.nimiqscan.com`) is `https://pool-testnet.maestroi.cc`. Generate a validator wallet with `./scripts/generate-validator-wallet.sh` before creating the Docker secrets.
-
-## Configuration
-
-Configuration is loaded from `CONFIG_FILE` (default `config.json`). Settings — including alert credentials — are revisioned and atomically written by the API. The validator key and session secret remain deployment-managed.
-
-Key fields:
-
-- `rpc_url` – Nimiq RPC HTTP endpoint
-- `network` – `dev-albatross`, `test-albatross`, or `main-albatross`
-- `pool_fee_wallet` – address receiving pool fees
-- `pool_fee_percentage` – 0.0-1.0
-- `payout_mode` – `delegate` or `transfer`
-- `min_payout_luna` – minimum payout threshold
-- `auto_reactivate` – boolean
-- `faucet_url` – testnet faucet (ignored unless `network` is `test-albatross`; also `FAUCET_URL`)
-- `validator_rpc_url` – bundled validator node RPC for CreateValidator and as a pool fallback (`VALIDATOR_RPC_URL`)
-- `POOL_WALLET_JSON_FILE` – onboarding `wallet.json` (signing + voting keys) for auto-register
-- `metrics_addr` – Prometheus listener, e.g. `:9100`
-- `api_addr` and `validator_address` – public API/validator identity
-- `POOL_PRIVATE_KEY_FILE` – daemon-only validator key file
-- `POOL_SETUP_TOKEN_FILE` and `POOL_SESSION_SECRET_FILE` – API-only bootstrap/session files
-- alert channels are fully self-service: destinations and credentials (Telegram token, webhook URL) are set in the UI and never returned by the API
-
-Example dev config is in `config/config.json-example`. The repo ships `config.json` for local dev.
-
-## Running the pool
-
-### Daemon
-
-```bash
-go run ./cmd
-```
-
-The daemon loads the non-secret config plus `POOL_PRIVATE_KEY_FILE`, connects to RPC, opens SQLite, and starts the main loop. It refuses to sign without its daemon-only key file.
-
-Select an alternate non-secret configuration file:
-
-```bash
-CONFIG_FILE=devlab/config.dev.json \
-POOL_PRIVATE_KEY_FILE=.secrets/validator-key go run ./cmd
-```
-
-Metrics are exposed on `metrics_addr` if set.
-
-### API server
-
-The REST API is in `cmd/api`. With no config it starts in setup-only mode. Once configured it reads `POOL_SESSION_SECRET_FILE`, never mounts the validator key, and exposes the public/operator application.
-
-```bash
-go run ./cmd/api
-```
-
-API listens on `cfg.APIAddr` and uses the same SQLite DB.
-
-Key endpoints:
-- `GET /api/pool` – pool status
-- `GET /api/epochs` / `GET /api/epochs/{number}` – epoch details and stakers
-- `GET /api/epochs/{number}/rewards` – rewards per batch for an epoch
-- `GET /api/events` – Server-Sent Events stream for real-time updates: `epoch_started`, `checkpoint_reward`, `payout_sent`
-
-### Validator CLI
-
-```bash
-go run ./cmd validator deactivate
-go run ./cmd validator retire
-go run ./cmd validator delete <recipient_address> <value-luna>
-```
-
-## Running devlab
-
-The `devlab/` directory contains a Docker Compose devnet with 4 Albatross validators and Traefik.
-
-Prerequisites: Docker, `NETWORK_NAME` env var defaults to `nimiq.local`.
-
-### Manual scripts
-
-```bash
-cd devlab
-./run.sh sync          # clone albatross repo if needed
-./run.sh build-albatross
-./run.sh up-albatross  # starts traefik + seed1-4
-./run.sh log-albatross
-./run.sh down-albatross
-```
-
-RPC is exposed on host port `8647` → `seed1`. Update `config.json`:
-
-```json
-{
-  "rpc_url": "http://127.0.0.1:8647",
-  "network": "dev-albatross",
-  ...
-}
-```
-
-Then start GoPool as above. The devnet uses pre-funded validator addresses defined in `devlab/docker-compose.yaml`.
-
-### Makefile – devnet + pool in one
-
-A combined devnet + GoPool setup is provided via `Makefile`. It builds the Albatross images and starts the devnet together with GoPool daemon and API.
-
-```bash
-make dev-up          # build albatross + start devnet + GoPool
-make devnet-up       # start devnet + GoPool, builds images
-make devnet-build    # build albatross images only
-make devnet-down     # stop devnet + GoPool
-make devnet-logs     # follow logs
-make dev-down        # stop devnet + GoPool
-```
-
-The Makefile uses `devlab/docker-compose.yaml` + `devlab/docker-compose.pool.yml`. Traefik is exposed on host ports `8444` and `8649` to avoid conflicts, seed1 RPC remains on `8647`. The pool uses `devlab/config.dev.json` with `rpc_url: http://seed1:8648`.
-
-Example manual compose:
-
-```bash
-NETWORK_NAME=nimiq.local docker compose -f devlab/docker-compose.yaml -f devlab/docker-compose.pool.yml up --build -d
-```
-
-## Docker deployment
-
-A production Compose example is in `deployments/docker-compose.yml`. It pulls `ghcr.io/beardsoft/gopool:latest` by default (`GOPOOL_IMAGE` to pin a SHA) and enforces the daemon/API secret boundary and distinct read-only/read-write configuration mounts.
-
-Build and run locally (optional; VPS installs pull the published image):
-
-```bash
-docker compose --env-file .env -f deployments/docker-compose.yml up --build
-```
-
-Images for Swarm are `ghcr.io/beardsoft/gopool:<git-sha>` (published on every `master` push) and version tags from GitHub Releases. Settings saves and revision restores apply in-process; the UI shows Activating until the daemon heartbeat reports the expected hash. Force-update services only when rolling out a new image. For Swarm rotation and failed-readiness recovery, see [deployments/SWARM.md](deployments/SWARM.md).
-
-## Project structure
-
-- `cmd/` – daemon entrypoint and API server
-- `internal/pool/` – election, checkpoint, payout, confirmation logic
-- `internal/chain/` – RPC client
-- `internal/db/` – SQLite schema and sqlc queries
-- `internal/api/` – REST handlers
-- `internal/config/` and `internal/configstore/` – signer-aware loading and atomic revisions
-- `devlab/` – Docker devnet scripts and compose
-- `web/` – frontend UI
-
-## Development
-
-Run tests:
-
-```bash
-go test ./...
-```
-
-Format:
-
-```bash
-go fmt ./...
-```
-
-The DB schema is in `schema/scheme.sql` and generated queries in `internal/db/queries.sql.go`.
-
-See `DESIGN.md` for the pool algorithm overview.
+Building or hacking on GoPool itself: [CONTRIBUTING.md](CONTRIBUTING.md).
