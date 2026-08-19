@@ -21,6 +21,29 @@ GoPool is a Go-based Nimiq Albatross validator pool daemon. It tracks delegators
 
 ## Quick start
 
+One command on a fresh Ubuntu/Debian VPS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Beardsoft/GoPool/master/scripts/install.sh \
+  | sudo bash -s -- --domain pool.example.com
+```
+
+That clones into `/opt/gopool`, installs Docker if needed, generates a validator wallet, pulls `ghcr.io/beardsoft/gopool:latest`, and starts the daemon + API + validator node behind Caddy. It prints a setup URL that already includes the one-time token — open it, confirm name/fee/operators, and launch. The API writes the configuration and activates in-process; no Compose restart.
+
+**You still do by hand:**
+
+1. Point DNS at the VPS (`A` record) **or** add a reverse-proxy host that forwards `https://your.domain` to `http://VPS:80`.
+2. On a public VPS, open ports `80` and `443` in the cloud firewall. The installer opens `ufw` when it is active.
+3. Open the printed `/setup?token=…` link, confirm the pre-filled wallet/network, set the pool name/fee, and launch.
+4. Back up `.secrets/wallet.json` offline, then consider deleting it from the server.
+5. Stake or register the validator on chain. A `readiness_error` is expected until that exists.
+
+If the domain already hits Nginx Proxy Manager, Traefik, or Cloudflare (it does not resolve to this machine), the installer serves HTTP on port `80` and tells you the forward target. Force either mode with `--tls auto` or `--tls proxy`.
+
+For testnet, add `--network test-albatross`. To install somewhere other than `/opt/gopool`, add `--dir /path`.
+
+### Local / from a git checkout
+
 ```bash
 git clone https://github.com/Beardsoft/GoPool.git
 cd GoPool
@@ -44,23 +67,23 @@ The stack also runs `gopool-validator`, the validator node itself (it produces t
 
 The API sits behind a bundled Caddy reverse proxy that handles TLS automatically (Let's Encrypt for a real domain, a locally-trusted cert for `localhost`). The API container itself only binds to `127.0.0.1`; Caddy on ports `80`/`443` is the public entrypoint.
 
-Open `https://localhost` (or `https://your.pool.domain` in production), exchange the setup token, and complete the browser assistant. The API writes the full configuration, alert credentials included, then activates in-process. The wizard polls until the daemon heartbeat matches; a `readiness_error` can remain if the configured address is not yet a validator on chain.
+Open `https://localhost` (or `https://your.pool.domain/setup?token=…` after the installer), complete the browser assistant, and wait until the daemon heartbeat matches. A `readiness_error` can remain if the configured address is not yet a validator on chain.
 
 ## VPS onboarding
 
-Fresh Ubuntu/Debian VPS, no Docker installed yet:
+`scripts/install.sh` is the one-shot path above. From a checkout, the same wizard is:
 
 ```bash
-git clone https://github.com/Beardsoft/GoPool.git
-cd GoPool
-sudo ./scripts/vps-onboard.sh
+sudo ./scripts/vps-onboard.sh --yes --domain pool.example.com --generate-wallet
 ```
 
-The script is an interactive wizard: it installs Docker if missing, generates the setup/session secrets, and either generates a brand-new validator wallet (via the official `ghcr.io/nimiq/core-rs-albatross` image — no separate signup or tooling needed) or lets you paste in an existing payout private key. With a full wallet it asks for the network (default `main-albatross`) and writes `.secrets/node-config.toml` for the validator node. It then asks for your domain and starts the daemon + API + validator node behind a bundled Caddy reverse proxy. Caddy terminates TLS automatically via Let's Encrypt — point an A record at the server first, then open ports `80` and `443` in your firewall (not `52412`; the API only listens on `127.0.0.1` now, Caddy is the only public entrypoint). `9100` (metrics) should also stay internal unless you're scraping it remotely.
+Omit `--yes` for the interactive version (wallet generate vs paste, domain, start). The script installs Docker if missing, generates the setup/session secrets, and either generates a brand-new validator wallet (via the official `ghcr.io/nimiq/core-rs-albatross` image — no separate signup or tooling needed) or lets you paste in an existing payout private key. With a full wallet it writes `.secrets/node-config.toml` for the validator node (default network `main-albatross`) and `data/config/setup-hints.json` so the browser assistant is pre-filled. It then starts the daemon + API + validator node behind a bundled Caddy reverse proxy, pulling `ghcr.io/beardsoft/gopool` instead of compiling on the VPS.
+
+Caddy terminates TLS with Let's Encrypt when the domain resolves to this server. If it does not (existing reverse proxy), Caddy serves HTTP on port `80` and the installer prints the forward address. `52412` is loopback-only; `9100` (metrics) should stay internal unless you scrape it remotely.
 
 If you generate a new wallet, the full key set (address, signing, fee, and BLS voting keys — everything needed to also run the validator node itself, not just GoPool) is written to `.secrets/wallet.json`. Back it up offline and consider deleting it from the server afterward; GoPool itself only ever reads `.secrets/validator-key` (the payout address's private key). Pasting only a payout key starts the pool without the validator node — add the full key set to `.secrets/wallet.json` and re-run the wizard (or `make-validator-node-config.sh` + `docker compose up -d`) to enable it. The validator node syncs the chain on first start and produces blocks once the pool has staked it.
 
-It prints the setup URL and token at the end — open it and complete the browser assistant. The daemon waits for `config.json`, retries validator readiness, and reloads when the file hash changes. No Compose restart is required after setup or Settings saves.
+It prints the setup URL (token included as `?token=`) at the end — open it and complete the browser assistant. The daemon waits for `config.json`, retries validator readiness, and reloads when the file hash changes. No Compose restart is required after setup or Settings saves.
 
 For Swarm clusters instead of a single VPS, see [deployments/SWARM.md](deployments/SWARM.md). Homelab testnet (`test-albatross`, RPC `https://rpc-testnet.nimiqscan.com`) is `https://pool-testnet.maestroi.cc`. Generate a validator wallet with `./scripts/generate-validator-wallet.sh` before creating the Docker secrets.
 
@@ -180,9 +203,9 @@ NETWORK_NAME=nimiq.local docker compose -f devlab/docker-compose.yaml -f devlab/
 
 ## Docker deployment
 
-A production Compose example is in `deployments/docker-compose.yml`. It enforces the daemon/API secret boundary and distinct read-only/read-write configuration mounts.
+A production Compose example is in `deployments/docker-compose.yml`. It pulls `ghcr.io/beardsoft/gopool:latest` by default (`GOPOOL_IMAGE` to pin a SHA) and enforces the daemon/API secret boundary and distinct read-only/read-write configuration mounts.
 
-Build and run locally:
+Build and run locally (optional; VPS installs pull the published image):
 
 ```bash
 docker compose -f deployments/docker-compose.yml up --build

@@ -1,7 +1,20 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import { expect, it, vi } from 'vitest'
 import { goToEconomics, mockSetupValidation, setupTestGlobals } from '../../test/helpers'
 import Setup from './Setup.vue'
+
+const hintAddress = 'NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E'
+
+async function mountSetup(path = '/setup') {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/setup', component: Setup }],
+  })
+  await router.push(path)
+  await router.isReady()
+  return mount(Setup, { global: { plugins: [router] } })
+}
 
 it('cannot advance economics with an invalid fee', async () => {
   mockSetupValidation({ field_errors: { pool_fee_percentage: 'Must be below 100%' } })
@@ -59,4 +72,29 @@ it('shows readiness_error text after launch', async () => {
   await completeSetup(wrapper)
   await flushPromises()
   expect(wrapper.text()).toContain('validator not found')
+})
+
+it('applies status hints and skips the token step when the URL has a token', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input.toString()
+    if (url === '/api/setup/session') return json({ expires_in: 1800 })
+    if (url === '/api/setup/status') {
+      return json({
+        configured: false,
+        checks: {},
+        hints: {
+          validator_address: hintAddress,
+          pool_fee_wallet: hintAddress,
+          network: 'main-albatross',
+          rpc_url: 'https://rpc-mainnet.nimiqscan.com',
+        },
+      })
+    }
+    return json({ code: 'not_mocked', error: url }, 500)
+  }))
+  const wrapper = await mountSetup('/setup?token=bootstrap')
+  await flushPromises()
+  expect(wrapper.attributes('data-step')).toBe('validator')
+  expect((wrapper.get('[name="validator_address"]').element as HTMLInputElement).value).toBe(hintAddress)
+  expect((wrapper.get('[name="pool_fee_wallet"]').element as HTMLInputElement).value).toBe(hintAddress)
 })

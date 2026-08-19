@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,84 @@ import (
 
 	"github.com/Beardsoft/GoPool/internal/configstore"
 )
+
+func setupSessionCookie(t *testing.T, mux http.Handler) *http.Cookie {
+	t.Helper()
+	session := postJSON(t, mux, "/api/setup/session", map[string]string{"token": "bootstrap"}, nil)
+	if session.Code != http.StatusOK {
+		t.Fatalf("session: %d %s", session.Code, session.Body.String())
+	}
+	for _, c := range session.Result().Cookies() {
+		if c.Name == setupCookieName {
+			return c
+		}
+	}
+	t.Fatal("no setup cookie")
+	return nil
+}
+
+func TestSetupStatusReturnsHintsFromFile(t *testing.T) {
+	sum := sha256.Sum256([]byte("bootstrap"))
+	dir := t.TempDir()
+	hints := `{
+  "validator_address": "` + testAddr + `",
+  "pool_fee_wallet": "` + testAddr + `",
+  "network": "main-albatross",
+  "rpc_url": "https://rpc-mainnet.nimiqscan.com"
+}`
+	if err := os.WriteFile(filepath.Join(dir, "setup-hints.json"), []byte(hints), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	q := newTestDB(t)
+	store := configstore.New(filepath.Join(dir, "config.json"), q)
+	a := New(nil, q, nil, WithSetup(hex.EncodeToString(sum[:]), store))
+	cookie := setupSessionCookie(t, a.Mux())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: %d %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Hints map[string]string `json:"hints"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Hints["validator_address"] != testAddr {
+		t.Fatalf("validator_address hint = %q, want %q", body.Hints["validator_address"], testAddr)
+	}
+	if body.Hints["network"] != "main-albatross" {
+		t.Fatalf("network hint = %q", body.Hints["network"])
+	}
+	if body.Hints["rpc_url"] != "https://rpc-mainnet.nimiqscan.com" {
+		t.Fatalf("rpc_url hint = %q", body.Hints["rpc_url"])
+	}
+	if body.Hints["pool_fee_wallet"] != testAddr {
+		t.Fatalf("pool_fee_wallet hint = %q", body.Hints["pool_fee_wallet"])
+	}
+}
+
+func TestSetupStatusOmitsHintsWhenFileMissing(t *testing.T) {
+	sum := sha256.Sum256([]byte("bootstrap"))
+	q := newTestDB(t)
+	store := configstore.New(filepath.Join(t.TempDir(), "config.json"), q)
+	a := New(nil, q, nil, WithSetup(hex.EncodeToString(sum[:]), store))
+	cookie := setupSessionCookie(t, a.Mux())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: %d %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), `"hints"`) {
+		t.Fatalf("status included hints without a file: %s", rec.Body.String())
+	}
+}
 
 func TestSetupCompletePersistsAlertSecrets(t *testing.T) {
 	sum := sha256.Sum256([]byte("bootstrap"))

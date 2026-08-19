@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -36,11 +37,50 @@ func (a *API) handleSetupStatus(w http.ResponseWriter, _ *http.Request) {
 	if dbErr != nil {
 		dbErr = nil
 	} // an empty runtime table is valid before the daemon starts
-	writeJSON(w, http.StatusOK, map[string]any{"configured": false, "checks": map[string]any{
+	body := map[string]any{"configured": false, "checks": map[string]any{
 		"database":         map[string]any{"ok": dbErr == nil},
 		"config_writable":  map[string]any{"ok": directoryWritable(dir)},
 		"validator_secret": map[string]any{"state": "pending verification"},
-	}})
+	}}
+	if hints := loadSetupHints(dir); hints != nil {
+		body["hints"] = hints
+	}
+	writeJSON(w, http.StatusOK, body)
+}
+
+type setupHints struct {
+	ValidatorAddress string `json:"validator_address,omitempty"`
+	PoolFeeWallet    string `json:"pool_fee_wallet,omitempty"`
+	Network          string `json:"network,omitempty"`
+	RPCURL           string `json:"rpc_url,omitempty"`
+}
+
+func loadSetupHints(dir string) map[string]string {
+	raw, err := os.ReadFile(filepath.Join(dir, "setup-hints.json"))
+	if err != nil {
+		return nil
+	}
+	var hints setupHints
+	if json.Unmarshal(raw, &hints) != nil {
+		return nil
+	}
+	out := map[string]string{}
+	if hints.ValidatorAddress != "" {
+		out["validator_address"] = hints.ValidatorAddress
+	}
+	if hints.PoolFeeWallet != "" {
+		out["pool_fee_wallet"] = hints.PoolFeeWallet
+	}
+	if hints.Network != "" {
+		out["network"] = hints.Network
+	}
+	if hints.RPCURL != "" {
+		out["rpc_url"] = hints.RPCURL
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func directoryWritable(dir string) bool {

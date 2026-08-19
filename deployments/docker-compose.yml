@@ -1,5 +1,6 @@
 services:
   gopool:
+    image: ${GOPOOL_IMAGE:-ghcr.io/beardsoft/gopool:latest}
     build:
       context: ..
       dockerfile: Dockerfile
@@ -22,6 +23,7 @@ services:
     restart: unless-stopped
 
   gopool-api:
+    image: ${GOPOOL_IMAGE:-ghcr.io/beardsoft/gopool:latest}
     build:
       context: ..
       dockerfile: Dockerfile
@@ -65,6 +67,7 @@ services:
     ports: ["80:80", "443:443"]
     environment:
       GOPOOL_DOMAIN: ${GOPOOL_DOMAIN:-localhost}
+      GOPOOL_SITE: ${GOPOOL_SITE:-${GOPOOL_DOMAIN:-localhost}}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

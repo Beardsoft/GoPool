@@ -75,6 +75,13 @@ lines = [
     'voting_key = "%s"' % w["voting_secret_key"],
     "automatic_reactivate = true",
     "",
+    # JSON-RPC API: required by the validator activator (importRawKey,
+    # unlockAccount, sendNewValidatorTransaction). Bind 0.0.0.0 so tooling in
+    # the same docker network can reach it; never publish the port.
+    "[rpc-server]",
+    'bind = "0.0.0.0"',
+    "port = 8648",
+    "",
 ]
 open(out, "w").write("\n".join(lines))
 PY

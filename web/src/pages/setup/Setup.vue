@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { apiGet, apiPost } from '../../api'
 import type { SetupDraft } from '../../types/api'
 import SystemCheck from './steps/SystemCheck.vue'
@@ -19,10 +20,12 @@ const launched = ref(false)
 const live = ref(false)
 const readinessError = ref('')
 const revisionHash = ref('')
-const draft = ref<SetupDraft>({ rpc_url: 'https://rpc-testnet.nimiqscan.com', network: 'test-albatross', pool_fee_wallet: '', pool_fee_percentage: .01, payout_mode: 'delegate', min_payout_luna: 1_000_000, auto_reactivate: true, api_addr: ':8080', validator_address: '', operator_addresses: '', metrics_addr: ':9100', alert_telegram_enabled: false, alert_webhook_enabled: false, pool_name: 'GoPool', alert_telegram_token: '', alert_webhook_url: '' })
+const draft = ref<SetupDraft>({ rpc_url: 'https://rpc-mainnet.nimiqscan.com', network: 'main-albatross', pool_fee_wallet: '', pool_fee_percentage: .01, payout_mode: 'delegate', min_payout_luna: 1_000_000, auto_reactivate: true, api_addr: ':8080', validator_address: '', operator_addresses: '', metrics_addr: ':9100', alert_telegram_enabled: false, alert_webhook_enabled: false, pool_name: 'GoPool', alert_telegram_token: '', alert_webhook_url: '' })
 const step = computed(() => steps[current.value])
 const component = computed(() => [SystemCheck, ValidatorIdentity, PoolEconomics, PublicProfile, AccessAlerts, ReviewLaunch][current.value])
 const progressScale = computed(() => (current.value + 1) / steps.length)
+const route = useRoute()
+const router = useRouter()
 
 let pollTimer: ReturnType<typeof setTimeout> | undefined
 let pollStopped = false
@@ -30,6 +33,23 @@ onUnmounted(() => {
   pollStopped = true
   clearTimeout(pollTimer)
 })
+
+type SetupStatus = {
+  checks: Record<string, unknown>
+  hints?: Partial<Pick<SetupDraft, 'validator_address' | 'pool_fee_wallet' | 'network' | 'rpc_url'>>
+}
+
+function applyHints(status: SetupStatus) {
+  const hints = status.hints
+  if (!hints) return
+  if (hints.validator_address) {
+    draft.value.validator_address = hints.validator_address
+    if (!draft.value.pool_fee_wallet) draft.value.pool_fee_wallet = hints.validator_address
+  }
+  if (hints.pool_fee_wallet) draft.value.pool_fee_wallet = hints.pool_fee_wallet
+  if (hints.network) draft.value.network = hints.network
+  if (hints.rpc_url) draft.value.rpc_url = hints.rpc_url
+}
 
 async function pollActivation() {
   if (pollStopped) return
@@ -57,8 +77,9 @@ async function next() {
   try {
     if (step.value === 'system') {
       await apiPost('/api/setup/session', { token: token.value })
-      const status = await apiGet<{ checks: Record<string, unknown> }>('/api/setup/status')
+      const status = await apiGet<SetupStatus>('/api/setup/status')
       checks.value = status.checks
+      applyHints(status)
       current.value++
       return
     }
@@ -74,6 +95,14 @@ async function next() {
   } catch (cause: any) { fieldErrors.value = { _form: cause.message ?? 'Setup request failed' } }
   finally { busy.value = false }
 }
+
+onMounted(() => {
+  const queryToken = route.query.token
+  if (typeof queryToken !== 'string' || queryToken === '') return
+  token.value = queryToken
+  void router.replace({ path: '/setup', query: {} })
+  void next()
+})
 </script>
 
 <template>
