@@ -60,6 +60,18 @@ var (
 		Name: "gopool_wallet_balance_luna",
 		Help: "Liquid account balance (luna).",
 	}, []string{"role"})
+	EpochElected = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "gopool_epoch_elected",
+		Help: "1 if the validator is in the current epoch active set, else 0.",
+	})
+	ValidatorSlots = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "gopool_validator_slots",
+		Help: "Slots assigned to this validator in the current epoch.",
+	})
+	SlotsTotal = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "gopool_slots_total",
+		Help: "Total slots in the current network policy.",
+	})
 	RewardsTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "gopool_rewards_luna_total",
 		Help: "Cumulative reward inherents collected (luna).",
@@ -97,6 +109,7 @@ func init() {
 		Stakers, DelegatedStake,
 		PayslipsPending, PayslipsPendingLuna, PayslipsStuck,
 		LiveStake, LiveStakers, ValidatorState, WalletBalance,
+		EpochElected, ValidatorSlots, SlotsTotal,
 		RewardsTotal, PoolFeeTotal,
 		PayoutsSubmitted, PayoutsConfirmed, PayoutsFailed,
 		PayoutLatency,

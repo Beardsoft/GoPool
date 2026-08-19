@@ -170,7 +170,11 @@ func (m *Manager) failStuckPayout(ctx context.Context, hash, address string) err
 			Level:   "error",
 			Type:    "payout_stuck",
 			Title:   "Payout stuck, marked failed",
-			Message: fmt.Sprintf("Payout %s for %s was unconfirmable for more than %d epochs and was marked failed. Retry it from the operator console.", hash, address, m.cfg.StuckPayoutEpochs),
+			Message: fmt.Sprintf("Unconfirmable for more than %d epochs. Retry it from the operator console.", m.cfg.StuckPayoutEpochs),
+			Fields: []notifier.AlertField{
+				{Name: "Recipient", Value: address},
+				{Name: "Tx", Value: hash},
+			},
 		})
 	}
 	return nil

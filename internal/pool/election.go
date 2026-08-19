@@ -64,7 +64,8 @@ func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 		}
 		if m.notifier != nil {
 			m.notifier.Send(ctx, notifier.Alert{Level: "warning", Type: "missed_election", Title: "Missed election",
-				Message: fmt.Sprintf("Could not confirm validator election for epoch %d: %v", nextEpoch, err)})
+				Message: fmt.Sprintf("Could not confirm validator election for epoch %d: %v", nextEpoch, err),
+				Fields:  []notifier.AlertField{{Name: "Epoch", Value: fmt.Sprintf("%d", nextEpoch)}}})
 		}
 		return insertErr
 	}
@@ -94,7 +95,14 @@ func (m *Manager) handleElection(ctx context.Context, height uint32) error {
 			return insertErr
 		}
 		if m.notifier != nil {
-			m.notifier.Send(ctx, notifier.Alert{Level: "warning", Type: "validator_state", Title: "Validator state", Message: "Validator is " + status + " for epoch " + fmt.Sprintf("%d", nextEpoch)})
+			m.notifier.Send(ctx, notifier.Alert{
+				Level: "warning", Type: "validator_state", Title: "Validator state",
+				Message: "Validator is " + status + " for epoch " + fmt.Sprintf("%d", nextEpoch),
+				Fields: []notifier.AlertField{
+					{Name: "Epoch", Value: fmt.Sprintf("%d", nextEpoch)},
+					{Name: "Status", Value: status},
+				},
+			})
 		}
 		if m.recorder != nil {
 			_ = m.recorder.RecordEvent(ctx, ops.EventInput{

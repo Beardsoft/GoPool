@@ -24,6 +24,11 @@ type Heartbeat struct {
 	LastTickMs              int64
 	RPCOk                   bool
 	ReadinessError          string
+	EpochNumber             int64
+	EpochElected            bool
+	SlotCount               int64
+	SlotsTotal              int64
+	HasEpochParticipation   bool
 }
 
 type Snapshot struct {

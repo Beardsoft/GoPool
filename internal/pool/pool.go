@@ -50,9 +50,17 @@ type Manager struct {
 	balanceHoldAlerted    map[string]bool
 	lastChainGaugeRefresh time.Time
 	lastValidatorObserve  time.Time
+	epochPart             epochParticipation
+	unelectedAlerted      bool
+	unelectedAlertEpoch   uint32
+	lagAlert              lagAlertState
+	slotsTotal            uint32
 	fileHash              string
 	lastFaucetAt          time.Time
+	faucetRetryAt         time.Time
+	faucetBlocked         bool
 	lastRegisterAt        time.Time
+	lastReadyLog          string
 }
 
 // NewManager builds a Manager. Policy is loaded on Run.
@@ -143,6 +151,8 @@ func (m *Manager) observeTickGauges(ctx context.Context, head uint32, cursor int
 		metrics.DelegatedStake.Set(float64(snap.Balance))
 	}
 
+	m.maybeAlertChainLag(ctx, head, cursor)
+
 	now := time.Now()
 	if !shouldRefreshGauges(m.lastChainGaugeRefresh, now) {
 		return
@@ -157,6 +167,8 @@ func (m *Manager) observeTickGauges(ctx context.Context, head uint32, cursor int
 			m.observeValidator(v, head)
 		}
 	}
+
+	m.refreshEpochParticipation(ctx, head)
 
 	bal, err := m.chain.RPC.GetBalance(ctx, m.chain.Address())
 	if err != nil {
@@ -200,6 +212,11 @@ func (m *Manager) recordHeartbeat(ctx context.Context, head uint32, processed in
 		LastTickMs:              int64(time.Since(tickStart).Milliseconds()),
 		RPCOk:                   true,
 		ReadinessError:          "",
+		EpochNumber:             int64(m.epochPart.epoch),
+		EpochElected:            m.epochPart.elected,
+		SlotCount:               int64(m.epochPart.slotCount),
+		SlotsTotal:              int64(m.epochPart.slotsTotal),
+		HasEpochParticipation:   m.epochPart.valid,
 	}
 	return m.recorder.RecordHeartbeat(ctx, hb)
 }
@@ -331,6 +348,10 @@ func (m *Manager) ensureReady(ctx context.Context) error {
 	if err != nil {
 		msg := bootstrapWaitingError(s)
 		err = fmt.Errorf("load validator for pool wallet readiness: %s", msg)
+		if msg != m.lastReadyLog {
+			logger.Logger.Info("waiting for validator readiness", zap.String("reason", msg))
+			m.lastReadyLog = msg
+		}
 		m.recordReadinessFailure(ctx, derived, err, true)
 		return err
 	}

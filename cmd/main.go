@@ -32,6 +32,7 @@ func main() {
 	if err != nil {
 		logger.Logger.Fatal("failed to load config", zap.Error(err))
 	}
+	logger.Logger.Info("loaded daemon config", zap.String("network", cfg.Network), zap.String("validator", cfg.ValidatorAddress))
 
 	dbPath := os.Getenv("SQLITE_DB")
 	if dbPath == "" {

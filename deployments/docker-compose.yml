@@ -21,7 +21,7 @@ services:
       FAUCET_URL: https://faucet.pos.nimiq-testnet.com/tapit
     secrets: [gopool_validator_key, gopool_wallet_json]
     healthcheck:
-      test: ["CMD-SHELL", "test -r /run/secrets/gopool_validator_key"]
+      test: ["CMD-SHELL", "timeout 1 bash -c 'echo >/dev/tcp/127.0.0.1/9100'"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -46,7 +46,7 @@ services:
       POOL_SESSION_SECRET_FILE: /run/secrets/gopool_session_secret
     secrets: [gopool_setup_token, gopool_session_secret]
     healthcheck:
-      test: ["CMD-SHELL", "test -r /run/secrets/gopool_setup_token && test -r /run/secrets/gopool_session_secret"]
+      test: ["CMD-SHELL", "timeout 1 bash -c 'echo >/dev/tcp/127.0.0.1/8080'"]
       interval: 30s
       timeout: 5s
       retries: 3

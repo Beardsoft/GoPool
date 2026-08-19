@@ -40,27 +40,71 @@ func TestNotifierTelegramRequiresConfigDestination(t *testing.T) {
 	}
 }
 
-func TestDiscordWebhookBodyIsContentNotRawJSON(t *testing.T) {
-	body := webhookBody(Alert{Level: "error", Type: "test", Title: "Test alert", Message: "Delivery check"}, "https://discord.com/api/webhooks/123/token")
+func TestDiscordWebhookBodyIsEmbedNotRawJSON(t *testing.T) {
+	body := webhookBody(Alert{
+		Level: "error", Type: "payout_stuck", Title: "Payout stuck, marked failed",
+		Message: "Unconfirmable for more than 3 epochs. Retry it from the operator console.",
+		Fields: []AlertField{
+			{Name: "Recipient", Value: "NQ95 HH5Q QT81 0VE5 V9SA LCNY CV37 K6Q6 XMPM"},
+			{Name: "Tx", Value: "8e687a53f2e52f328609f4b9d3a412ae63094985bf6239ea1392022f58f5a922"},
+		},
+		Time: "2026-08-18T21:00:00Z",
+	}, "https://discord.com/api/webhooks/123/token", "main-albatross", "GoPool")
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload["content"] == "" {
-		t.Fatalf("discord payload must carry content: %s", body)
+	if payload["username"] != "GoPool" {
+		t.Fatalf("username: %s", body)
 	}
 	if _, ok := payload["title"]; ok {
 		t.Fatalf("discord payload leaked raw alert fields: %s", body)
 	}
+	embeds, _ := payload["embeds"].([]any)
+	if len(embeds) != 1 {
+		t.Fatalf("embeds: %s", body)
+	}
+	embed, _ := embeds[0].(map[string]any)
+	if embed["title"] != "Payout stuck, marked failed" {
+		t.Fatalf("title: %s", body)
+	}
+	if int(embed["color"].(float64)) != discordColorError {
+		t.Fatalf("error color want %d: %s", discordColorError, body)
+	}
+	fields, _ := embed["fields"].([]any)
+	if len(fields) != 2 {
+		t.Fatalf("fields: %s", body)
+	}
+	tx, _ := fields[1].(map[string]any)
+	value, _ := tx["value"].(string)
+	if !strings.Contains(value, "8e687a53…58f5a922") || !strings.Contains(value, "nimiqscan.com/transaction/") {
+		t.Fatalf("tx field: %s", value)
+	}
 }
 
-func TestDiscordContentIsNeverEmptyAndStaysUnderLimit(t *testing.T) {
-	if strings.TrimSpace(discordContent(Alert{Level: "info"})) == "" {
-		t.Fatal("discord content must not be empty")
+func TestDiscordEmbedColorAndFallbackTitle(t *testing.T) {
+	if discordColor("error") != discordColorError {
+		t.Fatal("error should be bright red")
 	}
-	long := discordContent(Alert{Level: "error", Title: "t", Message: strings.Repeat("x", 5000)})
-	if count := utf8.RuneCountInString(long); count > discordMaxContent {
-		t.Fatalf("content length %d exceeds discord limit", count)
+	if discordColor("warning") != discordColorWarning {
+		t.Fatal("warning should be amber")
+	}
+	body := webhookBody(Alert{Level: "info"}, "https://discord.com/api/webhooks/123/token", "", "")
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	embed := payload["embeds"].([]any)[0].(map[string]any)
+	if embed["title"] != "GoPool alert" {
+		t.Fatalf("fallback title: %s", body)
+	}
+	long := webhookBody(Alert{Level: "error", Title: "t", Message: strings.Repeat("x", 5000)}, "https://discord.com/api/webhooks/123/token", "", "")
+	var longPayload discordPayloadBody
+	if err := json.Unmarshal(long, &longPayload); err != nil {
+		t.Fatal(err)
+	}
+	if utf8.RuneCountInString(longPayload.Embeds[0].Description) > discordMaxDesc {
+		t.Fatalf("description too long")
 	}
 }
 

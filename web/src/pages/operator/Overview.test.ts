@@ -131,4 +131,43 @@ describe('Overview', () => {
     expect(wrapper.findAll('[data-section="attention"] li')).toHaveLength(5)
     expect(wrapper.get('[data-attention-overflow]').text()).toContain('3 more')
   })
+
+  it('shows elected status and slot count on the metrics strip', async () => {
+    mockFetch('/api/operator/overview', overviewFixture({
+      epoch_participation: { epoch: 2, elected: true, slot_count: 12, slots_total: 512 },
+    }))
+    mockFetch('/api/pool', {
+      current_epoch: 2, epoch_status: 'in_progress', num_stakers: 1,
+      total_stake_luna: 0, total_rewards_luna: 0, pool_fee_percentage: 0.01,
+    })
+    const wrapper = mount(Overview, {
+      global: {
+        ...operatorTestGlobals,
+        stubs: { RouterLink: { template: '<a href="#"><slot /></a>' } },
+      },
+    })
+    await flushPromises()
+    const metrics = wrapper.get('.metrics').text()
+    expect(metrics).toContain('Elected')
+    expect(metrics).toContain('Epoch 2')
+    expect(metrics).toContain('12')
+    expect(metrics).toContain('of 512')
+  })
+
+  it('shows placeholders before the first epoch snapshot', async () => {
+    mockFetch('/api/operator/overview', overviewFixture())
+    mockFetch('/api/pool', {
+      current_epoch: 2, epoch_status: 'in_progress', num_stakers: 1,
+      total_stake_luna: 0, total_rewards_luna: 0, pool_fee_percentage: 0.01,
+    })
+    const wrapper = mount(Overview, {
+      global: {
+        ...operatorTestGlobals,
+        stubs: { RouterLink: { template: '<a href="#"><slot /></a>' } },
+      },
+    })
+    await flushPromises()
+    expect(wrapper.get('.metrics').text()).toMatch(/—/)
+    expect(wrapper.get('.metrics').text()).not.toContain('Not elected')
+  })
 })

@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -33,6 +34,13 @@ func setupRemoteIP(r *http.Request) string {
 		return host
 	}
 	return r.RemoteAddr
+}
+
+func requestIsHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
 func (a *API) handleSetupSession(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +90,7 @@ func (a *API) handleSetupSession(w http.ResponseWriter, r *http.Request) {
 	a.setupSessions[session] = now.Add(setupSessionTTL)
 	delete(a.setupFailures, ip)
 	a.setupMu.Unlock()
-	http.SetCookie(w, &http.Cookie{Name: setupCookieName, Value: session, Path: "/api/setup", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil, MaxAge: int(setupSessionTTL.Seconds())})
+	http.SetCookie(w, &http.Cookie{Name: setupCookieName, Value: session, Path: "/api/setup", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: requestIsHTTPS(r), MaxAge: int(setupSessionTTL.Seconds())})
 	writeJSON(w, http.StatusOK, map[string]any{"expires_in": int(setupSessionTTL.Seconds())})
 }
 

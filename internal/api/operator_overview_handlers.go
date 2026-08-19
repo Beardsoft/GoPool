@@ -26,14 +26,15 @@ func (a *API) registerOperatorOverviewRoutes(mux *http.ServeMux) {
 }
 
 type operatorOverviewResponse struct {
-	Status           string           `json:"status"`
-	ChainLag         int64            `json:"chain_lag"`
-	WalletRunwayDays *int             `json:"wallet_runway_days,omitempty"`
-	Readiness        string           `json:"readiness"`
-	PayoutSummary    json.RawMessage  `json:"payout_summary"`
-	ValidatorSummary validatorSummary `json:"validator_summary"`
-	Attention        []attentionItem  `json:"attention"`
-	Events           []eventSummary   `json:"events"`
+	Status             string                 `json:"status"`
+	ChainLag           int64                  `json:"chain_lag"`
+	WalletRunwayDays   *int                   `json:"wallet_runway_days,omitempty"`
+	Readiness          string                 `json:"readiness"`
+	PayoutSummary      json.RawMessage        `json:"payout_summary"`
+	ValidatorSummary   validatorSummary       `json:"validator_summary"`
+	Attention          []attentionItem        `json:"attention"`
+	Events             []eventSummary         `json:"events"`
+	EpochParticipation epochParticipationJSON `json:"epoch_participation"`
 }
 
 type validatorSummary struct {
@@ -41,6 +42,13 @@ type validatorSummary struct {
 	State               string `json:"state"`
 	LastProcessedHeight int64  `json:"last_processed_height"`
 	LastTickMs          int64  `json:"last_tick_ms"`
+}
+
+type epochParticipationJSON struct {
+	Epoch      *int64 `json:"epoch"`
+	Elected    *bool  `json:"elected"`
+	SlotCount  *int64 `json:"slot_count"`
+	SlotsTotal *int64 `json:"slots_total"`
 }
 
 type attentionItem struct {
@@ -119,10 +127,32 @@ func (a *API) handleOperatorOverview(w http.ResponseWriter, r *http.Request) {
 			LastProcessedHeight: statusRow.LastProcessedHeight,
 			LastTickMs:          statusRow.LastTickMs,
 		},
-		Attention: attention,
-		Events:    events,
+		Attention:          attention,
+		Events:             events,
+		EpochParticipation: epochParticipationFromStatus(statusRow),
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func epochParticipationFromStatus(row db.RuntimeStatus) epochParticipationJSON {
+	out := epochParticipationJSON{}
+	if row.EpochNumber.Valid {
+		v := row.EpochNumber.Int64
+		out.Epoch = &v
+	}
+	if row.EpochElected.Valid {
+		v := row.EpochElected.Int64 != 0
+		out.Elected = &v
+	}
+	if row.SlotCount.Valid {
+		v := row.SlotCount.Int64
+		out.SlotCount = &v
+	}
+	if row.SlotsTotal.Valid {
+		v := row.SlotsTotal.Int64
+		out.SlotsTotal = &v
+	}
+	return out
 }
 
 // computeWalletRunway estimates how many days the payout wallet can keep
@@ -149,10 +179,20 @@ func computeWalletRunway(ctx context.Context, q *db.Queries) *int {
 }
 
 func (a *API) handleOperatorReadiness(w http.ResponseWriter, r *http.Request) {
+	a.writeReadiness(w, r)
+}
+
+func (a *API) handlePublicReadiness(w http.ResponseWriter, r *http.Request) {
+	a.writeReadiness(w, r)
+}
+
+func (a *API) writeReadiness(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	statusRow, err := a.queries.GetRuntimeStatus(ctx)
 	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "db_error", "loading runtime status")
+		writeJSON(w, http.StatusOK, map[string]any{
+			"rpc_ok": false, "readiness_error": "Waiting for daemon heartbeat", "validator_state": "",
+		})
 		return
 	}
 	resp := map[string]any{

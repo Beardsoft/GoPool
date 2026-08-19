@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +26,12 @@ type operatorOverviewResponseTest struct {
 	Attention []struct {
 		ID int64 `json:"id"`
 	} `json:"attention"`
+	EpochParticipation *struct {
+		Epoch      *int64 `json:"epoch"`
+		Elected    *bool  `json:"elected"`
+		SlotCount  *int64 `json:"slot_count"`
+		SlotsTotal *int64 `json:"slots_total"`
+	} `json:"epoch_participation"`
 }
 
 func TestOperatorOverviewReturnsHealthAndAttention(t *testing.T) {
@@ -174,6 +181,32 @@ func TestOperatorReadinessReturnsOK(t *testing.T) {
 	a.Mux().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPublicReadinessUnauthenticated(t *testing.T) {
+	a, _, _ := operatorTestAPI(t)
+	if err := a.queries.UpsertRuntimeStatus(t.Context(), db.UpsertRuntimeStatusParams{
+		HeartbeatAt:             time.Now().UTC(),
+		DaemonVersion:           "v0.1",
+		ConfigHash:              "abc",
+		DerivedValidatorAddress: testAddr,
+		ValidatorState:          "unready",
+		LastProcessedHeight:     0,
+		ChainHead:               0,
+		LastTickMs:              1,
+		RpcOk:                   1,
+		ReadinessError:          sql.NullString{String: "Waiting for 100000 NIM to register the validator (have 0 NIM)", Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/readiness", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Waiting for 100000 NIM") {
+		t.Fatalf("body = %s", rec.Body.String())
 	}
 }
 
@@ -338,6 +371,88 @@ func TestActivityExportReturnsCSV(t *testing.T) {
 	}
 	if rec.Header().Get("Content-Type") != "text/csv" {
 		t.Fatalf("expected csv")
+	}
+}
+
+func TestOperatorOverviewEpochParticipation(t *testing.T) {
+	a, cookie, _ := operatorTestAPI(t)
+	if err := a.queries.UpsertRuntimeStatus(t.Context(), db.UpsertRuntimeStatusParams{
+		HeartbeatAt:             time.Now().UTC(),
+		DaemonVersion:           "v0.1",
+		ConfigHash:              "abc",
+		DerivedValidatorAddress: testAddr,
+		ValidatorState:          "active",
+		LastProcessedHeight:     100,
+		ChainHead:               100,
+		LastTickMs:              1000,
+		RpcOk:                   1,
+		EpochNumber:             sql.NullInt64{Int64: 2, Valid: true},
+		EpochElected:            sql.NullInt64{Int64: 1, Valid: true},
+		SlotCount:               sql.NullInt64{Int64: 12, Valid: true},
+		SlotsTotal:              sql.NullInt64{Int64: 512, Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/operator/overview", nil)
+	req.AddCookie(cookie)
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%d: %s", rec.Code, rec.Body.String())
+	}
+	var got operatorOverviewResponseTest
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.EpochParticipation == nil || got.EpochParticipation.Epoch == nil || *got.EpochParticipation.Epoch != 2 {
+		t.Fatalf("epoch %+v", got.EpochParticipation)
+	}
+	if got.EpochParticipation.Elected == nil || !*got.EpochParticipation.Elected {
+		t.Fatalf("elected %+v", got.EpochParticipation)
+	}
+	if got.EpochParticipation.SlotCount == nil || *got.EpochParticipation.SlotCount != 12 {
+		t.Fatalf("slots %+v", got.EpochParticipation)
+	}
+	if got.EpochParticipation.SlotsTotal == nil || *got.EpochParticipation.SlotsTotal != 512 {
+		t.Fatalf("slots_total %+v", got.EpochParticipation)
+	}
+}
+
+func TestOperatorOverviewNotElectedStaysHealthy(t *testing.T) {
+	a, cookie, _ := operatorTestAPI(t)
+	if err := a.queries.UpsertRuntimeStatus(t.Context(), db.UpsertRuntimeStatusParams{
+		HeartbeatAt:             time.Now().UTC(),
+		DaemonVersion:           "v0.1",
+		ConfigHash:              "abc",
+		DerivedValidatorAddress: testAddr,
+		ValidatorState:          "active",
+		LastProcessedHeight:     100,
+		ChainHead:               100,
+		LastTickMs:              1000,
+		RpcOk:                   1,
+		EpochNumber:             sql.NullInt64{Int64: 2, Valid: true},
+		EpochElected:            sql.NullInt64{Int64: 0, Valid: true},
+		SlotCount:               sql.NullInt64{Int64: 0, Valid: true},
+		SlotsTotal:              sql.NullInt64{Int64: 512, Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/operator/overview", nil)
+	req.AddCookie(cookie)
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%d: %s", rec.Code, rec.Body.String())
+	}
+	var got operatorOverviewResponseTest
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "healthy" || len(got.Attention) != 0 {
+		t.Fatalf("%+v, want healthy with no attention", got)
+	}
+	if got.EpochParticipation == nil || got.EpochParticipation.Elected == nil || *got.EpochParticipation.Elected {
+		t.Fatalf("elected %+v", got.EpochParticipation)
 	}
 }
 

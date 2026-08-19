@@ -99,6 +99,7 @@ func (a *API) buildMux() http.Handler {
 	}
 	mux.HandleFunc("GET /api/pool", a.handlePool)
 	mux.HandleFunc("GET /api/pool/rewards", a.handlePoolRewards)
+	mux.HandleFunc("GET /api/readiness", a.handlePublicReadiness)
 	a.registerEpochRoutes(mux)
 	a.registerStakerRoutes(mux)
 	a.registerStakeRoutes(mux)

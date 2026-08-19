@@ -135,6 +135,10 @@ type RuntimeStatus struct {
 	LastTickMs              int64          `json:"last_tick_ms"`
 	RpcOk                   int64          `json:"rpc_ok"`
 	ReadinessError          sql.NullString `json:"readiness_error"`
+	EpochNumber             sql.NullInt64  `json:"epoch_number"`
+	EpochElected            sql.NullInt64  `json:"epoch_elected"`
+	SlotCount               sql.NullInt64  `json:"slot_count"`
+	SlotsTotal              sql.NullInt64  `json:"slots_total"`
 }
 
 type SchemaMigration struct {

@@ -58,6 +58,10 @@ func (r *Recorder) RecordHeartbeat(ctx context.Context, hb Heartbeat) error {
 		LastTickMs:              hb.LastTickMs,
 		RpcOk:                   rpcOk,
 		ReadinessError:          sqlNullString(hb.ReadinessError),
+		EpochNumber:             sqlNullInt64(hb.EpochNumber, hb.HasEpochParticipation),
+		EpochElected:            sqlNullInt64(boolInt(hb.EpochElected), hb.HasEpochParticipation),
+		SlotCount:               sqlNullInt64(hb.SlotCount, hb.HasEpochParticipation),
+		SlotsTotal:              sqlNullInt64(hb.SlotsTotal, hb.HasEpochParticipation),
 	}
 	err := r.q.UpsertRuntimeStatus(ctx, params)
 	return err
@@ -142,4 +146,18 @@ func sqlNullString(s string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: s, Valid: true}
+}
+
+func sqlNullInt64(v int64, valid bool) sql.NullInt64 {
+	if !valid {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: v, Valid: true}
+}
+
+func boolInt(v bool) int64 {
+	if v {
+		return 1
+	}
+	return 0
 }

@@ -54,13 +54,15 @@ function applyHints(status: SetupStatus) {
 async function pollActivation() {
   if (pollStopped) return
   try {
-    const readiness = await apiGet<{ readiness_error?: string | null }>('/api/operator/readiness')
+    const readiness = await apiGet<{ readiness_error?: string | null }>('/api/readiness')
     if (readiness.readiness_error) {
       readinessError.value = readiness.readiness_error
+      pollTimer = setTimeout(pollActivation, 2000)
       return
     }
+    readinessError.value = ''
   } catch {
-    // 401 until an operator session exists; keep polling /api/pool.
+    // daemon has not published readiness yet
   }
   try {
     await apiGet('/api/pool')

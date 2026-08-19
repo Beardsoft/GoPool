@@ -54,6 +54,7 @@ async function completeSetup(wrapper: ReturnType<typeof mount>) {
 
 it('polls after launch instead of showing a compose restart', async () => {
   mockSetupLaunch({
+    '/api/readiness': { body: { rpc_ok: true, readiness_error: null, validator_state: 'active' } },
     '/api/pool': { body: { current_epoch: 1, epoch_status: 'in_progress', num_stakers: 0, total_stake_luna: 0, total_rewards_luna: 0, pool_fee_percentage: 0.01 } },
   })
   const wrapper = mount(Setup, { global: setupTestGlobals })
@@ -66,7 +67,7 @@ it('polls after launch instead of showing a compose restart', async () => {
 it('shows readiness_error text after launch', async () => {
   mockSetupLaunch({
     '/api/pool': { body: { current_epoch: 0 }, status: 200 },
-    '/api/operator/readiness': { body: { rpc_ok: true, readiness_error: 'Waiting for 100000 NIM to register the validator (have 0 NIM)', validator_state: 'unready' } },
+    '/api/readiness': { body: { rpc_ok: true, readiness_error: 'Waiting for 100000 NIM to register the validator (have 0 NIM)', validator_state: 'unready' } },
   })
   const wrapper = mount(Setup, { global: setupTestGlobals })
   await completeSetup(wrapper)

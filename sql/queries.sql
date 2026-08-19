@@ -220,12 +220,12 @@ SET status = 'executed', tx_hash = ?, approved_at = CURRENT_TIMESTAMP
 WHERE id = ? AND status = 'approved';
 
 -- name: UpsertRuntimeStatus :exec
-INSERT INTO runtime_status (id, heartbeat_at, daemon_version, config_hash, derived_validator_address, validator_state, last_processed_height, chain_head, last_tick_ms, rpc_ok, readiness_error)
-VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET heartbeat_at=excluded.heartbeat_at, daemon_version=excluded.daemon_version, config_hash=excluded.config_hash, derived_validator_address=excluded.derived_validator_address, validator_state=excluded.validator_state, last_processed_height=excluded.last_processed_height, chain_head=excluded.chain_head, last_tick_ms=excluded.last_tick_ms, rpc_ok=excluded.rpc_ok, readiness_error=excluded.readiness_error;
+INSERT INTO runtime_status (id, heartbeat_at, daemon_version, config_hash, derived_validator_address, validator_state, last_processed_height, chain_head, last_tick_ms, rpc_ok, readiness_error, epoch_number, epoch_elected, slot_count, slots_total)
+VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET heartbeat_at=excluded.heartbeat_at, daemon_version=excluded.daemon_version, config_hash=excluded.config_hash, derived_validator_address=excluded.derived_validator_address, validator_state=excluded.validator_state, last_processed_height=excluded.last_processed_height, chain_head=excluded.chain_head, last_tick_ms=excluded.last_tick_ms, rpc_ok=excluded.rpc_ok, readiness_error=excluded.readiness_error, epoch_number=COALESCE(excluded.epoch_number, runtime_status.epoch_number), epoch_elected=COALESCE(excluded.epoch_elected, runtime_status.epoch_elected), slot_count=COALESCE(excluded.slot_count, runtime_status.slot_count), slots_total=COALESCE(excluded.slots_total, runtime_status.slots_total);
 
 -- name: GetRuntimeStatus :one
-SELECT id, heartbeat_at, daemon_version, config_hash, derived_validator_address, validator_state, last_processed_height, chain_head, last_tick_ms, rpc_ok, readiness_error FROM runtime_status WHERE id = 1;
+SELECT id, heartbeat_at, daemon_version, config_hash, derived_validator_address, validator_state, last_processed_height, chain_head, last_tick_ms, rpc_ok, readiness_error, epoch_number, epoch_elected, slot_count, slots_total FROM runtime_status WHERE id = 1;
 
 -- name: InsertHealthSnapshot :one
 INSERT INTO health_snapshots (recorded_at, chain_head, processed_height, tick_ms, validator_state, live_stake, staker_count, pending_payout_count, pending_payout_luna, stuck_payout_count, stuck_payout_luna, wallet_balance, rpc_ok)

@@ -114,7 +114,11 @@ CREATE TABLE IF NOT EXISTS runtime_status (
     chain_head INTEGER NOT NULL,
     last_tick_ms INTEGER NOT NULL,
     rpc_ok INTEGER NOT NULL,
-    readiness_error TEXT
+    readiness_error TEXT,
+    epoch_number INTEGER,
+    epoch_elected INTEGER,
+    slot_count INTEGER,
+    slots_total INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS health_snapshots (

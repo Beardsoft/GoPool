@@ -44,6 +44,31 @@ func assertTableExists(t *testing.T, db *sql.DB, name string) {
 	}
 }
 
+func assertColumnExists(t *testing.T, db *sql.DB, table, column string) {
+	t.Helper()
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			t.Fatal(err)
+		}
+		if name == column {
+			if notnull != 0 {
+				t.Fatalf("%s.%s should be nullable", table, column)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing column %s.%s", table, column)
+}
+
 func execSQL(t *testing.T, db *sql.DB, sqlText string) {
 	t.Helper()
 	stmts := strings.Split(sqlText, ";")
@@ -76,6 +101,9 @@ func TestMigrateFreshAndLegacyDatabases(t *testing.T) {
 			}
 			for _, table := range []string{"runtime_status", "health_snapshots", "operator_events", "alert_deliveries", "config_revisions"} {
 				assertTableExists(t, db, table)
+			}
+			for _, column := range []string{"epoch_number", "epoch_elected", "slot_count", "slots_total"} {
+				assertColumnExists(t, db, "runtime_status", column)
 			}
 		})
 	}

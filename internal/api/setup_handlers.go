@@ -37,15 +37,23 @@ func (a *API) handleSetupStatus(w http.ResponseWriter, _ *http.Request) {
 	if dbErr != nil {
 		dbErr = nil
 	} // an empty runtime table is valid before the daemon starts
+	hints := loadSetupHints(dir)
 	body := map[string]any{"configured": false, "checks": map[string]any{
 		"database":         map[string]any{"ok": dbErr == nil},
 		"config_writable":  map[string]any{"ok": directoryWritable(dir)},
-		"validator_secret": map[string]any{"state": "pending verification"},
+		"validator_secret": validatorSecretCheck(hints),
 	}}
-	if hints := loadSetupHints(dir); hints != nil {
+	if hints != nil {
 		body["hints"] = hints
 	}
 	writeJSON(w, http.StatusOK, body)
+}
+
+func validatorSecretCheck(hints map[string]string) map[string]any {
+	if hints != nil && strings.TrimSpace(hints["validator_address"]) != "" {
+		return map[string]any{"ok": true, "state": "present"}
+	}
+	return map[string]any{"ok": false, "state": "missing"}
 }
 
 type setupHints struct {

@@ -531,7 +531,7 @@ func (q *Queries) GetRequestedValidatorActions(ctx context.Context) ([]GetReques
 }
 
 const GetRuntimeStatus = `-- name: GetRuntimeStatus :one
-SELECT id, heartbeat_at, daemon_version, config_hash, derived_validator_address, validator_state, last_processed_height, chain_head, last_tick_ms, rpc_ok, readiness_error FROM runtime_status WHERE id = 1
+SELECT id, heartbeat_at, daemon_version, config_hash, derived_validator_address, validator_state, last_processed_height, chain_head, last_tick_ms, rpc_ok, readiness_error, epoch_number, epoch_elected, slot_count, slots_total FROM runtime_status WHERE id = 1
 `
 
 func (q *Queries) GetRuntimeStatus(ctx context.Context) (RuntimeStatus, error) {
@@ -549,6 +549,10 @@ func (q *Queries) GetRuntimeStatus(ctx context.Context) (RuntimeStatus, error) {
 		&i.LastTickMs,
 		&i.RpcOk,
 		&i.ReadinessError,
+		&i.EpochNumber,
+		&i.EpochElected,
+		&i.SlotCount,
+		&i.SlotsTotal,
 	)
 	return i, err
 }
@@ -2064,9 +2068,9 @@ func (q *Queries) UpsertCursor(ctx context.Context, arg UpsertCursorParams) erro
 }
 
 const UpsertRuntimeStatus = `-- name: UpsertRuntimeStatus :exec
-INSERT INTO runtime_status (id, heartbeat_at, daemon_version, config_hash, derived_validator_address, validator_state, last_processed_height, chain_head, last_tick_ms, rpc_ok, readiness_error)
-VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET heartbeat_at=excluded.heartbeat_at, daemon_version=excluded.daemon_version, config_hash=excluded.config_hash, derived_validator_address=excluded.derived_validator_address, validator_state=excluded.validator_state, last_processed_height=excluded.last_processed_height, chain_head=excluded.chain_head, last_tick_ms=excluded.last_tick_ms, rpc_ok=excluded.rpc_ok, readiness_error=excluded.readiness_error
+INSERT INTO runtime_status (id, heartbeat_at, daemon_version, config_hash, derived_validator_address, validator_state, last_processed_height, chain_head, last_tick_ms, rpc_ok, readiness_error, epoch_number, epoch_elected, slot_count, slots_total)
+VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET heartbeat_at=excluded.heartbeat_at, daemon_version=excluded.daemon_version, config_hash=excluded.config_hash, derived_validator_address=excluded.derived_validator_address, validator_state=excluded.validator_state, last_processed_height=excluded.last_processed_height, chain_head=excluded.chain_head, last_tick_ms=excluded.last_tick_ms, rpc_ok=excluded.rpc_ok, readiness_error=excluded.readiness_error, epoch_number=COALESCE(excluded.epoch_number, runtime_status.epoch_number), epoch_elected=COALESCE(excluded.epoch_elected, runtime_status.epoch_elected), slot_count=COALESCE(excluded.slot_count, runtime_status.slot_count), slots_total=COALESCE(excluded.slots_total, runtime_status.slots_total)
 `
 
 type UpsertRuntimeStatusParams struct {
@@ -2080,6 +2084,10 @@ type UpsertRuntimeStatusParams struct {
 	LastTickMs              int64          `json:"last_tick_ms"`
 	RpcOk                   int64          `json:"rpc_ok"`
 	ReadinessError          sql.NullString `json:"readiness_error"`
+	EpochNumber             sql.NullInt64  `json:"epoch_number"`
+	EpochElected            sql.NullInt64  `json:"epoch_elected"`
+	SlotCount               sql.NullInt64  `json:"slot_count"`
+	SlotsTotal              sql.NullInt64  `json:"slots_total"`
 }
 
 func (q *Queries) UpsertRuntimeStatus(ctx context.Context, arg UpsertRuntimeStatusParams) error {
@@ -2094,6 +2102,10 @@ func (q *Queries) UpsertRuntimeStatus(ctx context.Context, arg UpsertRuntimeStat
 		arg.LastTickMs,
 		arg.RpcOk,
 		arg.ReadinessError,
+		arg.EpochNumber,
+		arg.EpochElected,
+		arg.SlotCount,
+		arg.SlotsTotal,
 	)
 	return err
 }

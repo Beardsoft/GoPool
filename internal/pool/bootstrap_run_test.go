@@ -196,3 +196,60 @@ func TestEnsureReadyWaitingCopy(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestRunBootstrapFaucetRateLimitDoesNotRetry(t *testing.T) {
+	priv, err := signer.ParsePrivateKeyHex(bootstrapKeyHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := priv.Address().String()
+	var hits atomic.Int32
+	faucet := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":false,"error":"RATE_LIMIT","wait":86324}`))
+	}))
+	t.Cleanup(faucet.Close)
+	pool := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Method string `json:"method"`
+			ID     int    `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		switch req.Method {
+		case "getPolicyConstants":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": req.ID,
+				"result": map[string]any{"validatorDeposit": 10_000_000_000, "minimumStake": 10_000_000},
+			})
+		case "getAccountByAddress":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": req.ID,
+				"result": map[string]any{"address": addr, "balance": 0, "type": "basic"},
+			})
+		case "getValidatorByAddress", "getStakerByAddress":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": req.ID,
+				"error": map[string]any{"code": -32601, "message": "not found"},
+			})
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": nil})
+		}
+	}))
+	t.Cleanup(pool.Close)
+	rpcClient, _ := rpc.New(pool.URL, rpc.WithNetwork(nimiq.NetworkTestAlbatross))
+	m := &Manager{
+		chain:   &chain.Chain{RPC: rpcClient, Signer: priv, Network: nimiq.NetworkTestAlbatross},
+		queries: newLifecycleTestQueries(t),
+		cfg:     &config.Config{Network: "test-albatross", FaucetURL: faucet.URL, ValidatorAddress: addr},
+		policy:  &rpc.Policy{ValidatorDeposit: 10_000_000_000, MinimumStake: 10_000_000},
+	}
+	m.runBootstrap(t.Context())
+	m.runBootstrap(t.Context())
+	if hits.Load() != 1 {
+		t.Fatalf("faucet hits = %d, want 1 (must not hammer after RATE_LIMIT)", hits.Load())
+	}
+	if !m.faucetBlocked {
+		t.Fatal("expected faucetBlocked after RATE_LIMIT")
+	}
+}

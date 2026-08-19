@@ -71,6 +71,15 @@ func TestSetupStatusReturnsHintsFromFile(t *testing.T) {
 	if body.Hints["pool_fee_wallet"] != testAddr {
 		t.Fatalf("pool_fee_wallet hint = %q", body.Hints["pool_fee_wallet"])
 	}
+	var full struct {
+		Checks map[string]map[string]any `json:"checks"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &full); err != nil {
+		t.Fatal(err)
+	}
+	if full.Checks["validator_secret"]["state"] != "present" {
+		t.Fatalf("validator_secret = %#v, want present when hints include an address", full.Checks["validator_secret"])
+	}
 }
 
 func TestSetupStatusOmitsHintsWhenFileMissing(t *testing.T) {
@@ -124,6 +133,15 @@ func TestSetupCompletePersistsAlertSecrets(t *testing.T) {
 	rec := postJSON(t, a.Mux(), "/api/setup/complete", map[string]any{"settings": draft}, cookie)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("complete: %d %s", rec.Code, rec.Body.String())
+	}
+	var revision struct {
+		CreatedAt string `json:"created_at"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &revision); err != nil {
+		t.Fatal(err)
+	}
+	if revision.CreatedAt == "" || strings.HasPrefix(revision.CreatedAt, "0001-") {
+		t.Fatalf("created_at = %q", revision.CreatedAt)
 	}
 	raw, err := os.ReadFile(store.Path())
 	if err != nil {

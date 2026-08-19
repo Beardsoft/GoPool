@@ -108,7 +108,7 @@ func (s *Store) Save(ctx context.Context, actor, expectedHash string, editable c
 	if err != nil {
 		return Revision{}, fmt.Errorf("record config revision: %w", err)
 	}
-	return Revision{ID: id, Hash: hash, RestartRequired: true, Actor: actor, Before: before, After: after}, nil
+	return Revision{ID: id, Hash: hash, RestartRequired: true, Actor: actor, Before: before, After: after, CreatedAt: time.Now().UTC()}, nil
 }
 
 func (s *Store) ListRevisions(ctx context.Context) ([]Revision, error) {

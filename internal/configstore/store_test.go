@@ -58,6 +58,9 @@ func TestStoreSaveMergesSecretsAndCarriesUnmanagedFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if revision.CreatedAt.IsZero() {
+		t.Fatal("created_at must be set")
+	}
 	raw, _ := os.ReadFile(store.Path())
 	for _, want := range []string{"legacy-key-value", "legacy-session-value", "tg-new-token", "wh-new-token", `"stuck_payout_epochs": 7`, `"faucet_url": "https://faucet.example"`, `"validator_rpc_url": "http://127.0.0.1:8648"`} {
 		if !strings.Contains(string(raw), want) {

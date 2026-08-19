@@ -16,8 +16,6 @@ import (
 
 const maxResponseSummary = 512
 
-const discordMaxContent = 2000
-
 type DeliveryResult struct {
 	Channel         string    `json:"channel"`
 	AlertType       string    `json:"alert_type"`
@@ -43,13 +41,19 @@ func New(cfg *config.Config, recorder DeliveryRecorder) *Notifier {
 	return &Notifier{cfg: cfg, client: &http.Client{Timeout: 10 * time.Second}, recorder: recorder}
 }
 
+type AlertField struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 type Alert struct {
-	Level         string `json:"level"`
-	Type          string `json:"type"`
-	Title         string `json:"title"`
-	Message       string `json:"message"`
-	CorrelationID string `json:"correlation_id,omitempty"`
-	Time          string `json:"time,omitempty"`
+	Level         string       `json:"level"`
+	Type          string       `json:"type"`
+	Title         string       `json:"title"`
+	Message       string       `json:"message"`
+	Fields        []AlertField `json:"fields,omitempty"`
+	CorrelationID string       `json:"correlation_id,omitempty"`
+	Time          string       `json:"time,omitempty"`
 }
 
 func (n *Notifier) Send(ctx context.Context, alert Alert) []DeliveryResult {
@@ -81,36 +85,40 @@ func (n *Notifier) sendTelegram(ctx context.Context, alert Alert) DeliveryResult
 	if chatID == "" {
 		return n.result(alert, "telegram", "", "failed", "chat destination is not configured")
 	}
-	payload, _ := json.Marshal(map[string]string{"chat_id": chatID, "text": fmt.Sprintf("*%s*: %s\n%s", alert.Level, alert.Title, alert.Message), "parse_mode": "Markdown"})
+	payload, _ := json.Marshal(map[string]string{"chat_id": chatID, "text": telegramText(alert, n.cfg.Network), "parse_mode": "Markdown"})
 	endpoint := "https://api.telegram.org/bot" + n.cfg.AlertTelegramToken + "/sendMessage"
 	return n.sendHTTP(ctx, alert, "telegram", redactDestination(chatID), endpoint, payload)
 }
 
 func (n *Notifier) sendWebhook(ctx context.Context, alert Alert) DeliveryResult {
-	return n.sendHTTP(ctx, alert, "webhook", RedactWebhookURL(n.cfg.AlertWebhookURL), n.cfg.AlertWebhookURL, webhookBody(alert, n.cfg.AlertWebhookURL))
+	network, poolName := "", ""
+	if n.cfg != nil {
+		network, poolName = n.cfg.Network, n.cfg.PoolName
+	}
+	return n.sendHTTP(ctx, alert, "webhook", RedactWebhookURL(n.cfg.AlertWebhookURL), n.cfg.AlertWebhookURL, webhookBody(alert, n.cfg.AlertWebhookURL, network, poolName))
 }
 
-// webhookBody shapes the payload per target: Discord webhooks require a
-// non-empty "content" field (long URLs there are auto-truncated by Discord),
-// anything else receives the raw alert JSON.
-func webhookBody(alert Alert, rawURL string) []byte {
+// webhookBody shapes the payload per target: Discord webhooks get a named
+// embed (color, fields, explorer links); anything else receives the raw alert JSON.
+func webhookBody(alert Alert, rawURL, network, poolName string) []byte {
 	if isDiscordWebhook(rawURL) {
-		body, _ := json.Marshal(map[string]string{"content": discordContent(alert)})
+		body, _ := json.Marshal(discordPayload(alert, network, poolName))
 		return body
 	}
 	body, _ := json.Marshal(alert)
 	return body
 }
 
-func discordContent(alert Alert) string {
-	content := fmt.Sprintf("**%s** %s\n%s", strings.ToUpper(alert.Level), alert.Title, alert.Message)
-	if strings.TrimSpace(content) == "" {
-		content = "GoPool alert"
+func telegramText(alert Alert, network string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "*%s*: %s", strings.ToUpper(alert.Level), alertTitle(alert))
+	if msg := strings.TrimSpace(alert.Message); msg != "" {
+		fmt.Fprintf(&b, "\n%s", msg)
 	}
-	if runes := []rune(content); len(runes) > discordMaxContent {
-		content = string(runes[:discordMaxContent-1]) + "…"
+	for _, field := range alert.Fields {
+		fmt.Fprintf(&b, "\n*%s:* %s", field.Name, formatFieldValue(network, field.Value))
 	}
-	return content
+	return b.String()
 }
 
 func isDiscordWebhook(raw string) bool {

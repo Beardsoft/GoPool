@@ -220,8 +220,7 @@ start_stack() {
     "${compose[@]}" up -d --build "${services[@]}"
     return
   fi
-  "${compose[@]}" pull "${services[@]}"
-  "${compose[@]}" up -d "${services[@]}"
+  "${compose[@]}" up -d --pull missing "${services[@]}"
 }
 
 if [ "$SKIP_START" = 1 ]; then

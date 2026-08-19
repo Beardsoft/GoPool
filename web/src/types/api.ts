@@ -62,6 +62,12 @@ export interface OperatorOverview {
     last_processed_height: number;
     last_tick_ms: number;
   };
+  epoch_participation: {
+    epoch: number | null;
+    elected: boolean | null;
+    slot_count: number | null;
+    slots_total: number | null;
+  };
   attention: OperatorEvent[];
   events: OperatorEvent[];
 }

@@ -38,6 +38,12 @@ export function overviewFixture(overrides: Partial<OperatorOverview> = {}): Oper
       last_processed_height: 123456,
       last_tick_ms: 42
     },
+    epoch_participation: {
+      epoch: null,
+      elected: null,
+      slot_count: null,
+      slots_total: null,
+    },
     events: [],
     ...overrides
   }

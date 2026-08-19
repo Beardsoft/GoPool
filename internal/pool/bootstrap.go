@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	nimiq "github.com/NimMiniApps/nimiq-go"
@@ -25,7 +26,6 @@ const (
 	actionCreate     = "create"
 	actionSelfStake  = "self_stake"
 	lunaPerNIM       = 100_000
-	faucetCooldown   = 10 * time.Second
 	registerCooldown = 60 * time.Second
 )
 
@@ -52,6 +52,9 @@ type bootstrapSnapshot struct {
 	PendingRegister  bool
 	PendingSelfStake bool
 	DryRun           bool
+	Address          string
+	FaucetBlocked    bool
+	FaucetRetryAt    time.Time
 }
 
 func nextBootstrap(s bootstrapSnapshot) bootstrapAction {
@@ -67,11 +70,11 @@ func nextBootstrap(s bootstrapSnapshot) bootstrapAction {
 		}
 		return bootstrapWait
 	}
-	if s.FaucetEnabled && s.Balance < faucetTargetLuna {
-		return bootstrapFaucet
-	}
 	if s.HasWalletJSON && s.LocalConsensus && s.Balance >= s.Deposit && !s.PendingRegister {
 		return bootstrapRegister
+	}
+	if s.FaucetEnabled && s.Balance < s.Deposit {
+		return bootstrapFaucet
 	}
 	return bootstrapWait
 }
@@ -96,7 +99,14 @@ func bootstrapWaitingError(s bootstrapSnapshot) string {
 	if need == 0 {
 		need = int64(faucetTargetLuna) / lunaPerNIM
 	}
-	return fmt.Sprintf("Waiting for %d NIM to register the validator (have %d NIM)", need, have)
+	msg := fmt.Sprintf("Waiting for %d NIM to register the validator (have %d NIM)", need, have)
+	if !s.FaucetBlocked {
+		return msg
+	}
+	want := int64(faucetTargetLuna) / lunaPerNIM
+	msg += fmt.Sprintf(". The testnet faucet cannot fund this address now; it will be retried after %s. Send at least %d NIM to %s yourself if you cannot wait.",
+		s.FaucetRetryAt.UTC().Format(time.RFC3339), want, strings.TrimSpace(s.Address))
+	return msg
 }
 
 func (m *Manager) snapshotBootstrap(ctx context.Context) (bootstrapSnapshot, error) {
@@ -106,6 +116,9 @@ func (m *Manager) snapshotBootstrap(ctx context.Context) (bootstrapSnapshot, err
 		MinStake:      m.policy.MinimumStake,
 		FaucetEnabled: m.cfg.FaucetURL != "" && m.cfg.Network == "test-albatross",
 		DryRun:        m.cfg.DryRun,
+		Address:       m.chain.Address().String(),
+		FaucetBlocked: m.faucetBlocked,
+		FaucetRetryAt: m.faucetRetryAt,
 	}
 	if m.cfg.WalletJSONFile != "" {
 		if _, err := os.Stat(m.cfg.WalletJSONFile); err == nil {
@@ -146,14 +159,27 @@ func (m *Manager) runBootstrap(ctx context.Context) bootstrapSnapshot {
 	}
 	switch nextBootstrap(s) {
 	case bootstrapFaucet:
-		if time.Since(m.lastFaucetAt) < faucetCooldown {
+		if !m.lastFaucetAt.IsZero() && time.Now().Before(m.faucetRetryAt) {
 			break
 		}
 		m.lastFaucetAt = time.Now()
-		if fundAddress(ctx, nil, m.cfg.FaucetURL, m.chain.Address().String()) {
-			logger.Logger.Info("requested testnet faucet funds", zap.String("address", m.chain.Address().String()))
-			m.recordBootstrapEvent(ctx, "info", "faucet_requested", "Requested testnet faucet funds", nil)
+		result := fundAddress(ctx, nil, m.cfg.FaucetURL, m.chain.Address().String())
+		retry := result.RetryAfter
+		if retry <= 0 {
+			retry = defaultFaucetRetry
 		}
+		m.faucetRetryAt = m.lastFaucetAt.Add(retry)
+		if result.OK {
+			m.faucetBlocked = false
+			logger.Logger.Info("requested testnet faucet funds", zap.String("address", m.chain.Address().String()), zap.Duration("retry_after", retry))
+			m.recordBootstrapEvent(ctx, "info", "faucet_requested", "Requested testnet faucet funds", nil)
+			break
+		}
+		m.faucetBlocked = true
+		logger.Logger.Warn("testnet faucet did not fund", zap.String("address", m.chain.Address().String()), zap.Bool("rate_limited", result.RateLimited), zap.Duration("retry_after", retry), zap.String("detail", result.Message))
+		m.recordBootstrapEvent(ctx, "warning", "faucet_unavailable", "Testnet faucet did not fund; send NIM to the validator address or wait to retry", map[string]any{
+			"error": result.Message, "retryAfter": retry.String(), "rateLimited": result.RateLimited,
+		})
 	case bootstrapRegister:
 		if time.Since(m.lastRegisterAt) < registerCooldown {
 			break
@@ -169,6 +195,8 @@ func (m *Manager) runBootstrap(ctx context.Context) bootstrapSnapshot {
 			m.recordBootstrapEvent(ctx, "error", "validator_self_stake_failed", "Validator self-stake failed", map[string]any{"error": err.Error()})
 		}
 	}
+	s.FaucetBlocked = m.faucetBlocked
+	s.FaucetRetryAt = m.faucetRetryAt
 	return s
 }
 

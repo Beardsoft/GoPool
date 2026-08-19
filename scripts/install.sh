@@ -6,7 +6,7 @@
 set -euo pipefail
 
 GOPOOL_DEFAULT_IMAGE="${GOPOOL_IMAGE:-ghcr.io/beardsoft/gopool:latest}"
-NIMIQ_TOOL_IMAGE="${NIMIQ_IMAGE:-ghcr.io/nimiq/core-rs-albatross:latest}"
+NIMIQ_TOOL_IMAGE="${NIMIQ_IMAGE:-ghcr.io/nimiq/core-rs-albatross:2.0.0-pre}"
 NIMIQ_NODE_IMAGE="${NIMIQ_NODE_IMAGE:-ghcr.io/nimiq/core-rs-albatross:2.0.0-pre}"
 
 gopool_rpc_url_for_network() {
@@ -100,6 +100,12 @@ gopool_site_address() {
 
 gopool_write_caddyfile() {
   cat > "$1" <<'EOF'
+{
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
 {$GOPOOL_SITE} {
 	reverse_proxy gopool-api:8080
 }
@@ -128,7 +134,7 @@ services:
       FAUCET_URL: https://faucet.pos.nimiq-testnet.com/tapit
     secrets: [gopool_validator_key, gopool_wallet_json]
     healthcheck:
-      test: ["CMD-SHELL", "test -r /run/secrets/gopool_validator_key"]
+      test: ["CMD-SHELL", "timeout 1 bash -c 'echo >/dev/tcp/127.0.0.1/9100'"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -150,7 +156,7 @@ services:
       POOL_SESSION_SECRET_FILE: /run/secrets/gopool_session_secret
     secrets: [gopool_setup_token, gopool_session_secret]
     healthcheck:
-      test: ["CMD-SHELL", "test -r /run/secrets/gopool_setup_token && test -r /run/secrets/gopool_session_secret"]
+      test: ["CMD-SHELL", "timeout 1 bash -c 'echo >/dev/tcp/127.0.0.1/8080'"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -294,6 +300,9 @@ lines = [
     "",
     "[consensus]",
     'network = "%s"' % network,
+    'sync_mode = "full"',
+    "max_epochs_stored = 2",
+    "index_history = false",
     "",
     "[validator]",
     'validator_address = "%s"' % w["validator_address"],
@@ -476,14 +485,15 @@ start_stack() {
   else
     echo "No node-config.toml: starting without the validator node."
   fi
-  docker compose pull "${services[@]}"
-  docker compose up -d "${services[@]}"
+  docker compose up -d --pull missing "${services[@]}"
 }
 
+START_OK=1
 if [ "$SKIP_START" = 1 ]; then
   echo "Skipped start (--skip-start)."
-else
-  start_stack
+elif ! start_stack; then
+  START_OK=0
+  echo "Failed to start containers. Files are in ${INSTALL_DIR}."
 fi
 
 SETUP_TOKEN="$(cat .secrets/setup-token)"
@@ -508,8 +518,14 @@ ${TLS_NOTE}
 Still manual:
   1. DNS A record, or a reverse proxy to http://${PRIMARY_IP:-THIS_IP}:80
   2. Backup .secrets/wallet.json offline (keep it until the daemon registers)
-  3. Mainnet: send at least 101000 NIM to the validator address. Testnet: the daemon faucets, registers, and self-stakes.
+  3. Mainnet: send at least 101000 NIM to the validator address.
+     Testnet: the daemon tries the faucet once. If the faucet is rate-limited
+     (24h per public IP), send at least 101000 NIM yourself. The daemon
+     registers and self-stakes as soon as the balance is there.
 
 Check status any time with:
   cd ${INSTALL_DIR} && docker compose logs -f
 EOF
+if [ "$START_OK" != 1 ]; then
+  exit 1
+fi

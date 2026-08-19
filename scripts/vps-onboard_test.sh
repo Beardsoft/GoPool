@@ -32,6 +32,8 @@ grep -q 'build:' "$dir/compose.yml" && fail "compose must not build on the VPS"
 grep -q 'git clone' "$dir/compose.yml" && fail "compose must not clone"
 grep -q './.secrets/validator-key' "$dir/compose.yml" || fail "compose secrets path"
 grep -q 'name: gopool' "$dir/compose.yml" || fail "compose project name"
+grep -q '/dev/tcp/127.0.0.1/8080' "$dir/compose.yml" || fail "api healthcheck"
+grep -q '/dev/tcp/127.0.0.1/9100' "$dir/compose.yml" || fail "daemon healthcheck"
 
 wallet="$dir/wallet.json"
 cat > "$wallet" <<'JSON'
@@ -45,6 +47,10 @@ JSON
 gopool_write_node_config "$wallet" "test-albatross" "$dir/node-config.toml"
 grep -q 'network = "test-albatross"' "$dir/node-config.toml" || fail "node network"
 grep -q 'seed1.pos.nimiq-testnet.com' "$dir/node-config.toml" || fail "node seeds"
+grep -q 'up -d --pull missing' scripts/install.sh || fail "compose must pull only missing images"
+grep -q 'sync_mode = "full"' "$dir/node-config.toml" || fail "pruned full sync_mode"
+grep -q 'max_epochs_stored = 2' "$dir/node-config.toml" || fail "max_epochs_stored"
+grep -q 'index_history = false' "$dir/node-config.toml" || fail "index_history"
 [ "$(stat -c %a "$dir/node-config.toml")" = 644 ] || fail "node-config mode"
 rm -rf "$dir"
 
