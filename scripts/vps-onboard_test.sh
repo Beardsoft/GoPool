@@ -41,6 +41,7 @@ grep -q 'WATCHTOWER_LABEL_ENABLE' "$dir/compose.yml" || fail "watchtower label f
 grep -q 'WATCHTOWER_SCHEDULE' "$dir/compose.yml" || fail "watchtower schedule"
 grep -q 'com.centurylinklabs.watchtower.enable=true' "$dir/compose.yml" || fail "watchtower enable labels"
 grep -q 'caddy watchtower' scripts/install.sh || fail "install starts watchtower"
+grep -q 'nickfedor/watchtower' deployments/docker-compose.yml || fail "repo compose watchtower"
 
 wallet="$dir/wallet.json"
 cat > "$wallet" <<'JSON'
