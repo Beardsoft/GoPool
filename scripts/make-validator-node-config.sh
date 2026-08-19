@@ -85,7 +85,9 @@ lines = [
 ]
 open(out, "w").write("\n".join(lines))
 PY
-chmod 600 "$out_file"
+# 644 so Compose bind-mounts are readable by the validator user (nimiq).
+# The parent .secrets directory stays mode 700.
+chmod 644 "$out_file"
 
 cat <<EOF
 Wrote $out_file for network ${NETWORK}

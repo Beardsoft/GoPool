@@ -301,7 +301,10 @@ gopool_write_setup_hints data/config/setup-hints.json "$VALIDATOR_ADDRESS" "$NET
 
 step "Step 5/5: Start GoPool"
 start_stack() {
-  local compose=(docker compose -f deployments/docker-compose.yml)
+  # Compose file lives in deployments/; load repo-root .env so GOPOOL_SITE/DOMAIN
+  # reach Caddy. File secrets are bind-mounted, so node-config.toml must be
+  # world-readable (directory stays mode 700).
+  local compose=(docker compose --env-file .env -f deployments/docker-compose.yml)
   local services=(gopool gopool-api caddy)
   if [ -f .secrets/node-config.toml ]; then
     services+=(gopool-validator)
@@ -321,7 +324,7 @@ if [ "$SKIP_START" = 1 ]; then
 elif [ "$ASSUME_YES" = 1 ] || confirm "Pull images and start the daemon + API + Caddy now?"; then
   start_stack
 else
-  echo "Skipped. Start later with: docker compose -f deployments/docker-compose.yml up -d"
+  echo "Skipped. Start later with: docker compose --env-file .env -f deployments/docker-compose.yml up -d"
 fi
 
 SETUP_TOKEN="$(cat .secrets/setup-token)"
@@ -349,5 +352,5 @@ Still manual:
   3. Stake/register the validator on chain (readiness_error until you do)
 
 Check status any time with:
-  docker compose -f deployments/docker-compose.yml logs -f
+  docker compose --env-file .env -f deployments/docker-compose.yml logs -f
 EOF

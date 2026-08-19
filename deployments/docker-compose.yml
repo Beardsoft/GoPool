@@ -1,3 +1,5 @@
+# Loads GOPOOL_DOMAIN / GOPOOL_SITE from the repo-root .env (pass
+# `--env-file .env` when composing from this file's directory).
 services:
   gopool:
     image: ${GOPOOL_IMAGE:-ghcr.io/beardsoft/gopool:latest}

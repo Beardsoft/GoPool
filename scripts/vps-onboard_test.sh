@@ -58,5 +58,6 @@ fi
 if bash scripts/vps-onboard.sh --yes >/dev/null 2>&1; then
   fail "vps-onboard.sh --yes should require --domain"
 fi
+grep -q -- '--env-file .env' scripts/vps-onboard.sh || fail "compose must load repo-root .env"
 
 echo OK

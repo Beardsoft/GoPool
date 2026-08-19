@@ -60,7 +60,7 @@ install -m 600 /dev/stdin .secrets/validator-key <<<'<validator-private-key-hex>
 # Validator node config (needs the full key set in .secrets/wallet.json):
 ./scripts/make-validator-node-config.sh --network main-albatross
 echo 'GOPOOL_DOMAIN=your.pool.domain' > .env   # omit for local testing, defaults to localhost
-docker compose -f deployments/docker-compose.yml up -d
+docker compose --env-file .env -f deployments/docker-compose.yml up -d
 ```
 
 The stack also runs `gopool-validator`, the validator node itself (it produces the blocks the pool earns on). Without a full key set (`.secrets/wallet.json`) you can start just the pool: `docker compose -f deployments/docker-compose.yml up -d gopool gopool-api caddy`.
@@ -208,7 +208,7 @@ A production Compose example is in `deployments/docker-compose.yml`. It pulls `g
 Build and run locally (optional; VPS installs pull the published image):
 
 ```bash
-docker compose -f deployments/docker-compose.yml up --build
+docker compose --env-file .env -f deployments/docker-compose.yml up --build
 ```
 
 Images for Swarm are `ghcr.io/beardsoft/gopool:<git-sha>` (published on every `master` push) and version tags from GitHub Releases. Settings saves and revision restores apply in-process; the UI shows Activating until the daemon heartbeat reports the expected hash. Force-update services only when rolling out a new image. For Swarm rotation and failed-readiness recovery, see [deployments/SWARM.md](deployments/SWARM.md).
