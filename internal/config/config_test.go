@@ -138,6 +138,22 @@ func TestLoadDaemonCopiesAutostakeFields(t *testing.T) {
 	}
 }
 
+func TestLoadDaemonEnvOverridesAutostakeURLs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"payout_mode":"delegate","pool_fee_percentage":0.01}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VALIDATOR_RPC_URL", "http://gopool-validator:8648")
+	t.Setenv("FAUCET_URL", "https://faucet.pos.nimiq-testnet.com/tapit")
+	cfg, err := LoadDaemon(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ValidatorRPCURL != "http://gopool-validator:8648" || cfg.FaucetURL != "https://faucet.pos.nimiq-testnet.com/tapit" {
+		t.Fatalf("%+v", cfg)
+	}
+}
+
 func TestLoadDaemonAutostakeURLs(t *testing.T) {
 	cases := []struct {
 		name    string

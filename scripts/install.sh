@@ -123,7 +123,10 @@ services:
       SQLITE_DB: /root/data/pool.db
       CONFIG_FILE: /root/config/config.json
       POOL_PRIVATE_KEY_FILE: /run/secrets/gopool_validator_key
-    secrets: [gopool_validator_key]
+      POOL_WALLET_JSON_FILE: /run/secrets/gopool_wallet_json
+      VALIDATOR_RPC_URL: http://gopool-validator:8648
+      FAUCET_URL: https://faucet.pos.nimiq-testnet.com/tapit
+    secrets: [gopool_validator_key, gopool_wallet_json]
     healthcheck:
       test: ["CMD-SHELL", "test -r /run/secrets/gopool_validator_key"]
       interval: 30s
@@ -184,6 +187,8 @@ volumes:
 secrets:
   gopool_validator_key:
     file: ./.secrets/validator-key
+  gopool_wallet_json:
+    file: ./.secrets/wallet.json
   gopool_setup_token:
     file: ./.secrets/setup-token
   gopool_session_secret:
@@ -502,8 +507,8 @@ ${TLS_NOTE}
 
 Still manual:
   1. DNS A record, or a reverse proxy to http://${PRIMARY_IP:-THIS_IP}:80
-  2. Backup .secrets/wallet.json offline, then consider deleting it here
-  3. Stake/register the validator on chain (readiness_error until you do)
+  2. Backup .secrets/wallet.json offline (keep it until the daemon registers)
+  3. Mainnet: send at least 101000 NIM to the validator address. Testnet: the daemon faucets, registers, and self-stakes.
 
 Check status any time with:
   cd ${INSTALL_DIR} && docker compose logs -f

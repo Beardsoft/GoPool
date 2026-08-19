@@ -19,7 +19,7 @@ openssl rand -hex 32 > .secrets/testnet/session-secret
 chmod 600 .secrets/testnet/setup-token .secrets/testnet/session-secret
 ```
 
-GoPool itself only reads the payout address private key (`validator-key`). The rest of `wallet.json` goes into `node-config.toml`, which runs the validator node (`gopool-validator` service). That node produces the blocks; the pool keeps using its configured RPC URL and never points at the validator.
+GoPool reads the payout address private key (`validator-key`) and, for auto-register, `wallet.json` (signing + voting keys). The rest of `wallet.json` also goes into `node-config.toml` for `gopool-validator`. That node produces blocks. The pool uses the configured public RPC, with the validator node's internal RPC as a fallback and as the only endpoint for CreateValidator.
 
 ## Homelab testnet (`gopool-test`)
 
@@ -37,6 +37,7 @@ echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 docker secret create gopool_test_setup_token .secrets/testnet/setup-token
 docker secret create gopool_test_session_secret .secrets/testnet/session-secret
 docker secret create gopool_test_validator_key .secrets/testnet/validator-key
+docker secret create gopool_test_wallet_json .secrets/testnet/wallet.json
 docker secret create gopool_test_node_config .secrets/testnet/node-config.toml
 
 SHA=$(git rev-parse HEAD)
@@ -56,9 +57,9 @@ The daemon waits for `config.json` instead of crashing. After the assistant writ
 docker service logs --tail 100 gopool-test_gopool
 ```
 
-Readiness is complete when the daemon heartbeat reports the new configuration hash and derived validator address. A `readiness_error` can remain if the address is not a validator on chain. Force-update (`docker service update --force`) only when rolling out a new image.
+Readiness is complete when the daemon heartbeat reports the new configuration hash and derived validator address. On testnet the daemon faucets ~101k NIM, registers the validator, and self-stakes leftover. On mainnet send ≥101k NIM to the address first. A `readiness_error` remains until that finishes. Force-update (`docker service update --force`) only when rolling out a new image.
 
-The `gopool-validator` service syncs the chain on first start (watch `docker service logs gopool-test_gopool-validator`) and idles until the pool stakes the validator through the assistant. Once staked, it produces blocks; `automatic_reactivate` in its config re-activates it if it ever goes inactive.
+The `gopool-validator` service syncs the chain on first start (watch `docker service logs gopool-test_gopool-validator`). Its RPC is internal only. Once registered and self-staked, it produces blocks; `automatic_reactivate` in its config re-activates it if it ever goes inactive.
 
 The generated `node-config.toml` must keep `network_buffer_size > 0` (the `2.0.0-pre` image defaults it to 0, which panics the validator's request handlers) and `seed_nodes` (without them the node never bootstraps the DHT and stays at 0 peers). `make-validator-node-config.sh` sets both; if you swap the node image, re-check these against the new release.
 
@@ -70,6 +71,7 @@ Same flow with `deployments/docker-stack.yml` and unprefixed secret names:
 openssl rand -hex 32 | docker secret create gopool_setup_token -
 openssl rand -hex 32 | docker secret create gopool_session_secret -
 printf '%s' "$(cat .secrets/validator-key)" | docker secret create gopool_validator_key -
+docker secret create gopool_wallet_json .secrets/wallet.json
 docker secret create gopool_node_config .secrets/node-config.toml
 
 GOPOOL_IMAGE=ghcr.io/beardsoft/gopool:$(git rev-parse HEAD) \
@@ -77,7 +79,7 @@ GOPOOL_DOMAIN=your.pool.domain \
   docker stack deploy --with-registry-auth -c deployments/docker-stack.yml gopool
 ```
 
-After setup, wait for the heartbeat (and a possible `readiness_error` until the address is a validator). Force-update `gopool_gopool` and `gopool_gopool-api` only when deploying a new image.
+After setup, wait for the heartbeat. Testnet faucets/registers/self-stakes on its own; mainnet waits for ≥101k NIM on the address. Force-update `gopool_gopool` and `gopool_gopool-api` only when deploying a new image.
 
 ## Rotation and recovery
 

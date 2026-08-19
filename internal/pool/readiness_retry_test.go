@@ -63,7 +63,7 @@ func TestEnsureReadyRecordsHeartbeatThenSucceeds(t *testing.T) {
 			})
 		case "getValidatorByAddress":
 			n := validatorCalls.Add(1)
-			if n == 1 {
+			if n <= 2 {
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"jsonrpc": "2.0", "id": req.ID,
 					"error": map[string]any{"code": -32601, "message": "Validator not found"},

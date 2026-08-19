@@ -253,8 +253,8 @@ ${TLS_NOTE}
 
 Still manual:
   1. DNS A record, or a reverse proxy to http://${PRIMARY_IP:-THIS_IP}:80
-  2. Backup .secrets/wallet.json offline, then consider deleting it here
-  3. Stake/register the validator on chain (readiness_error until you do)
+  2. Backup .secrets/wallet.json offline (keep it until the daemon registers)
+  3. Mainnet: send at least 101000 NIM to the validator address. Testnet: the daemon faucets, registers, and self-stakes.
 
 Check status any time with:
   docker compose --env-file .env -f deployments/docker-compose.yml logs -f

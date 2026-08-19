@@ -66,12 +66,12 @@ it('polls after launch instead of showing a compose restart', async () => {
 it('shows readiness_error text after launch', async () => {
   mockSetupLaunch({
     '/api/pool': { body: { current_epoch: 0 }, status: 200 },
-    '/api/operator/readiness': { body: { rpc_ok: true, readiness_error: 'validator not found', validator_state: 'unready' } },
+    '/api/operator/readiness': { body: { rpc_ok: true, readiness_error: 'Waiting for 100000 NIM to register the validator (have 0 NIM)', validator_state: 'unready' } },
   })
   const wrapper = mount(Setup, { global: setupTestGlobals })
   await completeSetup(wrapper)
   await flushPromises()
-  expect(wrapper.text()).toContain('validator not found')
+  expect(wrapper.text()).toContain('Waiting for 100000 NIM to register the validator (have 0 NIM)')
 })
 
 it('applies status hints and skips the token step when the URL has a token', async () => {

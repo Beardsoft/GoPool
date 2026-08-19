@@ -294,7 +294,13 @@ func LoadDaemon(path string) (*Config, error) {
 		cfg.PrivateKey = strings.TrimSpace(string(key))
 	}
 	if walletPath := os.Getenv("POOL_WALLET_JSON_FILE"); walletPath != "" {
-		cfg.WalletJSONFile = walletPath
+		cfg.WalletJSONFile = strings.TrimSpace(walletPath)
+	}
+	if v := os.Getenv("VALIDATOR_RPC_URL"); v != "" {
+		cfg.ValidatorRPCURL = strings.TrimSpace(v)
+	}
+	if v := os.Getenv("FAUCET_URL"); v != "" {
+		cfg.FaucetURL = strings.TrimSpace(v)
 	}
 	if dry := os.Getenv("POOL_DRY_RUN"); dry != "" {
 		cfg.DryRun = dry == "1" || dry == "true" || dry == "TRUE"

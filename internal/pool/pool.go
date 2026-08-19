@@ -51,6 +51,8 @@ type Manager struct {
 	lastChainGaugeRefresh time.Time
 	lastValidatorObserve  time.Time
 	fileHash              string
+	lastFaucetAt          time.Time
+	lastRegisterAt        time.Time
 }
 
 // NewManager builds a Manager. Policy is loaded on Run.
@@ -323,10 +325,13 @@ func (m *Manager) ensureReady(ctx context.Context) error {
 	}
 	m.policy = policy
 
+	s := m.runBootstrap(ctx)
+
 	validator, err := m.chain.RPC.GetValidator(ctx, m.chain.Address())
 	if err != nil {
-		err = fmt.Errorf("load validator for pool wallet readiness: %w", err)
-		m.recordReadinessFailure(ctx, derived, err, false)
+		msg := bootstrapWaitingError(s)
+		err = fmt.Errorf("load validator for pool wallet readiness: %s", msg)
+		m.recordReadinessFailure(ctx, derived, err, true)
 		return err
 	}
 	if err := validatePoolWallet(m.cfg.ValidatorAddress, derived, validator); err != nil {

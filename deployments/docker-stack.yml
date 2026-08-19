@@ -9,10 +9,13 @@ services:
       SQLITE_DB: /root/data/pool.db
       CONFIG_FILE: /root/config/config.json
       POOL_PRIVATE_KEY_FILE: /run/secrets/gopool_validator_key
+      POOL_WALLET_JSON_FILE: /run/secrets/gopool_wallet_json
+      VALIDATOR_RPC_URL: http://gopool-validator:8648
+      FAUCET_URL: https://faucet.pos.nimiq-testnet.com/tapit
     volumes:
       - gopool_data:/root/data
       - gopool_config:/root/config:ro
-    secrets: [gopool_validator_key]
+    secrets: [gopool_validator_key, gopool_wallet_json]
     healthcheck:
       test: ["CMD-SHELL", "test -r /run/secrets/gopool_validator_key"]
     deploy:
@@ -21,9 +24,8 @@ services:
       placement: { constraints: [node.role == manager] }
     networks: [gopool_net]
 
-  # Validator node: produces blocks for the pool. Syncs the chain on first
-  # start; the pool stakes the validator via the setup wizard. No RPC: the
-  # pool keeps using its configured RPC URL.
+  # Validator node: produces blocks. RPC is internal (gopool-validator:8648)
+  # for CreateValidator and as a pool fallback — not published publicly.
   gopool-validator:
     image: ${NIMIQ_IMAGE:-ghcr.io/nimiq/core-rs-albatross:2.0.0-pre}
     volumes:
@@ -75,6 +77,7 @@ volumes:
   gopool_validator_data: { driver: local }
 secrets:
   gopool_validator_key: { external: true }
+  gopool_wallet_json: { external: true }
   gopool_setup_token: { external: true }
   gopool_session_secret: { external: true }
   gopool_node_config: { external: true }

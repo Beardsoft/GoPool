@@ -17,6 +17,9 @@ type Chain struct {
 	RPC     *rpc.Client
 	Signer  *signer.PrivateKey
 	Network nimiq.NetworkID
+	// Wallet talks to the local validator node's wallet RPC for CreateValidator.
+	// Nil when validator_rpc_url is unset.
+	Wallet *WalletRPC
 }
 
 func networkFromString(s string) (nimiq.NetworkID, error) {
@@ -48,11 +51,22 @@ func New(cfg *config.Config) (*Chain, error) {
 	if err != nil {
 		return nil, fmt.Errorf("chain: parsing private key: %w", err)
 	}
-	client, err := rpc.New(cfg.RPCURL, rpc.WithNetwork(network))
+	opts := []rpc.Option{rpc.WithNetwork(network)}
+	if cfg.ValidatorRPCURL != "" {
+		opts = append(opts, rpc.WithFallbackEndpoints(cfg.ValidatorRPCURL))
+	}
+	client, err := rpc.New(cfg.RPCURL, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("chain: %w", err)
 	}
-	return &Chain{RPC: client, Signer: key, Network: network}, nil
+	var wallet *WalletRPC
+	if cfg.ValidatorRPCURL != "" {
+		wallet, err = NewWalletRPC(cfg.ValidatorRPCURL)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &Chain{RPC: client, Signer: key, Network: network, Wallet: wallet}, nil
 }
 
 // NewRPCOnly builds an RPC client with no signer, for callers — like the API

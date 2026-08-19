@@ -35,8 +35,8 @@ That writes `/opt/gopool` (compose, Caddyfile, secrets — no git clone), instal
 1. Point DNS at the VPS (`A` record) **or** add a reverse-proxy host that forwards `https://your.domain` to `http://VPS:80`.
 2. On a public VPS, open ports `80` and `443` in the cloud firewall. The installer opens `ufw` when it is active.
 3. Open the printed `/setup?token=…` link, confirm the pre-filled wallet/network, set the pool name/fee, and launch.
-4. Back up `.secrets/wallet.json` offline, then consider deleting it from the server.
-5. Stake or register the validator on chain. A `readiness_error` is expected until that exists.
+4. Back up `.secrets/wallet.json` offline. Keep it on the server until the daemon has registered the validator (it needs the signing and voting keys). You can delete it afterward.
+5. On mainnet, send at least **101,000 NIM** to the validator address. On testnet the daemon requests that from the faucet. It then registers the validator and self-stakes the leftover. A `readiness_error` is expected until that finishes.
 
 If the domain already hits Nginx Proxy Manager, Traefik, or Cloudflare (it does not resolve to this machine), the installer serves HTTP on port `80` and tells you the forward target. Force either mode with `--tls auto` or `--tls proxy`.
 
@@ -67,7 +67,7 @@ The stack also runs `gopool-validator`, the validator node itself (it produces t
 
 The API sits behind a bundled Caddy reverse proxy that handles TLS automatically (Let's Encrypt for a real domain, a locally-trusted cert for `localhost`). The API container itself only binds to `127.0.0.1`; Caddy on ports `80`/`443` is the public entrypoint.
 
-Open `https://localhost` (or `https://your.pool.domain/setup?token=…` after the installer), complete the browser assistant, and wait until the daemon heartbeat matches. A `readiness_error` can remain if the configured address is not yet a validator on chain.
+Open `https://localhost` (or `https://your.pool.domain/setup?token=…` after the installer), complete the browser assistant, and wait until the daemon heartbeat matches. A `readiness_error` remains until faucet/register/self-stake finishes (or until you send ≥101k NIM on mainnet).
 
 ## VPS onboarding
 
@@ -81,7 +81,7 @@ Omit `--yes` for the interactive version (wallet generate vs paste, domain, star
 
 Caddy terminates TLS with Let's Encrypt when the domain resolves to this server. If it does not (existing reverse proxy), Caddy serves HTTP on port `80` and the installer prints the forward address. `52412` is loopback-only; `9100` (metrics) should stay internal unless you scrape it remotely.
 
-If you generate a new wallet, the full key set (address, signing, fee, and BLS voting keys — everything needed to also run the validator node itself, not just GoPool) is written to `.secrets/wallet.json`. Back it up offline and consider deleting it from the server afterward; GoPool itself only ever reads `.secrets/validator-key` (the payout address's private key). Pasting only a payout key starts the pool without the validator node — add the full key set to `.secrets/wallet.json` and re-run the wizard (or `make-validator-node-config.sh` + `docker compose up -d`) to enable it. The validator node syncs the chain on first start and produces blocks once the pool has staked it.
+If you generate a new wallet, the full key set (address, signing, fee, and BLS voting keys) is written to `.secrets/wallet.json`. Back it up offline. The daemon reads the payout key from `.secrets/validator-key` and, for auto-register, the signing/voting keys from `wallet.json`. Keep `wallet.json` until registration succeeds; you can delete it afterward. Pasting only a payout key starts the pool without auto-register or the validator node. The validator node syncs on first start and produces blocks once the daemon has registered and self-staked.
 
 It prints the setup URL (token included as `?token=`) at the end — open it and complete the browser assistant. The daemon waits for `config.json`, retries validator readiness, and reloads when the file hash changes. No Compose restart is required after setup or Settings saves.
 
@@ -100,6 +100,9 @@ Key fields:
 - `payout_mode` – `delegate` or `transfer`
 - `min_payout_luna` – minimum payout threshold
 - `auto_reactivate` – boolean
+- `faucet_url` – testnet faucet (ignored unless `network` is `test-albatross`; also `FAUCET_URL`)
+- `validator_rpc_url` – bundled validator node RPC for CreateValidator and as a pool fallback (`VALIDATOR_RPC_URL`)
+- `POOL_WALLET_JSON_FILE` – onboarding `wallet.json` (signing + voting keys) for auto-register
 - `metrics_addr` – Prometheus listener, e.g. `:9100`
 - `api_addr` and `validator_address` – public API/validator identity
 - `POOL_PRIVATE_KEY_FILE` – daemon-only validator key file

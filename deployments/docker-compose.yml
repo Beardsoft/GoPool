@@ -16,7 +16,10 @@ services:
       SQLITE_DB: /root/data/pool.db
       CONFIG_FILE: /root/config/config.json
       POOL_PRIVATE_KEY_FILE: /run/secrets/gopool_validator_key
-    secrets: [gopool_validator_key]
+      POOL_WALLET_JSON_FILE: /run/secrets/gopool_wallet_json
+      VALIDATOR_RPC_URL: http://gopool-validator:8648
+      FAUCET_URL: https://faucet.pos.nimiq-testnet.com/tapit
+    secrets: [gopool_validator_key, gopool_wallet_json]
     healthcheck:
       test: ["CMD-SHELL", "test -r /run/secrets/gopool_validator_key"]
       interval: 30s
@@ -51,8 +54,8 @@ services:
     restart: unless-stopped
 
   # Validator node: produces blocks for the pool. Needs .secrets/node-config.toml
-  # (scripts/make-validator-node-config.sh). Runs as the image's default user
-  # (nimiq:1001); the .nimiq dir/volume is pre-owned by nimiq. No RPC is exposed.
+  # (scripts/make-validator-node-config.sh). RPC stays internal (gopool-validator:8648)
+  # for CreateValidator and as a pool RPC fallback — not published to the host.
   gopool-validator:
     image: ghcr.io/nimiq/core-rs-albatross:2.0.0-pre
     container_name: gopool-validator
@@ -83,6 +86,8 @@ volumes:
 secrets:
   gopool_validator_key:
     file: ../.secrets/validator-key
+  gopool_wallet_json:
+    file: ../.secrets/wallet.json
   gopool_setup_token:
     file: ../.secrets/setup-token
   gopool_session_secret:
