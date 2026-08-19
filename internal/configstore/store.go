@@ -79,6 +79,8 @@ func (s *Store) Save(ctx context.Context, actor, expectedHash string, editable c
 	merged := config.FromEditable(editable)
 	merged.StuckPayoutEpochs = current.StuckPayoutEpochs
 	merged.DryRun = current.DryRun
+	merged.FaucetURL = current.FaucetURL
+	merged.ValidatorRPCURL = current.ValidatorRPCURL
 	merged.PrivateKey = s.carried().PrivateKey
 	merged.SessionSecret = s.carried().SessionSecret
 	merged.ApplySecrets(current.AlertSecrets())

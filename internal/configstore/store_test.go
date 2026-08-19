@@ -46,7 +46,7 @@ func TestStoreRejectsStaleHashWithoutChangingFile(t *testing.T) {
 
 func TestStoreSaveMergesSecretsAndCarriesUnmanagedFields(t *testing.T) {
 	store := newTestStore(t)
-	seed := `{"rpc_url":"https://rpc-testnet.nimiqscan.com","network":"test-albatross","pool_fee_wallet":"NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E","pool_fee_percentage":0.01,"payout_mode":"delegate","min_payout_luna":100000,"auto_reactivate":true,"api_addr":":8080","validator_address":"NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E","pool_name":"GoPool","private_key":"legacy-key-value","session_secret":"legacy-session-value","alert_telegram_token":"old-token","stuck_payout_epochs":7}`
+	seed := `{"rpc_url":"https://rpc-testnet.nimiqscan.com","network":"test-albatross","pool_fee_wallet":"NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E","pool_fee_percentage":0.01,"payout_mode":"delegate","min_payout_luna":100000,"auto_reactivate":true,"api_addr":":8080","validator_address":"NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E","pool_name":"GoPool","private_key":"legacy-key-value","session_secret":"legacy-session-value","alert_telegram_token":"old-token","stuck_payout_epochs":7,"faucet_url":"https://faucet.example","validator_rpc_url":"http://127.0.0.1:8648"}`
 	if err := os.WriteFile(store.Path(), []byte(seed), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestStoreSaveMergesSecretsAndCarriesUnmanagedFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(store.Path())
-	for _, want := range []string{"legacy-key-value", "legacy-session-value", "tg-new-token", "wh-new-token", `"stuck_payout_epochs": 7`} {
+	for _, want := range []string{"legacy-key-value", "legacy-session-value", "tg-new-token", "wh-new-token", `"stuck_payout_epochs": 7`, `"faucet_url": "https://faucet.example"`, `"validator_rpc_url": "http://127.0.0.1:8648"`} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("config file missing %q: %s", want, raw)
 		}

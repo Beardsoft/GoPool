@@ -142,17 +142,17 @@ func TestLoadDaemonAutostakeURLs(t *testing.T) {
 	cases := []struct {
 		name    string
 		json    string
-		wantErr bool
+		wantErr string
 	}{
-		{"omitted urls", `{"payout_mode":"delegate","pool_fee_percentage":0.01}`, false},
-		{"empty faucet_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"faucet_url":""}`, false},
-		{"empty validator_rpc_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"validator_rpc_url":""}`, false},
-		{"invalid faucet_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"faucet_url":"not-a-url"}`, true},
-		{"ftp faucet_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"faucet_url":"ftp://faucet.example"}`, true},
-		{"faucet_url missing host", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"faucet_url":"https://"}`, true},
-		{"invalid validator_rpc_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"validator_rpc_url":"not-a-url"}`, true},
-		{"ftp validator_rpc_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"validator_rpc_url":"ftp://127.0.0.1:8648"}`, true},
-		{"validator_rpc_url missing host", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"validator_rpc_url":"http://"}`, true},
+		{"omitted urls", `{"payout_mode":"delegate","pool_fee_percentage":0.01}`, ""},
+		{"empty faucet_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"faucet_url":""}`, ""},
+		{"empty validator_rpc_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"validator_rpc_url":""}`, ""},
+		{"invalid faucet_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"faucet_url":"not-a-url"}`, "config: faucet_url must be an HTTP(S) URL"},
+		{"ftp faucet_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"faucet_url":"ftp://faucet.example"}`, "config: faucet_url must be an HTTP(S) URL"},
+		{"faucet_url missing host", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"faucet_url":"https://"}`, "config: faucet_url must be an HTTP(S) URL"},
+		{"invalid validator_rpc_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"validator_rpc_url":"not-a-url"}`, "config: validator_rpc_url must be an HTTP(S) URL"},
+		{"ftp validator_rpc_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"validator_rpc_url":"ftp://127.0.0.1:8648"}`, "config: validator_rpc_url must be an HTTP(S) URL"},
+		{"validator_rpc_url missing host", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"validator_rpc_url":"http://"}`, "config: validator_rpc_url must be an HTTP(S) URL"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -161,8 +161,14 @@ func TestLoadDaemonAutostakeURLs(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, err := LoadDaemon(path)
-			if (err != nil) != c.wantErr {
-				t.Fatalf("LoadDaemon() error = %v, wantErr %v", err, c.wantErr)
+			if c.wantErr == "" {
+				if err != nil {
+					t.Fatalf("LoadDaemon() error = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != c.wantErr {
+				t.Fatalf("LoadDaemon() error = %v, want %q", err, c.wantErr)
 			}
 		})
 	}

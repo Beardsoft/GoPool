@@ -147,7 +147,7 @@ func validateOptionalHTTPURL(name, value string) error {
 	}
 	u, err := url.Parse(value)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
-		return fmt.Errorf("%s must be an HTTP(S) URL", name)
+		return fmt.Errorf("config: %s must be an HTTP(S) URL", name)
 	}
 	return nil
 }
