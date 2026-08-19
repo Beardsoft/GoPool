@@ -6,8 +6,8 @@
 set -euo pipefail
 
 GOPOOL_DEFAULT_IMAGE="${GOPOOL_IMAGE:-ghcr.io/beardsoft/gopool:latest}"
-NIMIQ_TOOL_IMAGE="${NIMIQ_IMAGE:-ghcr.io/nimiq/core-rs-albatross:2.0.0-pre}"
-NIMIQ_NODE_IMAGE="${NIMIQ_NODE_IMAGE:-ghcr.io/nimiq/core-rs-albatross:2.0.0-pre}"
+NIMIQ_TOOL_IMAGE="${NIMIQ_IMAGE:-ghcr.io/nimiq/core-rs-albatross:latest}"
+NIMIQ_NODE_IMAGE="${NIMIQ_NODE_IMAGE:-ghcr.io/nimiq/core-rs-albatross:latest}"
 
 gopool_rpc_url_for_network() {
   case "$1" in
@@ -113,7 +113,7 @@ EOF
 }
 
 gopool_write_compose() {
-  local dest="$1" node_image="$2"
+  local dest="$1"
   cat > "$dest" <<EOF
 name: gopool
 services:
@@ -164,7 +164,7 @@ services:
     restart: unless-stopped
 
   gopool-validator:
-    image: ${node_image}
+    image: \${NIMIQ_NODE_IMAGE:-ghcr.io/nimiq/core-rs-albatross:latest}
     container_name: gopool-validator
     volumes:
       - validator_data:/home/nimiq/.nimiq
@@ -432,7 +432,7 @@ fi
 step "Step 2/5: Secrets and stack files"
 install -d -m 700 .secrets data/config
 gopool_write_caddyfile Caddyfile
-gopool_write_compose compose.yml "$NIMIQ_NODE_IMAGE"
+gopool_write_compose compose.yml
 
 if [ ! -f .secrets/setup-token ]; then
   openssl rand -hex 32 > .secrets/setup-token
@@ -463,6 +463,7 @@ PRIMARY_IP="$(gopool_primary_ipv4)"
 gopool_set_env_var .env GOPOOL_DOMAIN "$DOMAIN"
 gopool_set_env_var .env GOPOOL_SITE "$SITE"
 gopool_set_env_var .env GOPOOL_IMAGE "$GOPOOL_DEFAULT_IMAGE"
+gopool_set_env_var .env NIMIQ_NODE_IMAGE "$NIMIQ_NODE_IMAGE"
 if [ "$TLS_MODE" = proxy ]; then
   echo "Domain ${DOMAIN} does not point at this server (${PRIMARY_IP:-unknown}; DNS=${RESOLVED_IP:-unresolved})."
   echo "Serving HTTP on :80. Point your reverse proxy at http://${PRIMARY_IP:-THIS_IP}:80"

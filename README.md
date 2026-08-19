@@ -82,7 +82,10 @@ cd /opt/gopool
 docker compose ps
 docker compose logs -f gopool
 docker compose logs -f gopool-validator
+docker compose pull && docker compose up -d
 ```
+
+That last command updates GoPool and the validator node to the published `latest` images. The validator restarts briefly. There is no in-dashboard updater: giving the website Docker control would put the keys one click from a compromised operator session.
 
 In the operator dashboard you can change the pool name and fee, turn on Telegram or Discord alerts, and watch whether the validator is elected.
 

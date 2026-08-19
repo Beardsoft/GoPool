@@ -57,7 +57,7 @@ services:
   # (scripts/make-validator-node-config.sh). RPC stays internal (gopool-validator:8648)
   # for CreateValidator and as a pool RPC fallback — not published to the host.
   gopool-validator:
-    image: ghcr.io/nimiq/core-rs-albatross:2.0.0-pre
+    image: ${NIMIQ_NODE_IMAGE:-ghcr.io/nimiq/core-rs-albatross:latest}
     container_name: gopool-validator
     volumes:
       - validator_data:/home/nimiq/.nimiq

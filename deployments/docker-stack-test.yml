@@ -30,7 +30,7 @@ services:
   # Validator node: produces blocks. RPC is internal (gopool-validator:8648)
   # for CreateValidator and as a pool fallback — not published publicly.
   gopool-validator:
-    image: ${NIMIQ_IMAGE:-ghcr.io/nimiq/core-rs-albatross:2.0.0-pre}
+    image: ${NIMIQ_IMAGE:-ghcr.io/nimiq/core-rs-albatross:latest}
     volumes:
       - gopool_validator_data:/home/nimiq/.nimiq
     secrets:
