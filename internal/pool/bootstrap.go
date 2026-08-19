@@ -3,14 +3,12 @@ package pool
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	nimiq "github.com/NimMiniApps/nimiq-go"
-	"github.com/NimMiniApps/nimiq-go/rpc"
 
 	"github.com/Beardsoft/GoPool/internal/chain"
 	"github.com/Beardsoft/GoPool/internal/db"
@@ -140,8 +138,6 @@ func (m *Manager) snapshotBootstrap(ctx context.Context) (bootstrapSnapshot, err
 	}
 	if _, err := m.chain.RPC.GetStaker(ctx, m.chain.Address()); err == nil {
 		s.HasSelfStaker = true
-	} else if err != nil && !errors.Is(err, rpc.ErrNoStaker) {
-		// keep HasSelfStaker false on not-found; ignore other errors
 	}
 	if pending, err := m.queries.HasPendingValidatorAction(ctx, actionCreate); err == nil {
 		s.PendingRegister = pending
