@@ -1,104 +1,18 @@
 #!/usr/bin/env bash
-# Interactive or one-shot wizard for a fresh VPS: installs Docker if missing,
-# generates or imports the validator wallet, creates secrets, writes setup
-# hints for the browser assistant, and brings the pool up behind TLS.
+# Interactive or one-shot wizard for a git checkout. VPS installs should use
+# scripts/install.sh (curl|bash, no clone). This path writes secrets in the
+# repo and starts deployments/docker-compose.yml (supports --build).
 set -euo pipefail
 
-gopool_rpc_url_for_network() {
-  case "$1" in
-    test-albatross) printf '%s\n' 'https://rpc-testnet.nimiqscan.com' ;;
-    *) printf '%s\n' 'https://rpc-mainnet.nimiqscan.com' ;;
-  esac
-}
-
-gopool_setup_url() {
-  local domain="$1" token="$2"
-  printf 'https://%s/setup?token=%s\n' "$domain" "$token"
-}
-
-gopool_write_setup_hints() {
-  local dest="$1" address="$2" network="$3" rpc="$4" fee="${5:-$2}"
-  cat > "$dest" <<JSON
-{
-  "validator_address": "$address",
-  "pool_fee_wallet": "$fee",
-  "network": "$network",
-  "rpc_url": "$rpc"
-}
-JSON
-}
-
-gopool_wallet_address() {
-  python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("validator_address",""))' "$1"
-}
-
-gopool_set_env_var() {
-  local file="$1" key="$2" value="$3"
-  if [ -f "$file" ]; then
-    grep -v "^${key}=" "$file" > "${file}.tmp" || true
-    mv "${file}.tmp" "$file"
-  fi
-  echo "${key}=${value}" >> "$file"
-}
-
-gopool_local_ipv4s() {
-  ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1
-}
-
-gopool_resolve_ipv4() {
-  getent ahostsv4 "$1" 2>/dev/null | awk '{print $1; exit}' || true
-}
-
-gopool_primary_ipv4() {
-  local ips
-  ips="$(gopool_local_ipv4s || true)"
-  printf '%s\n' "${ips%%$'\n'*}"
-}
-
-gopool_domain_points_here() {
-  local resolved="$1" ip
-  [ -n "$resolved" ] || return 1
-  while read -r ip; do
-    [ -n "$ip" ] || continue
-    [ "$ip" = "$resolved" ] && return 0
-  done <<<"$(gopool_local_ipv4s)"
-  return 1
-}
-
-# Prints auto (Caddy + Let's Encrypt) or proxy (HTTP behind an existing TLS proxy).
-gopool_choose_tls_mode() {
-  local domain="$1" override="${2:-}" resolved
-  case "$override" in
-    auto|proxy) printf '%s\n' "$override"; return ;;
-    '') ;;
-    *) echo "Unknown --tls mode: $override (use auto or proxy)" >&2; return 1 ;;
-  esac
-  if [ "$domain" = "localhost" ] || [ "$domain" = "127.0.0.1" ]; then
-    printf '%s\n' auto
-    return
-  fi
-  resolved="$(gopool_resolve_ipv4 "$domain")"
-  if gopool_domain_points_here "$resolved"; then
-    printf '%s\n' auto
-  else
-    printf '%s\n' proxy
-  fi
-}
-
-gopool_site_address() {
-  local domain="$1" mode="$2"
-  if [ "$mode" = proxy ]; then
-    printf 'http://%s\n' "$domain"
-  else
-    printf '%s\n' "$domain"
-  fi
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=install.sh
+source "$SCRIPT_DIR/install.sh"
 
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_DIR"
 
 ASSUME_YES=0
@@ -115,13 +29,14 @@ usage() {
   cat <<EOF
 Usage: sudo ./scripts/vps-onboard.sh [options]
 
+For a production VPS, prefer curl|bash of scripts/install.sh (no git clone).
+This wizard is for an existing checkout.
+
   --yes                 non-interactive (requires --domain)
   --domain NAME         DNS A record pointing at this server
   --network NAME        main-albatross (default) or test-albatross
   --rpc-url URL         pool RPC endpoint (defaults from --network)
-  --tls auto|proxy      auto: Caddy + Let's Encrypt (default when DNS
-                        points here). proxy: HTTP on :80 behind an
-                        existing reverse proxy (NPM, Traefik, Cloudflare)
+  --tls auto|proxy      auto: Caddy + Let's Encrypt; proxy: HTTP behind TLS proxy
   --generate-wallet     create a new validator identity
   --no-wallet           require an existing .secrets/validator-key
   --skip-start          write secrets/hints but do not start Compose
@@ -171,20 +86,15 @@ confirm() {
   [[ "$reply" =~ ^[Yy]$ ]]
 }
 
-ensure_packages() {
-  local pkgs=()
-  command -v curl >/dev/null || pkgs+=(curl ca-certificates)
-  command -v openssl >/dev/null || pkgs+=(openssl)
-  command -v python3 >/dev/null || pkgs+=(python3)
-  command -v git >/dev/null || pkgs+=(git)
-  if [ ${#pkgs[@]} -gt 0 ]; then
-    apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${pkgs[@]}"
-  fi
-}
-
 step "Step 1/5: Packages and Docker"
-ensure_packages
+pkgs=()
+command -v curl >/dev/null || pkgs+=(curl ca-certificates)
+command -v openssl >/dev/null || pkgs+=(openssl)
+command -v python3 >/dev/null || pkgs+=(python3)
+if [ ${#pkgs[@]} -gt 0 ]; then
+  apt-get update -qq
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${pkgs[@]}"
+fi
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker not found, installing..."
   curl -fsSL https://get.docker.com | sh
@@ -237,7 +147,7 @@ if [ ! -f .secrets/validator-key ]; then
 fi
 
 if [ "$GENERATE_WALLET" = 1 ] && [ ! -f .secrets/validator-key ]; then
-  ./scripts/generate-validator-wallet.sh
+  gopool_generate_wallet .secrets
 elif [ ! -f .secrets/validator-key ]; then
   read -rsp "Paste the existing validator payout private key (hex): " key
   echo
@@ -246,10 +156,8 @@ elif [ ! -f .secrets/validator-key ]; then
     cat <<EOF
 
 Note: a pasted payout key lets GoPool pay out, but the validator node
-(gopool-validator) cannot run without the full key set. To add it later,
-save the full key set to .secrets/wallet.json and run:
-  ./scripts/make-validator-node-config.sh --network <network>
-  docker compose -f deployments/docker-compose.yml up -d
+cannot run without the full key set. To add it later, save the full key
+set to .secrets/wallet.json and re-run this wizard.
 EOF
   else
     echo "Skipped: create .secrets/validator-key (mode 600) before starting the daemon."
@@ -265,7 +173,7 @@ if [ -f .secrets/wallet.json ] && [ ! -f .secrets/node-config.toml ]; then
   fi
   NETWORK="$validator_network"
   RPC_URL="$(gopool_rpc_url_for_network "$NETWORK")"
-  ./scripts/make-validator-node-config.sh --network "$NETWORK"
+  gopool_write_node_config .secrets/wallet.json "$NETWORK" .secrets/node-config.toml
 fi
 
 step "Step 4/5: Domain / TLS"
@@ -301,9 +209,6 @@ gopool_write_setup_hints data/config/setup-hints.json "$VALIDATOR_ADDRESS" "$NET
 
 step "Step 5/5: Start GoPool"
 start_stack() {
-  # Compose file lives in deployments/; load repo-root .env so GOPOOL_SITE/DOMAIN
-  # reach Caddy. File secrets are bind-mounted, so node-config.toml must be
-  # world-readable (directory stays mode 700).
   local compose=(docker compose --env-file .env -f deployments/docker-compose.yml)
   local services=(gopool gopool-api caddy)
   if [ -f .secrets/node-config.toml ]; then

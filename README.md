@@ -28,7 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/Beardsoft/GoPool/master/scripts/ins
   | sudo bash -s -- --domain pool.example.com
 ```
 
-That clones into `/opt/gopool`, installs Docker if needed, generates a validator wallet, pulls `ghcr.io/beardsoft/gopool:latest`, and starts the daemon + API + validator node behind Caddy. It prints a setup URL that already includes the one-time token — open it, confirm name/fee/operators, and launch. The API writes the configuration and activates in-process; no Compose restart.
+That writes `/opt/gopool` (compose, Caddyfile, secrets — no git clone), installs Docker if needed, generates a validator wallet, pulls `ghcr.io/beardsoft/gopool:latest`, and starts the daemon + API + validator node behind Caddy. It prints a setup URL that already includes the one-time token — open it, confirm name/fee/operators, and launch. The API writes the configuration and activates in-process; no Compose restart.
 
 **You still do by hand:**
 
@@ -71,7 +71,7 @@ Open `https://localhost` (or `https://your.pool.domain/setup?token=…` after th
 
 ## VPS onboarding
 
-`scripts/install.sh` is the one-shot path above. From a checkout, the same wizard is:
+`scripts/install.sh` is the one-shot path above: it does **not** clone this repository. It generates a Compose file that only references published images. From a git checkout (local `--build`, or the interactive wizard), use:
 
 ```bash
 sudo ./scripts/vps-onboard.sh --yes --domain pool.example.com --generate-wallet
