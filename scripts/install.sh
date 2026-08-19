@@ -133,6 +133,8 @@ services:
       VALIDATOR_RPC_URL: http://gopool-validator:8648
       FAUCET_URL: https://faucet.pos.nimiq-testnet.com/tapit
     secrets: [gopool_validator_key, gopool_wallet_json]
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
     healthcheck:
       test: ["CMD-SHELL", "timeout 1 bash -c 'echo >/dev/tcp/127.0.0.1/9100'"]
       interval: 30s
@@ -155,6 +157,8 @@ services:
       POOL_SETUP_TOKEN_FILE: /run/secrets/gopool_setup_token
       POOL_SESSION_SECRET_FILE: /run/secrets/gopool_session_secret
     secrets: [gopool_setup_token, gopool_session_secret]
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
     healthcheck:
       test: ["CMD-SHELL", "timeout 1 bash -c 'echo >/dev/tcp/127.0.0.1/8080'"]
       interval: 30s
@@ -171,6 +175,8 @@ services:
     secrets:
       - source: gopool_node_config
         target: /home/nimiq/.nimiq/client.toml
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
     restart: unless-stopped
 
   caddy:
@@ -184,6 +190,22 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
     depends_on: [gopool-api]
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+    restart: unless-stopped
+
+  watchtower:
+    image: nickfedor/watchtower:latest
+    container_name: gopool-watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_ROLLING_RESTART: "true"
+      WATCHTOWER_TIMEOUT: "60s"
+      WATCHTOWER_SCHEDULE: "0 0 4 * * *"
+      TZ: UTC
     restart: unless-stopped
 
 volumes:
@@ -480,7 +502,7 @@ gopool_write_setup_hints data/config/setup-hints.json "$VALIDATOR_ADDRESS" "$NET
 
 step "Step 5/5: Start GoPool"
 start_stack() {
-  local services=(gopool gopool-api caddy)
+  local services=(gopool gopool-api caddy watchtower)
   if [ -f .secrets/node-config.toml ]; then
     services+=(gopool-validator)
   else

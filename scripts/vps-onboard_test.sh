@@ -35,6 +35,12 @@ grep -q './.secrets/validator-key' "$dir/compose.yml" || fail "compose secrets p
 grep -q 'name: gopool' "$dir/compose.yml" || fail "compose project name"
 grep -q '/dev/tcp/127.0.0.1/8080' "$dir/compose.yml" || fail "api healthcheck"
 grep -q '/dev/tcp/127.0.0.1/9100' "$dir/compose.yml" || fail "daemon healthcheck"
+grep -q 'nickfedor/watchtower' "$dir/compose.yml" || fail "watchtower image"
+grep -q '/var/run/docker.sock:/var/run/docker.sock' "$dir/compose.yml" || fail "watchtower docker.sock"
+grep -q 'WATCHTOWER_LABEL_ENABLE' "$dir/compose.yml" || fail "watchtower label filter"
+grep -q 'WATCHTOWER_SCHEDULE' "$dir/compose.yml" || fail "watchtower schedule"
+grep -q 'com.centurylinklabs.watchtower.enable=true' "$dir/compose.yml" || fail "watchtower enable labels"
+grep -q 'caddy watchtower' scripts/install.sh || fail "install starts watchtower"
 
 wallet="$dir/wallet.json"
 cat > "$wallet" <<'JSON'

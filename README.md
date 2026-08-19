@@ -82,10 +82,13 @@ cd /opt/gopool
 docker compose ps
 docker compose logs -f gopool
 docker compose logs -f gopool-validator
-docker compose pull && docker compose up -d
 ```
 
-That last command updates GoPool and the validator node to the published `latest` images. The validator restarts briefly. There is no in-dashboard updater: giving the website Docker control would put the keys one click from a compromised operator session.
+Watchtower checks the GoPool, validator, API, and Caddy images every day at 04:00 UTC and restarts one container at a time if `latest` moved. It only touches containers with the Watchtower label, not everything else on the VPS. For an update right now:
+
+```bash
+docker compose pull && docker compose up -d
+```
 
 In the operator dashboard you can change the pool name and fee, turn on Telegram or Discord alerts, and watch whether the validator is elected.
 
