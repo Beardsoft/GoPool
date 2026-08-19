@@ -112,3 +112,84 @@ func TestValidateStillIgnoresMetricsAddr(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLoadDaemonCopiesAutostakeFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	body := `{"payout_mode":"delegate","pool_fee_percentage":0.01,"faucet_url":"https://faucet.example","validator_rpc_url":"http://127.0.0.1:8648"}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	walletPath := filepath.Join(dir, "wallet.json")
+	t.Setenv("POOL_WALLET_JSON_FILE", walletPath)
+
+	cfg, err := LoadDaemon(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.FaucetURL != "https://faucet.example" {
+		t.Fatalf("FaucetURL = %q, want https://faucet.example", cfg.FaucetURL)
+	}
+	if cfg.ValidatorRPCURL != "http://127.0.0.1:8648" {
+		t.Fatalf("ValidatorRPCURL = %q, want http://127.0.0.1:8648", cfg.ValidatorRPCURL)
+	}
+	if cfg.WalletJSONFile != walletPath {
+		t.Fatalf("WalletJSONFile = %q, want path %q (must not read the file)", cfg.WalletJSONFile, walletPath)
+	}
+}
+
+func TestLoadDaemonAutostakeURLs(t *testing.T) {
+	cases := []struct {
+		name    string
+		json    string
+		wantErr bool
+	}{
+		{"omitted urls", `{"payout_mode":"delegate","pool_fee_percentage":0.01}`, false},
+		{"empty faucet_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"faucet_url":""}`, false},
+		{"empty validator_rpc_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"validator_rpc_url":""}`, false},
+		{"invalid faucet_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"faucet_url":"not-a-url"}`, true},
+		{"ftp faucet_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"faucet_url":"ftp://faucet.example"}`, true},
+		{"faucet_url missing host", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"faucet_url":"https://"}`, true},
+		{"invalid validator_rpc_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"validator_rpc_url":"not-a-url"}`, true},
+		{"ftp validator_rpc_url", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"validator_rpc_url":"ftp://127.0.0.1:8648"}`, true},
+		{"validator_rpc_url missing host", `{"payout_mode":"delegate","pool_fee_percentage":0.01,"validator_rpc_url":"http://"}`, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.json")
+			if err := os.WriteFile(path, []byte(c.json), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadDaemon(path)
+			if (err != nil) != c.wantErr {
+				t.Fatalf("LoadDaemon() error = %v, wantErr %v", err, c.wantErr)
+			}
+		})
+	}
+}
+
+func TestEditableOmitsAutostakeFields(t *testing.T) {
+	cfg := Config{
+		FaucetURL:       "https://faucet.example",
+		ValidatorRPCURL: "http://127.0.0.1:8648",
+		WalletJSONFile:  "/secret/wallet.json",
+	}
+	got, err := json.Marshal(cfg.Editable())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leak := range []string{"faucet_url", "validator_rpc_url", "WalletJSONFile", cfg.FaucetURL, cfg.ValidatorRPCURL, cfg.WalletJSONFile} {
+		if strings.Contains(string(got), leak) {
+			t.Fatalf("Editable leaked %q: %s", leak, got)
+		}
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(got, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"faucet_url", "validator_rpc_url", "wallet_json_file"} {
+		if _, ok := decoded[key]; ok {
+			t.Fatalf("Editable JSON contains %q: %s", key, got)
+		}
+	}
+}

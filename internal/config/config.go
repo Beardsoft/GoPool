@@ -43,6 +43,10 @@ type Config struct {
 	PoolDescription string `json:"pool_description,omitempty"`
 	ContactURL      string `json:"contact_url,omitempty"`
 	Disclosure      string `json:"disclosure,omitempty"`
+
+	FaucetURL       string `json:"faucet_url,omitempty"`
+	ValidatorRPCURL string `json:"validator_rpc_url,omitempty"`
+	WalletJSONFile  string `json:"-"`
 }
 
 // Editable is the operator-editable subset of Config exposed via the API.
@@ -137,6 +141,17 @@ func ConfigHash(editable Editable, secrets AlertSecrets) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func validateOptionalHTTPURL(name, value string) error {
+	if value == "" {
+		return nil
+	}
+	u, err := url.Parse(value)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("%s must be an HTTP(S) URL", name)
+	}
+	return nil
+}
+
 // Validate checks invariants that must hold for the daemon to run.
 func (c *Config) Validate() error {
 	if c.PayoutMode != "delegate" && c.PayoutMode != "transfer" {
@@ -144,6 +159,12 @@ func (c *Config) Validate() error {
 	}
 	if c.PoolFeePercentage < 0 || c.PoolFeePercentage >= 1 {
 		return fmt.Errorf("config: pool_fee_percentage must be in [0, 1)")
+	}
+	if err := validateOptionalHTTPURL("faucet_url", c.FaucetURL); err != nil {
+		return err
+	}
+	if err := validateOptionalHTTPURL("validator_rpc_url", c.ValidatorRPCURL); err != nil {
+		return err
 	}
 	return nil
 }
@@ -271,6 +292,9 @@ func LoadDaemon(path string) (*Config, error) {
 			return nil, fmt.Errorf("read validator key: %w", err)
 		}
 		cfg.PrivateKey = strings.TrimSpace(string(key))
+	}
+	if walletPath := os.Getenv("POOL_WALLET_JSON_FILE"); walletPath != "" {
+		cfg.WalletJSONFile = walletPath
 	}
 	if dry := os.Getenv("POOL_DRY_RUN"); dry != "" {
 		cfg.DryRun = dry == "1" || dry == "true" || dry == "TRUE"
