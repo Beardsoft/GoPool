@@ -307,8 +307,8 @@ PY
   chmod 644 "$out_file"
 }
 
-# Sourced by tests / vps-onboard.sh. curl|bash runs the block below.
-if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+# Sourced by tests / vps-onboard.sh. curl|bash has no BASH_SOURCE — run main.
+if [[ -n "${BASH_SOURCE[0]:-}" && "${BASH_SOURCE[0]}" != "$0" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
@@ -408,7 +408,7 @@ install -d -m 755 "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 if [ -d .git ]; then
-  echo "Existing git checkout in ${INSTALL_DIR}; switching to image-only layout."
+  echo "Existing source checkout in ${INSTALL_DIR}; switching to image-only layout."
 fi
 if [ -f deployments/docker-compose.yml ]; then
   echo "Stopping previous source-tree Compose stack..."

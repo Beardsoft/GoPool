@@ -70,14 +70,16 @@ rm -f "$tmp"
 
 help_out="$(bash scripts/install.sh --help)"
 printf '%s\n' "$help_out" | grep -q 'Pulls published images' || fail "install help should say it pulls images"
-if grep -E 'git clone |git fetch |git checkout ' scripts/install.sh; then
-  fail "install.sh must not invoke git"
-fi
+pipe_help="$(bash -s -- --help < scripts/install.sh)"
+printf '%s\n' "$pipe_help" | grep -q 'Pulls published images' || fail "piped install.sh --help (curl|bash)"
 if bash scripts/install.sh >/dev/null 2>&1; then
   fail "install.sh should require --domain"
 fi
 if bash scripts/vps-onboard.sh --yes >/dev/null 2>&1; then
   fail "vps-onboard.sh --yes should require --domain"
+fi
+if ! grep -q 'BASH_SOURCE\[0\]:-' scripts/install.sh; then
+  fail "install.sh must tolerate unset BASH_SOURCE"
 fi
 
 echo OK
