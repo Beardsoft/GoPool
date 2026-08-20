@@ -101,6 +101,27 @@ func TestEpochBatchAtMatchesNode(t *testing.T) {
 	}
 }
 
+func TestEpochClockAtUsesPolicyNotGuesses(t *testing.T) {
+	p := &rpc.Policy{BlocksPerEpoch: 240, GenesisBlockNumber: 1000, BlockSeparationTime: 1000}
+	cases := []struct {
+		height, epoch, into, remaining, remainingMs uint32
+	}{
+		{1000, 0, 0, 0, 0},
+		{1001, 1, 1, 239, 239_000},
+		{1240, 1, 240, 0, 0},
+		{1241, 2, 1, 239, 239_000},
+	}
+	for _, c := range cases {
+		got := EpochClockAt(p, c.height)
+		if got.Epoch != c.epoch || got.Head != c.height || got.BlocksIntoEpoch != c.into || got.RemainingBlocks != c.remaining || got.RemainingMs != uint64(c.remainingMs) {
+			t.Errorf("EpochClockAt(%d) = %+v, want epoch=%d into=%d remaining=%d ms=%d", c.height, got, c.epoch, c.into, c.remaining, c.remainingMs)
+		}
+		if got.BlocksPerEpoch != 240 || got.BlockSeparationMs != 1000 {
+			t.Errorf("EpochClockAt(%d) dropped policy: %+v", c.height, got)
+		}
+	}
+}
+
 func TestShouldRefreshGauges(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	if !shouldRefreshGauges(time.Time{}, now) {

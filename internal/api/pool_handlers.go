@@ -6,23 +6,38 @@ import (
 	"net/http"
 
 	"github.com/Beardsoft/GoPool/internal/db"
+	"github.com/Beardsoft/GoPool/internal/logger"
+	"github.com/Beardsoft/GoPool/internal/pool"
+
+	"go.uber.org/zap"
 )
 
 type poolResponse struct {
-	CurrentEpoch      int64   `json:"current_epoch"`
-	EpochStatus       string  `json:"epoch_status"`
-	NumStakers        int64   `json:"num_stakers"`
-	TotalStakeLuna    int64   `json:"total_stake_luna"`
-	TotalRewardsLuna  int64   `json:"total_rewards_luna"`
-	PoolFeePercentage float64 `json:"pool_fee_percentage"`
-	PoolName          string  `json:"pool_name"`
-	PoolDescription   string  `json:"pool_description"`
-	ContactURL        string  `json:"contact_url"`
-	TelegramURL       string  `json:"telegram_url"`
-	DiscordURL        string  `json:"discord_url"`
-	XURL              string  `json:"x_url"`
-	Disclosure        string  `json:"disclosure"`
-	Network           string  `json:"network"`
+	CurrentEpoch      int64           `json:"current_epoch"`
+	EpochStatus       string          `json:"epoch_status"`
+	NumStakers        int64           `json:"num_stakers"`
+	TotalStakeLuna    int64           `json:"total_stake_luna"`
+	TotalRewardsLuna  int64           `json:"total_rewards_luna"`
+	PoolFeePercentage float64         `json:"pool_fee_percentage"`
+	PoolName          string          `json:"pool_name"`
+	PoolDescription   string          `json:"pool_description"`
+	ContactURL        string          `json:"contact_url"`
+	TelegramURL       string          `json:"telegram_url"`
+	DiscordURL        string          `json:"discord_url"`
+	XURL              string          `json:"x_url"`
+	Disclosure        string          `json:"disclosure"`
+	Network           string          `json:"network"`
+	EpochClock        *epochClockJSON `json:"epoch_clock,omitempty"`
+}
+
+type epochClockJSON struct {
+	Epoch             uint32 `json:"epoch"`
+	Head              uint32 `json:"head"`
+	BlocksIntoEpoch   uint32 `json:"blocks_into_epoch"`
+	BlocksPerEpoch    uint32 `json:"blocks_per_epoch"`
+	BlockSeparationMs uint32 `json:"block_separation_ms"`
+	RemainingBlocks   uint32 `json:"remaining_blocks"`
+	RemainingMs       uint64 `json:"remaining_ms"`
 }
 
 type rewardPointResponse struct {
@@ -69,8 +84,35 @@ func (a *API) handlePool(w http.ResponseWriter, r *http.Request) {
 		PoolFeePercentage: feePct,
 		PoolName:          poolName, PoolDescription: poolDescription, ContactURL: contactURL,
 		TelegramURL: telegramURL, DiscordURL: discordURL, XURL: xURL, Disclosure: disclosure,
-		Network: network,
+		Network: network, EpochClock: a.epochClock(r),
 	})
+}
+
+func (a *API) epochClock(r *http.Request) *epochClockJSON {
+	if a.rpc == nil {
+		return nil
+	}
+	ctx := r.Context()
+	head, err := a.rpc.BlockNumber(ctx)
+	if err != nil {
+		logger.Logger.Warn("epoch clock: block number", zap.Error(err))
+		return nil
+	}
+	policy, err := a.rpc.GetPolicy(ctx)
+	if err != nil || policy == nil {
+		logger.Logger.Warn("epoch clock: policy", zap.Error(err))
+		return nil
+	}
+	clock := pool.EpochClockAt(policy, head)
+	return &epochClockJSON{
+		Epoch:             clock.Epoch,
+		Head:              clock.Head,
+		BlocksIntoEpoch:   clock.BlocksIntoEpoch,
+		BlocksPerEpoch:    clock.BlocksPerEpoch,
+		BlockSeparationMs: clock.BlockSeparationMs,
+		RemainingBlocks:   clock.RemainingBlocks,
+		RemainingMs:       clock.RemainingMs,
+	}
 }
 
 func (a *API) handlePoolRewards(w http.ResponseWriter, r *http.Request) {

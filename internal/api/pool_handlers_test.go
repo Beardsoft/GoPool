@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/NimMiniApps/nimiq-go/rpc"
+
 	"github.com/Beardsoft/GoPool/internal/config"
 	"github.com/Beardsoft/GoPool/internal/db"
 )
@@ -63,6 +65,55 @@ func TestHandlePoolIncludesPublicSocials(t *testing.T) {
 	}
 	if got.ContactURL != "https://github.com/Beardsoft/GoPool" || got.TelegramURL != "https://t.me/gopool" || got.DiscordURL != "https://discord.gg/gopool" || got.XURL != "https://x.com/gopool" {
 		t.Errorf("public profile = %+v", got)
+	}
+}
+
+func TestHandlePoolIncludesEpochClockFromPolicy(t *testing.T) {
+	q := newTestDB(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		var result any
+		switch req.Method {
+		case "getBlockNumber":
+			result = 1241
+		case "getPolicyConstants":
+			result = map[string]any{
+				"blocksPerBatch": 60, "batchesPerEpoch": 4, "blocksPerEpoch": 240,
+				"blockSeparationTime": 1000, "genesisBlockNumber": 1000,
+			}
+		default:
+			result = nil
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": result})
+	}))
+	t.Cleanup(srv.Close)
+	client, err := rpc.New(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &API{queries: q, rpc: client}
+	req := httptest.NewRequest(http.MethodGet, "/api/pool", nil)
+	rec := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+	}
+	var got poolResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.EpochClock == nil {
+		t.Fatalf("epoch_clock missing: %s", rec.Body.String())
+	}
+	clock := got.EpochClock
+	if clock.Epoch != 2 || clock.Head != 1241 || clock.BlocksPerEpoch != 240 || clock.BlockSeparationMs != 1000 || clock.RemainingBlocks != 239 || clock.RemainingMs != 239_000 {
+		t.Errorf("epoch_clock = %+v", clock)
 	}
 }
 

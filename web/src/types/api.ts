@@ -13,6 +13,17 @@ export interface PoolStatus {
   x_url?: string;
   disclosure?: string;
   network?: string;
+  epoch_clock?: EpochClock;
+}
+
+export interface EpochClock {
+  epoch: number;
+  head: number;
+  blocks_into_epoch: number;
+  blocks_per_epoch: number;
+  block_separation_ms: number;
+  remaining_blocks: number;
+  remaining_ms: number;
 }
 
 export interface EpochSummary {

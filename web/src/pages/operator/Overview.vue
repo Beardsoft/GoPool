@@ -9,6 +9,7 @@ import AddressIdentity from '../../components/ui/AddressIdentity.vue'
 import TelemetryChart from '../../components/TelemetryChart.vue'
 import EventFacts from '../../components/EventFacts.vue'
 import { eventFacts } from '../../utils/eventContext'
+import { formatRemaining } from '../../utils/format'
 
 const overview = ref<OperatorOverview | null>(null)
 const pool = ref<PoolStatus | null>(null)
@@ -30,9 +31,13 @@ const epochElectedLabel = computed(() => {
   if (elected == null) return '—'
   return elected ? 'Elected' : 'Not elected'
 })
-const epochNumberLabel = computed(() => overview.value?.epoch_participation?.epoch ?? '—')
+const epochNumberLabel = computed(() => overview.value?.epoch_participation?.epoch ?? pool.value?.epoch_clock?.epoch ?? '—')
 const slotCountLabel = computed(() => overview.value?.epoch_participation?.slot_count ?? '—')
 const slotsTotalLabel = computed(() => overview.value?.epoch_participation?.slots_total ?? '—')
+const epochRemainingLabel = computed(() => {
+  const ms = pool.value?.epoch_clock?.remaining_ms
+  return ms == null ? '' : formatRemaining(ms)
+})
 
 async function load() {
   try {
@@ -91,7 +96,7 @@ onMounted(load)
         <article>
           <p>This epoch</p>
           <strong>{{ epochElectedLabel }}</strong>
-          <small>Epoch {{ epochNumberLabel }}</small>
+          <small>Epoch {{ epochNumberLabel }}<template v-if="epochRemainingLabel"> · {{ epochRemainingLabel }}</template></small>
         </article>
         <article>
           <p>Slots</p>

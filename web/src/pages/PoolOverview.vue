@@ -1,16 +1,31 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { apiGet, type ApiError } from '../api'
 import NimAmount from '../components/ui/NimAmount.vue'
 import type { PoolStatus } from '../types/api'
+import { formatRemaining } from '../utils/format'
 
 const router = useRouter()
 const pool = ref<PoolStatus | null>(null)
 const error = ref('')
 const address = ref('')
+const remainingMs = ref<number | null>(null)
+let tick: ReturnType<typeof setInterval> | undefined
+let fetchedAt = 0
+let fetchedRemaining = 0
 
 const epochLabel = computed(() => (pool.value?.epoch_status ?? '').replaceAll('_', ' '))
+const epochNumber = computed(() => pool.value?.epoch_clock?.epoch ?? pool.value?.current_epoch)
+const remainingLabel = computed(() => remainingMs.value == null ? '' : formatRemaining(remainingMs.value))
+
+function syncRemaining() {
+  if (fetchedRemaining <= 0) {
+    remainingMs.value = fetchedRemaining
+    return
+  }
+  remainingMs.value = Math.max(0, fetchedRemaining - (Date.now() - fetchedAt))
+}
 
 function findStake() {
   const value = address.value.trim()
@@ -21,6 +36,13 @@ function findStake() {
 onMounted(async () => {
   try {
     pool.value = await apiGet<PoolStatus>('/api/pool')
+    const clock = pool.value.epoch_clock
+    if (clock) {
+      fetchedAt = Date.now()
+      fetchedRemaining = clock.remaining_ms
+      syncRemaining()
+      tick = setInterval(syncRemaining, 1000)
+    }
   } catch (cause) {
     const err = cause as ApiError
     if (err.code === 'setup_required') {
@@ -30,6 +52,7 @@ onMounted(async () => {
     error.value = err.message || 'Pool data is temporarily unavailable.'
   }
 })
+onUnmounted(() => { clearInterval(tick) })
 </script>
 
 <template>
@@ -54,7 +77,7 @@ onMounted(async () => {
         <div class="proof-heading">
           <div>
             <p>Current epoch</p>
-            <strong v-if="pool">{{ pool.current_epoch }}</strong>
+            <strong v-if="pool">{{ epochNumber }}</strong>
             <span v-else class="loading-line"></span>
           </div>
           <span class="status-pill"><i></i>{{ pool ? epochLabel : 'connecting' }}</span>
@@ -64,7 +87,7 @@ onMounted(async () => {
           <div class="orbit-core">NIM</div>
         </div>
         <div class="proof-foot">
-          <span>Live network status</span>
+          <span>{{ remainingLabel || 'Live network status' }}</span>
           <RouterLink to="/epochs">Open epoch details →</RouterLink>
         </div>
       </div>

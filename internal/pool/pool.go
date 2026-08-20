@@ -123,6 +123,49 @@ func divCeil(n, d uint32) uint32 {
 	return (n + d - 1) / d
 }
 
+type EpochClock struct {
+	Epoch             uint32
+	Head              uint32
+	BlocksIntoEpoch   uint32
+	BlocksPerEpoch    uint32
+	BlockSeparationMs uint32
+	RemainingBlocks   uint32
+	RemainingMs       uint64
+}
+
+func epochEndHeight(p *rpc.Policy, epoch uint32) uint32 {
+	if epoch == 0 {
+		return p.GenesisBlockNumber
+	}
+	return p.GenesisBlockNumber + epoch*p.BlocksPerEpoch
+}
+
+// EpochClockAt is remaining time in the current epoch from live head + policy.
+func EpochClockAt(p *rpc.Policy, height uint32) EpochClock {
+	if p == nil || p.BlocksPerEpoch == 0 {
+		return EpochClock{Head: height}
+	}
+	epoch := epochAt(p, height)
+	end := epochEndHeight(p, epoch)
+	remaining := uint32(0)
+	if end > height {
+		remaining = end - height
+	}
+	into := uint32(0)
+	if epoch > 0 {
+		into = p.BlocksPerEpoch - remaining
+	}
+	return EpochClock{
+		Epoch:             epoch,
+		Head:              height,
+		BlocksIntoEpoch:   into,
+		BlocksPerEpoch:    p.BlocksPerEpoch,
+		BlockSeparationMs: p.BlockSeparationTime,
+		RemainingBlocks:   remaining,
+		RemainingMs:       uint64(remaining) * uint64(p.BlockSeparationTime),
+	}
+}
+
 func shouldRefreshGauges(last, now time.Time) bool {
 	return last.IsZero() || now.Sub(last) >= chainGaugeInterval
 }

@@ -16,6 +16,15 @@ describe('PoolOverview product composition', () => {
       pool_description: 'Custom pool blurb for visiting stakers.',
       contact_url: '',
       disclosure: '',
+      epoch_clock: {
+        epoch: 145,
+        head: 9256041,
+        blocks_into_epoch: 3231,
+        blocks_per_epoch: 43200,
+        block_separation_ms: 1000,
+        remaining_blocks: 39969,
+        remaining_ms: 39_969_000,
+      },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
     const router = createRouter({
       history: createMemoryHistory(),
@@ -34,6 +43,7 @@ describe('PoolOverview product composition', () => {
 
     expect(wrapper.get('[data-section="trust"]').text()).toContain('Custom pool blurb for visiting stakers.')
     expect(wrapper.get('[data-section="live-proof"]').text()).toContain('Current epoch')
+    expect(wrapper.get('[data-section="live-proof"]').text()).toContain('11h 6m left')
     expect(wrapper.get('[data-section="staker-lookup"]').get('input').attributes('aria-label')).toBe('Nimiq address')
     expect(wrapper.get('[data-section="reward-model"]').text()).toMatch(/rewards|fee/i)
     expect(wrapper.get('[data-section="activity"]').text()).toMatch(/performance|activity/i)

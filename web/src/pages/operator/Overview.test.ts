@@ -139,6 +139,7 @@ describe('Overview', () => {
     mockFetch('/api/pool', {
       current_epoch: 2, epoch_status: 'in_progress', num_stakers: 1,
       total_stake_luna: 0, total_rewards_luna: 0, pool_fee_percentage: 0.01,
+      epoch_clock: { epoch: 2, head: 1241, blocks_into_epoch: 1, blocks_per_epoch: 240, block_separation_ms: 1000, remaining_blocks: 239, remaining_ms: 239_000 },
     })
     const wrapper = mount(Overview, {
       global: {
@@ -152,6 +153,7 @@ describe('Overview', () => {
     expect(metrics).toContain('Epoch 2')
     expect(metrics).toContain('12')
     expect(metrics).toContain('of 512')
+    expect(metrics).toContain('3m 59s left')
   })
 
   it('shows placeholders before the first epoch snapshot', async () => {
