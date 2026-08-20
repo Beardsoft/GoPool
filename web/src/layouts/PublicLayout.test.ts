@@ -79,4 +79,36 @@ describe('PublicLayout profile', () => {
     expect(wrapper.find('[data-profile="contact"]').exists()).toBe(false)
     expect(wrapper.find('[data-profile="disclosure"]').exists()).toBe(false)
   })
+
+  it('publishes configured telegram, discord, and x links', async () => {
+    mockFetch('/api/pool', {
+      pool_name: 'GoPool',
+      contact_url: 'https://github.com/Beardsoft/GoPool',
+      telegram_url: 'https://t.me/gopool',
+      discord_url: 'https://discord.gg/gopool',
+      x_url: 'https://x.com/gopool',
+      disclosure: '',
+      network: 'test-albatross',
+    })
+    const wrapper = await mountPublic()
+    expect(wrapper.get('[data-profile="telegram"]').attributes('href')).toBe('https://t.me/gopool')
+    expect(wrapper.get('[data-profile="discord"]').attributes('href')).toBe('https://discord.gg/gopool')
+    expect(wrapper.get('[data-profile="x"]').attributes('href')).toBe('https://x.com/gopool')
+  })
+
+  it('hides social links when they are empty', async () => {
+    mockFetch('/api/pool', {
+      pool_name: 'GoPool',
+      contact_url: 'https://github.com/Beardsoft/GoPool',
+      telegram_url: '',
+      discord_url: '',
+      x_url: '',
+      network: 'test-albatross',
+    })
+    const wrapper = await mountPublic()
+    expect(wrapper.find('[data-profile="telegram"]').exists()).toBe(false)
+    expect(wrapper.find('[data-profile="discord"]').exists()).toBe(false)
+    expect(wrapper.find('[data-profile="x"]').exists()).toBe(false)
+    expect(wrapper.find('[data-profile="contact"]').exists()).toBe(true)
+  })
 })

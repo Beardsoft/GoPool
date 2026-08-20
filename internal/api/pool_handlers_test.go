@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Beardsoft/GoPool/internal/config"
 	"github.com/Beardsoft/GoPool/internal/db"
 )
 
@@ -35,6 +36,33 @@ func TestHandlePool(t *testing.T) {
 	}
 	if got.CurrentEpoch != 3 || got.NumStakers != 2 || got.TotalStakeLuna != 100_000_00000 || got.TotalRewardsLuna != 990_00000 {
 		t.Errorf("got %+v", got)
+	}
+}
+
+func TestHandlePoolIncludesPublicSocials(t *testing.T) {
+	q := newTestDB(t)
+	a := &API{queries: q, cfg: &config.Config{
+		PoolName:          "GoPool",
+		ContactURL:        "https://github.com/Beardsoft/GoPool",
+		TelegramURL:       "https://t.me/gopool",
+		DiscordURL:        "https://discord.gg/gopool",
+		XURL:              "https://x.com/gopool",
+		Network:           "test-albatross",
+		PoolFeePercentage: 0.01,
+	}}
+	req := httptest.NewRequest(http.MethodGet, "/api/pool", nil)
+	rec := httptest.NewRecorder()
+	a.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+	}
+	var got poolResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.ContactURL != "https://github.com/Beardsoft/GoPool" || got.TelegramURL != "https://t.me/gopool" || got.DiscordURL != "https://discord.gg/gopool" || got.XURL != "https://x.com/gopool" {
+		t.Errorf("public profile = %+v", got)
 	}
 }
 

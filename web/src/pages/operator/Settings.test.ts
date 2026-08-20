@@ -20,6 +20,17 @@ it('lets the operator edit disclosure on the public profile', async () => {
   expect((disclosure.element as HTMLTextAreaElement).value).toBe('Operated by Aurora Labs.')
 })
 
+it('lets the operator edit public telegram, discord, and x URLs', async () => {
+  const wrapper = mount(Settings, { global: operatorTestGlobals })
+  await loadSettings(wrapper)
+  await wrapper.get('[name="telegram_url"]').setValue('https://t.me/gopool')
+  await wrapper.get('[name="discord_url"]').setValue('https://discord.gg/gopool')
+  await wrapper.get('[name="x_url"]').setValue('https://x.com/gopool')
+  expect((wrapper.get('[name="telegram_url"]').element as HTMLInputElement).value).toBe('https://t.me/gopool')
+  expect((wrapper.get('[name="discord_url"]').element as HTMLInputElement).value).toBe('https://discord.gg/gopool')
+  expect((wrapper.get('[name="x_url"]').element as HTMLInputElement).value).toBe('https://x.com/gopool')
+})
+
 it('shows Activating instead of Restart required while hashes differ', async () => {
   const wrapper = mount(Settings, { global: operatorTestGlobals })
   mockFetch('/api/operator/settings', {

@@ -102,6 +102,63 @@ func TestValidateAPICanonicalizesAddress(t *testing.T) {
 	}
 }
 
+func TestValidateEditablePublicSocialURLs(t *testing.T) {
+	valid := func() Editable {
+		return Editable{
+			RPCURL: "https://rpc-testnet.nimiqscan.com", Network: "test-albatross",
+			PoolFeeWallet: "NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E", PoolFeePercentage: 0.01,
+			PayoutMode: "delegate", MinPayoutLuna: 100_000, ValidatorAddress: "NQ20 TSB0 DFSM UH9C 15GQ GAGJ TTE4 D3MA 859E",
+			PoolName: "GoPool",
+		}
+	}
+	cases := []struct {
+		name    string
+		mutate  func(*Editable)
+		wantErr string
+	}{
+		{"omitted", func(*Editable) {}, ""},
+		{"valid socials", func(e *Editable) {
+			e.ContactURL = "https://github.com/Beardsoft/GoPool"
+			e.TelegramURL = "https://t.me/gopool"
+			e.DiscordURL = "https://discord.gg/gopool"
+			e.XURL = "https://x.com/gopool"
+		}, ""},
+		{"bad telegram", func(e *Editable) { e.TelegramURL = "not-a-url" }, "config: telegram_url must be an HTTP(S) URL"},
+		{"bad discord", func(e *Editable) { e.DiscordURL = "ftp://discord.gg/gopool" }, "config: discord_url must be an HTTP(S) URL"},
+		{"bad x", func(e *Editable) { e.XURL = "https://" }, "config: x_url must be an HTTP(S) URL"},
+		{"bad contact", func(e *Editable) { e.ContactURL = "mailto:ops@example" }, "config: contact_url must be an HTTP(S) URL"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := valid()
+			c.mutate(&e)
+			err := ValidateEditable(e)
+			if c.wantErr == "" {
+				if err != nil {
+					t.Fatalf("ValidateEditable() error = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != c.wantErr {
+				t.Fatalf("ValidateEditable() error = %v, want %q", err, c.wantErr)
+			}
+		})
+	}
+}
+
+func TestEditableRoundTripsPublicSocials(t *testing.T) {
+	cfg := Config{
+		TelegramURL: "https://t.me/gopool",
+		DiscordURL:  "https://discord.gg/gopool",
+		XURL:        "https://x.com/gopool",
+		ContactURL:  "https://github.com/Beardsoft/GoPool",
+	}
+	got := FromEditable(cfg.Editable())
+	if got.TelegramURL != cfg.TelegramURL || got.DiscordURL != cfg.DiscordURL || got.XURL != cfg.XURL || got.ContactURL != cfg.ContactURL {
+		t.Fatalf("round trip lost socials: %+v", got)
+	}
+}
+
 func TestValidateStillIgnoresMetricsAddr(t *testing.T) {
 	cfg := Config{
 		PayoutMode:        "delegate",

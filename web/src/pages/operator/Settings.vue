@@ -121,6 +121,19 @@ onMounted(() => queueMicrotask(async () => {
           Contact URL
           <input v-model="settings.contact_url" class="input" type="url" />
         </label>
+        <label>
+          Telegram URL
+          <input v-model="settings.telegram_url" name="telegram_url" class="input" type="url" placeholder="https://t.me/yourpool" />
+        </label>
+        <label>
+          Discord URL
+          <input v-model="settings.discord_url" name="discord_url" class="input" type="url" placeholder="https://discord.gg/invite" />
+        </label>
+        <label class="span-2">
+          X URL
+          <input v-model="settings.x_url" name="x_url" class="input" type="url" placeholder="https://x.com/yourpool" />
+        </label>
+        <p class="muted span-2">Public links on the pool website. Separate from Telegram/Discord alert channels below.</p>
         <label class="span-2">
           Disclosure
           <textarea v-model="settings.disclosure" name="disclosure" class="input" rows="3" />

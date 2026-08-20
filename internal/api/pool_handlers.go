@@ -18,6 +18,9 @@ type poolResponse struct {
 	PoolName          string  `json:"pool_name"`
 	PoolDescription   string  `json:"pool_description"`
 	ContactURL        string  `json:"contact_url"`
+	TelegramURL       string  `json:"telegram_url"`
+	DiscordURL        string  `json:"discord_url"`
+	XURL              string  `json:"x_url"`
 	Disclosure        string  `json:"disclosure"`
 	Network           string  `json:"network"`
 }
@@ -48,13 +51,13 @@ func (a *API) handlePool(w http.ResponseWriter, r *http.Request) {
 	}
 	feePct := 0.0
 	poolName := "GoPool"
-	poolDescription, contactURL, disclosure, network := "", "", "", ""
+	poolDescription, contactURL, telegramURL, discordURL, xURL, disclosure, network := "", "", "", "", "", "", ""
 	if a.cfg != nil {
 		feePct = a.cfg.PoolFeePercentage
 		if a.cfg.PoolName != "" {
 			poolName = a.cfg.PoolName
 		}
-		poolDescription, contactURL, disclosure = a.cfg.PoolDescription, a.cfg.ContactURL, a.cfg.Disclosure
+		poolDescription, contactURL, telegramURL, discordURL, xURL, disclosure = a.cfg.PoolDescription, a.cfg.ContactURL, a.cfg.TelegramURL, a.cfg.DiscordURL, a.cfg.XURL, a.cfg.Disclosure
 		network = a.cfg.Network
 	}
 	writeJSON(w, http.StatusOK, poolResponse{
@@ -64,7 +67,8 @@ func (a *API) handlePool(w http.ResponseWriter, r *http.Request) {
 		TotalStakeLuna:    epoch.Balance,
 		TotalRewardsLuna:  totalRewards,
 		PoolFeePercentage: feePct,
-		PoolName:          poolName, PoolDescription: poolDescription, ContactURL: contactURL, Disclosure: disclosure,
+		PoolName:          poolName, PoolDescription: poolDescription, ContactURL: contactURL,
+		TelegramURL: telegramURL, DiscordURL: discordURL, XURL: xURL, Disclosure: disclosure,
 		Network: network,
 	})
 }

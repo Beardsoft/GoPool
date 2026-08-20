@@ -8,6 +8,9 @@ export interface PoolStatus {
   pool_name?: string;
   pool_description?: string;
   contact_url?: string;
+  telegram_url?: string;
+  discord_url?: string;
+  x_url?: string;
   disclosure?: string;
   network?: string;
 }
@@ -162,6 +165,9 @@ export interface EditableConfig {
   pool_name: string;
   pool_description?: string;
   contact_url?: string;
+  telegram_url?: string;
+  discord_url?: string;
+  x_url?: string;
   disclosure?: string;
 }
 

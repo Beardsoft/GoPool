@@ -42,6 +42,9 @@ type Config struct {
 	PoolName        string `json:"pool_name"`
 	PoolDescription string `json:"pool_description,omitempty"`
 	ContactURL      string `json:"contact_url,omitempty"`
+	TelegramURL     string `json:"telegram_url,omitempty"`
+	DiscordURL      string `json:"discord_url,omitempty"`
+	XURL            string `json:"x_url,omitempty"`
 	Disclosure      string `json:"disclosure,omitempty"`
 
 	FaucetURL       string `json:"faucet_url,omitempty"`
@@ -68,6 +71,9 @@ type Editable struct {
 	PoolName                 string  `json:"pool_name"`
 	PoolDescription          string  `json:"pool_description,omitempty"`
 	ContactURL               string  `json:"contact_url,omitempty"`
+	TelegramURL              string  `json:"telegram_url,omitempty"`
+	DiscordURL               string  `json:"discord_url,omitempty"`
+	XURL                     string  `json:"x_url,omitempty"`
 	Disclosure               string  `json:"disclosure,omitempty"`
 }
 
@@ -113,7 +119,8 @@ func (c *Config) Editable() Editable {
 		PayoutMode: c.PayoutMode, MinPayoutLuna: c.MinPayoutLuna, AutoReactivate: c.AutoReactivate, APIAddr: c.APIAddr,
 		ValidatorAddress: c.ValidatorAddress, OperatorAddresses: c.OperatorAddresses, MetricsAddr: c.MetricsAddr,
 		AlertTelegramEnabled: c.AlertTelegramEnabled, AlertTelegramDestination: c.AlertTelegramDestination,
-		AlertWebhookEnabled: c.AlertWebhookEnabled, PoolName: c.PoolName, PoolDescription: c.PoolDescription, ContactURL: c.ContactURL, Disclosure: c.Disclosure}
+		AlertWebhookEnabled: c.AlertWebhookEnabled, PoolName: c.PoolName, PoolDescription: c.PoolDescription,
+		ContactURL: c.ContactURL, TelegramURL: c.TelegramURL, DiscordURL: c.DiscordURL, XURL: c.XURL, Disclosure: c.Disclosure}
 }
 
 // FromEditable builds a Config from an editable subset.
@@ -122,7 +129,8 @@ func FromEditable(e Editable) *Config {
 		PayoutMode: e.PayoutMode, MinPayoutLuna: e.MinPayoutLuna, AutoReactivate: e.AutoReactivate, APIAddr: e.APIAddr,
 		ValidatorAddress: e.ValidatorAddress, OperatorAddresses: e.OperatorAddresses, MetricsAddr: e.MetricsAddr,
 		AlertTelegramEnabled: e.AlertTelegramEnabled, AlertTelegramDestination: e.AlertTelegramDestination,
-		AlertWebhookEnabled: e.AlertWebhookEnabled, PoolName: e.PoolName, PoolDescription: e.PoolDescription, ContactURL: e.ContactURL, Disclosure: e.Disclosure}
+		AlertWebhookEnabled: e.AlertWebhookEnabled, PoolName: e.PoolName, PoolDescription: e.PoolDescription,
+		ContactURL: e.ContactURL, TelegramURL: e.TelegramURL, DiscordURL: e.DiscordURL, XURL: e.XURL, Disclosure: e.Disclosure}
 }
 
 // Redact builds the API-safe representation of a config.
@@ -166,7 +174,7 @@ func (c *Config) Validate() error {
 	if err := validateOptionalHTTPURL("validator_rpc_url", c.ValidatorRPCURL); err != nil {
 		return err
 	}
-	return nil
+	return validatePublicProfileURLs(c.ContactURL, c.TelegramURL, c.DiscordURL, c.XURL)
 }
 
 // ValidateEditable checks the operator-editable settings before saving.
@@ -201,6 +209,20 @@ func ValidateEditable(e Editable) error {
 		}
 		if _, err := nimiq.ParseAddress(strings.TrimSpace(value)); err != nil {
 			return fmt.Errorf("operator_addresses: %w", err)
+		}
+	}
+	return validatePublicProfileURLs(e.ContactURL, e.TelegramURL, e.DiscordURL, e.XURL)
+}
+
+func validatePublicProfileURLs(contact, telegram, discord, x string) error {
+	for name, value := range map[string]string{
+		"contact_url":  contact,
+		"telegram_url": telegram,
+		"discord_url":  discord,
+		"x_url":        x,
+	} {
+		if err := validateOptionalHTTPURL(name, value); err != nil {
+			return err
 		}
 	}
 	return nil

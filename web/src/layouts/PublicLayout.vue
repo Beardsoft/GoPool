@@ -1,10 +1,19 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import AppHeader from '../components/AppHeader.vue'
 import { loadNetwork, usePoolProfile } from '../composables/useExplorer'
 
-const { contactUrl, disclosure } = usePoolProfile()
+const { contactUrl, telegramUrl, discordUrl, xUrl, disclosure } = usePoolProfile()
 onMounted(() => { loadNetwork() })
+
+const socials = computed(() => ([
+  { key: 'contact', href: contactUrl.value, label: 'Contact operator' },
+  { key: 'telegram', href: telegramUrl.value, label: 'Telegram' },
+  { key: 'discord', href: discordUrl.value, label: 'Discord' },
+  { key: 'x', href: xUrl.value, label: 'X' },
+] as const).filter((item) => item.href))
+
+const showFooter = computed(() => socials.value.length > 0 || Boolean(disclosure.value))
 </script>
 
 <template>
@@ -15,15 +24,18 @@ onMounted(() => { loadNetwork() })
         <RouterView />
       </div>
     </main>
-    <footer v-if="contactUrl || disclosure" class="public-footer">
+    <footer v-if="showFooter" class="public-footer">
       <div class="container footer-inner">
-        <a
-          v-if="contactUrl"
-          data-profile="contact"
-          :href="contactUrl"
-          rel="noopener noreferrer"
-          target="_blank"
-        >Contact operator</a>
+        <nav v-if="socials.length" class="footer-links" aria-label="Operator links">
+          <a
+            v-for="item in socials"
+            :key="item.key"
+            :data-profile="item.key"
+            :href="item.href"
+            rel="noopener noreferrer"
+            target="_blank"
+          >{{ item.label }}</a>
+        </nav>
         <p v-if="disclosure" data-profile="disclosure">{{ disclosure }}</p>
       </div>
     </footer>
@@ -53,6 +65,11 @@ onMounted(() => { loadNetwork() })
   display: grid;
   gap: 10px;
   max-width: 1184px;
+}
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
 }
 .public-footer a {
   color: var(--nimiq-light-blue);

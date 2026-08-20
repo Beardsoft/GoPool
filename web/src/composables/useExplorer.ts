@@ -5,6 +5,9 @@ import type { PoolStatus } from '../types/api'
 const network = ref('')
 const poolName = ref('GoPool')
 const contactUrl = ref('')
+const telegramUrl = ref('')
+const discordUrl = ref('')
+const xUrl = ref('')
 const disclosure = ref('')
 let loaded = false
 let pending: Promise<void> | null = null
@@ -17,6 +20,9 @@ export function loadNetwork(): Promise<void> {
         network.value = pool.network ?? ''
         poolName.value = pool.pool_name || 'GoPool'
         contactUrl.value = pool.contact_url ?? ''
+        telegramUrl.value = pool.telegram_url ?? ''
+        discordUrl.value = pool.discord_url ?? ''
+        xUrl.value = pool.x_url ?? ''
         disclosure.value = pool.disclosure ?? ''
       })
       .catch(() => { network.value = '' })
@@ -26,7 +32,7 @@ export function loadNetwork(): Promise<void> {
 }
 
 export function usePoolProfile() {
-  return { poolName, contactUrl, disclosure }
+  return { poolName, contactUrl, telegramUrl, discordUrl, xUrl, disclosure }
 }
 
 const explorerBase = computed(() => {
@@ -59,6 +65,9 @@ export function resetExplorerForTests() {
   network.value = ''
   poolName.value = 'GoPool'
   contactUrl.value = ''
+  telegramUrl.value = ''
+  discordUrl.value = ''
+  xUrl.value = ''
   disclosure.value = ''
   loaded = false
   pending = null
