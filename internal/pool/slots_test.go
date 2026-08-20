@@ -30,6 +30,17 @@ func TestSlotShareIgnoresAddressSpaces(t *testing.T) {
 	}
 }
 
+func TestSlotShareDustStakeInSetIsNotElected(t *testing.T) {
+	vs := []rpc.Validator{
+		{Address: "NQ01 BIG", Balance: 1_000_000_000},
+		{Address: "NQ02 TINY", Balance: 1},
+	}
+	elected, count := slotShare("NQ02 TINY", vs, 512)
+	if elected || count != 0 {
+		t.Fatalf("elected=%v count=%d, dust stake in the active set is not elected", elected, count)
+	}
+}
+
 func TestSlotShareLargestRemainder(t *testing.T) {
 	vs := []rpc.Validator{
 		{Address: "NQ01 A", Balance: 50},

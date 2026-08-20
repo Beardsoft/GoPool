@@ -11,8 +11,9 @@ func normalizeAddr(s string) string {
 	return strings.ToUpper(strings.ReplaceAll(s, " ", ""))
 }
 
-// slotShare reports whether addr is in the active set and how many of `slots`
-// it holds, using Hamilton / largest-remainder over the set's balances.
+// slotShare reports whether addr holds any of `slots` in this set, and how
+// many, using Hamilton / largest-remainder over the set's balances.
+// Membership with a zero assignment is not elected.
 func slotShare(addr string, validators []rpc.Validator, slots uint32) (elected bool, count uint32) {
 	want := normalizeAddr(addr)
 	if want == "" || slots == 0 || len(validators) == 0 {
@@ -69,7 +70,7 @@ func slotShare(addr string, validators []rpc.Validator, slots uint32) (elected b
 
 	for _, e := range entries {
 		if e.addr == want {
-			return true, e.assigned
+			return e.assigned > 0, e.assigned
 		}
 	}
 	return false, 0
