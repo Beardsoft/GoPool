@@ -109,6 +109,15 @@ func (a *API) handleOperatorOverview(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
+	// Past readiness events stay out of attention, but the live heartbeat
+	// error is the current blocker (missing stake, registration wait, mismatch).
+	if statusRow.ReadinessError.Valid && statusRow.ReadinessError.String != "" {
+		attention = append([]attentionItem{{
+			Severity: "warning",
+			Category: "readiness",
+			Summary:  statusRow.ReadinessError.String,
+		}}, attention...)
+	}
 	if len(attention) > 0 {
 		overall = "attention"
 	}

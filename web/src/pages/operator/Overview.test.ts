@@ -170,4 +170,38 @@ describe('Overview', () => {
     expect(wrapper.get('.metrics').text()).toMatch(/—/)
     expect(wrapper.get('.metrics').text()).not.toContain('Not elected')
   })
+
+  it('lists missing stake as attention instead of all-clear', async () => {
+    mockFetch('/api/operator/overview', overviewFixture({
+      status: 'attention',
+      readiness: 'error',
+      validator_summary: {
+        address: 'NQ51 6A35 D8G7 19B9 U8LX TJ7S XLLN H4VT Q910',
+        state: 'unready',
+        last_processed_height: 0,
+        last_tick_ms: 1,
+      },
+      attention: [{
+        id: 0,
+        severity: 'warning',
+        category: 'readiness',
+        summary: 'Waiting for 100000 NIM to register the validator (have 0 NIM)',
+      }],
+    }))
+    mockFetch('/api/pool', {
+      current_epoch: 0, epoch_status: 'in_progress', num_stakers: 0,
+      total_stake_luna: 0, total_rewards_luna: 0, pool_fee_percentage: 0.01,
+    })
+    const wrapper = mount(Overview, {
+      global: {
+        ...operatorTestGlobals,
+        stubs: { RouterLink: { template: '<a href="#"><slot /></a>' } },
+      },
+    })
+    await flushPromises()
+    const attention = wrapper.get('[data-section="attention"]')
+    expect(attention.text()).toContain('Waiting for 100000 NIM to register the validator (have 0 NIM)')
+    expect(attention.text()).not.toContain('Nothing requires action')
+    expect(wrapper.get('[role="status"]').text()).toContain('needs attention')
+  })
 })

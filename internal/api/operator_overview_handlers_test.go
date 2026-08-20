@@ -24,7 +24,10 @@ type operatorOverviewResponseTest struct {
 		LastTickMs          int64  `json:"last_tick_ms"`
 	} `json:"validator_summary"`
 	Attention []struct {
-		ID int64 `json:"id"`
+		ID       int64  `json:"id"`
+		Severity string `json:"severity"`
+		Category string `json:"category"`
+		Summary  string `json:"summary"`
 	} `json:"attention"`
 	EpochParticipation *struct {
 		Epoch      *int64 `json:"epoch"`
@@ -82,6 +85,45 @@ func TestOperatorOverviewIgnoresRecoveredReadinessEvents(t *testing.T) {
 	}
 	if got.Status != "healthy" || len(got.Attention) != 0 {
 		t.Fatalf("%+v, want healthy with no attention", got)
+	}
+}
+
+func TestOperatorOverviewSurfacesCurrentReadinessError(t *testing.T) {
+	a, cookie, _ := operatorTestAPI(t)
+	if err := a.queries.UpsertRuntimeStatus(t.Context(), db.UpsertRuntimeStatusParams{
+		HeartbeatAt:             time.Now().UTC(),
+		DaemonVersion:           "v0.1",
+		ConfigHash:              "abc",
+		DerivedValidatorAddress: testAddr,
+		ValidatorState:          "unready",
+		LastProcessedHeight:     0,
+		ChainHead:               0,
+		LastTickMs:              1,
+		RpcOk:                   1,
+		ReadinessError:          sql.NullString{String: "Waiting for 100000 NIM to register the validator (have 0 NIM)", Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/operator/overview", nil)
+	req.AddCookie(cookie)
+	a.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%d: %s", rec.Code, rec.Body.String())
+	}
+	var got operatorOverviewResponseTest
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "attention" {
+		t.Fatalf("status = %s, want attention", got.Status)
+	}
+	if len(got.Attention) != 1 {
+		t.Fatalf("attention = %+v, want 1 current readiness item", got.Attention)
+	}
+	item := got.Attention[0]
+	if item.Category != "readiness" || item.Summary != "Waiting for 100000 NIM to register the validator (have 0 NIM)" {
+		t.Fatalf("attention item = %+v", item)
 	}
 }
 
